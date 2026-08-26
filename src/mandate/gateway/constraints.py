@@ -98,3 +98,45 @@ def quantity_max_per_item(ctx: EvalContext) -> ClauseResult:
     return ClauseResult(id=C.QUANTITY_MAX_PER_ITEM,
                         result=Verdict.DENY if worst.qty > limit else Verdict.ALLOW,
                         observed=worst.qty, limit=limit, detail=f"worst line {worst.sku}")
+
+
+def velocity(ctx: EvalContext) -> ClauseResult:
+    if (r := _absent(C.VELOCITY, ctx)):
+        return r
+    spec = ctx.policy.constraints[C.VELOCITY]
+    limit = int(spec["max_actions"])
+    observed = ctx.state.actions_in_window
+    return ClauseResult(id=C.VELOCITY,
+                        result=Verdict.DENY if observed >= limit else Verdict.ALLOW,
+                        observed=observed, limit=limit,
+                        detail=f"window={spec.get('window', 'mandate')}")
+
+
+def time_window(ctx: EvalContext) -> ClauseResult:
+    if (r := _absent(C.TIME_WINDOW, ctx)):
+        return r
+    spec = ctx.policy.constraints[C.TIME_WINDOW]
+    after = spec.get("after") or ctx.policy.issued
+    before = spec.get("before") or ctx.policy.expires
+    ok = after <= ctx.now < before          # expiry is exclusive; ties go to the user
+    return ClauseResult(id=C.TIME_WINDOW, result=Verdict.ALLOW if ok else Verdict.DENY,
+                        observed=ctx.now.isoformat(),
+                        limit=f"[{after.isoformat()}, {before.isoformat()})")
+
+
+def item_deny_recent(ctx: EvalContext) -> ClauseResult:
+    if (r := _absent(C.ITEM_DENY_RECENT, ctx)):
+        return r
+    spec = ctx.policy.constraints[C.ITEM_DENY_RECENT]
+    hits = sorted({i.sku for i in (ctx.action.items or [])} & set(ctx.state.recent_skus))
+    return ClauseResult(id=C.ITEM_DENY_RECENT,
+                        result=Verdict.DENY if hits else Verdict.ALLOW,
+                        observed=hits, limit=f"{spec.get('window_days', 7)}d",
+                        detail=f"bought recently: {hits}" if hits else "")
+
+
+ALL_EVALUATORS = [
+    budget_total, budget_per_transaction, budget_per_item,
+    merchant_allow, category_deny, item_deny_recent,
+    velocity, time_window, quantity_max_per_item,
+]
