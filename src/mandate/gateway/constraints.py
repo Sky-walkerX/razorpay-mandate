@@ -136,7 +136,7 @@ def item_deny_recent(ctx: EvalContext) -> ClauseResult:
 
 
 ALL_EVALUATORS = [
-    budget_total, budget_per_transaction, budget_per_item,
+    budget_per_transaction, budget_total, budget_per_item,
     merchant_allow, category_deny, item_deny_recent,
     velocity, time_window, quantity_max_per_item,
 ]
