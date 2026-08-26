@@ -1,8 +1,11 @@
 import os
+from pathlib import Path
+
 import typer
 from dotenv import load_dotenv
 from mandate.money import rupees, fmt
 from mandate.downstream.razorpay import RazorpayDownstream
+from mandate.harness.corpus import HELD_OUT, build_corpus, corpus_hash, save_corpus
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -19,3 +22,18 @@ def check() -> None:
     assert back["id"] == order["id"], "order did not read back"
     typer.echo(f"read back {back['id']} status={back['status']}")
     typer.echo("wiring OK")
+
+
+corpus_app = typer.Typer()
+app.add_typer(corpus_app, name="corpus")
+
+
+@corpus_app.command("build")
+def corpus_build(seed: int = 20260901, out: Path = Path("corpus/corpus.json")) -> None:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    items = build_corpus(seed=seed)
+    save_corpus(items, out)
+    attacks = sum(i.is_attack for i in items)
+    typer.echo(f"{len(items)} items ({attacks} attacks, {len(items)-attacks} legitimate)")
+    typer.echo(f"held out: {sorted(HELD_OUT)}")
+    typer.echo(corpus_hash(items))
