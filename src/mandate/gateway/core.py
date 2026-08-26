@@ -8,6 +8,8 @@ from mandate.gateway.lattice import evaluate_all, combine, first_blocking
 from mandate.gateway.state import AccumulatedState, EvalContext, Verdict
 from mandate.policy.models import Policy
 from mandate.policy.canonical import policy_hash
+from mandate.gateway.idem import EntryState
+from mandate.downstream.fake import DownstreamTimeout, DownstreamError
 
 
 class Mode(StrEnum):
@@ -66,17 +68,44 @@ class Gateway:
         verdict = combine(clauses)
         blocking = first_blocking(clauses)
 
+        # Cached decision: a genuine retry of the same intent must not re-execute.
+        if self.ledger is not None and (prior := self.ledger.get(idem)) is not None:
+            if prior.state is EntryState.COMMITTED:
+                return Decision(verdict=Verdict.ALLOW, idem_key=idem,
+                                downstream=prior.downstream, executed=False,
+                                message="already committed; returning cached result")
+            if prior.state is EntryState.FAILED:
+                return Decision(verdict=Verdict.DENY, idem_key=idem, executed=False,
+                                clause_id="idempotency",
+                                message=f"already failed: {prior.reason}")
+            return Decision(verdict=Verdict.UNKNOWN, idem_key=idem, executed=False,
+                            clause_id="idempotency",
+                            message="an identical action is in flight and unresolved")
+
         may_execute = verdict is Verdict.ALLOW or self.mode is Mode.OBSERVE
-        downstream_body, executed = None, False
+        downstream_body, executed, final = None, False, verdict
         if may_execute:
-            downstream_body = self.downstream.create_order(
-                action.amount, receipt=idem, notes={"mandate_id": self.policy.mandate_id})
-            executed = True
+            if self.ledger is not None:
+                self.ledger.open_pending(idem, action, now)
+            try:
+                downstream_body = self.downstream.create_order(
+                    action.amount, receipt=idem,
+                    notes={"mandate_id": self.policy.mandate_id})
+                executed = True
+                if self.ledger is not None:
+                    self.ledger.mark_committed(idem, downstream_body)
+            except DownstreamTimeout:
+                final = Verdict.UNKNOWN     # held PENDING for the reconciler
+            except DownstreamError as e:
+                final = Verdict.DENY
+                if self.ledger is not None:
+                    self.ledger.mark_failed(idem, str(e))
 
         self.audit.append(ts=now, mandate_id=self.policy.mandate_id, policy_hash=self._hash,
-                          idem_key=idem, action=action, verdict=verdict, clauses=clauses,
+                          idem_key=idem, action=action, verdict=final, clauses=clauses,
                           downstream=downstream_body)
-        return Decision(verdict=verdict,
-                        clause_id=str(blocking.id) if blocking else None,
-                        message=_explain(blocking), idem_key=idem,
-                        downstream=downstream_body, executed=executed)
+        return Decision(verdict=final,
+                        clause_id=str(blocking.id) if blocking else
+                        (None if final is Verdict.ALLOW else "downstream"),
+                        message=_explain(blocking) if blocking else str(final),
+                        idem_key=idem, downstream=downstream_body, executed=executed)

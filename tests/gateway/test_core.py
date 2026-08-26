@@ -24,9 +24,9 @@ def _gw(tmp_path, mode=Mode.ENFORCE, down=None):
     return Gateway(policy=_pol(), downstream=down or FakeDownstream(),
                    audit=AuditLog(tmp_path / "audit.jsonl"), mode=mode)
 
-def _act(amount):
+def _act(amount, sku="s1"):
     return Action(type=ActionType.CREATE_ORDER, amount=amount, merchant="zepto",
-                  items=[LineItem(sku="s1", title="Dal", qty=1,
+                  items=[LineItem(sku=sku, title="Dal", qty=1,
                                   unit_price=amount, amount=amount)])
 
 def test_allowed_action_executes(tmp_path):

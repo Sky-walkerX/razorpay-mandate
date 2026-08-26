@@ -34,3 +34,31 @@ deterministically rather than assumed flaky: reran the exact draw outside pytest
 same payload every time. Fixed by prefixing the third payload with `SYSTEM:` too, so all three
 read as the same class of injected instruction and the marker check holds regardless of which
 one the RNG draws.
+
+## Day 6-8, 27-29 Aug
+
+Three plan/test mismatches, all caught by running the tests rather than trusting the plan text:
+
+**`ALL_EVALUATORS` order named the wrong clause on a double violation.** An action that breaches
+both `budget.total` and `budget.per_transaction` at once denied on whichever evaluator runs
+first. The original order checked `budget_total` before `budget_per_transaction`, so a single
+oversized purchase got blamed on the coarser total-budget clause instead of the more specific
+per-transaction one — technically correct (both are violated), but the wrong clause to show a
+human. Reordered so per-transaction, the more specific constraint, is checked first.
+
+**`fmt()`'s Indian digit grouping broke a substring assertion in the denial message.** The gateway's
+`_explain()` used `fmt()` to render amounts in denial messages, which inserts commas
+(`₹2,000.00`). A test asserting `"2000" in message` failed because `"2000"` is not a substring of
+`"2,000"`. `_explain()` now formats amounts without grouping; `fmt()` itself is untouched since
+its grouping is correct everywhere else it's used.
+
+**Task 17's test imports a helper Task 15 didn't build for reuse.** `test_idem_integration.py`
+calls `_act(rupees(99), sku=f"s{i}")` importing `_act` from `test_core.py`, but that `_act` took
+only `amount` and hardcoded `sku="s1"`. Added a `sku="s1"` default parameter — matches the pattern
+Task 16's own `_act` already used, so this was a one-helper omission rather than a design
+disagreement.
+
+None of these were logic bugs in the constraint evaluators themselves — the nine evaluators, the
+lattice, the ledger, and the audit chain all passed on the first implementation. The breakage was
+entirely in the glue: evaluator ordering, message formatting, and test-helper signatures drifting
+from what a later task's test expected.
