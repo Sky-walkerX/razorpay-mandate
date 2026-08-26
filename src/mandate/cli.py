@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import typer
@@ -6,6 +7,8 @@ from dotenv import load_dotenv
 from mandate.money import rupees, fmt
 from mandate.downstream.razorpay import RazorpayDownstream
 from mandate.harness.corpus import HELD_OUT, build_corpus, corpus_hash, save_corpus
+from mandate.compiler.compile import compile_intent, IST
+from mandate.compiler.readback import render, sign
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -37,3 +40,21 @@ def corpus_build(seed: int = 20260901, out: Path = Path("corpus/corpus.json")) -
     typer.echo(f"{len(items)} items ({attacks} attacks, {len(items)-attacks} legitimate)")
     typer.echo(f"held out: {sorted(HELD_OUT)}")
     typer.echo(corpus_hash(items))
+
+
+@app.command()
+def compile(text: str, hours: int = 8, out: Path = Path("policies/policy.yaml")) -> None:
+    """Compile an intent, show the read-back, and write the signed policy on approval."""
+    load_dotenv()
+    res = compile_intent(text, principal="user_local", agent="agt_shopper",
+                         expires=datetime.now(IST) + timedelta(hours=hours))
+    if res.policy is None:
+        typer.echo("I could not compile this into a policy:\n")
+        for q in res.questions:
+            typer.echo(f'  "{q.phrase}" -> {q.why}')
+        raise typer.Exit(code=1)
+    typer.echo(render(res.policy))
+    if not typer.confirm("\nSign this?"):
+        raise typer.Exit(code=1)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    typer.echo(f"signed -> {sign(res.policy, out)}")
