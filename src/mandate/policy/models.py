@@ -34,7 +34,7 @@ class Policy(BaseModel):
     agent: str
     issued: datetime
     expires: datetime
-    constraints: dict[ConstraintId, dict]
+    constraints: dict[ConstraintId, dict | list]
     provenance: Provenance
     source_text: str
     compiler: CompilerInfo

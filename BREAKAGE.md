@@ -62,3 +62,13 @@ None of these were logic bugs in the constraint evaluators themselves — the ni
 lattice, the ledger, and the audit chain all passed on the first implementation. The breakage was
 entirely in the glue: evaluator ordering, message formatting, and test-helper signatures drifting
 from what a later task's test expected.
+
+## Day 10, 31 Aug
+
+**`Policy.constraints` was typed too narrowly to hold what the compiler emits.** The field was
+`dict[ConstraintId, dict]`, which is correct for `budget.total`'s `{"max": ...}` shape but wrong
+for `merchant.allow` and `category.deny`, which are lists (`["alcohol"]`). Task 11's tests never
+caught this because they mutated `ctx.policy.constraints[cid]` directly on an already-built
+`Policy` object, bypassing Pydantic validation entirely. Task 20's compiler is the first thing
+that actually constructs a `Policy` from raw JSON containing a list-valued constraint, and that's
+where the too-narrow type surfaced. Widened to `dict[ConstraintId, dict | list]`.
