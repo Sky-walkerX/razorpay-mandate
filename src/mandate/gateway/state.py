@@ -16,8 +16,8 @@ class Verdict(StrEnum):
 class ClauseResult(BaseModel):
     id: ConstraintId | str
     result: Verdict
-    observed: int | str | None = None
-    limit: int | str | None = None
+    observed: int | str | list[str] | None = None
+    limit: int | str | list[str] | None = None
     detail: str = ""
 
 
