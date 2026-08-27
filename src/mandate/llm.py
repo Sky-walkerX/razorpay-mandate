@@ -13,7 +13,7 @@ import httpx
 
 GEMINI_MODEL = "gemini-3.7-flash"
 ANTHROPIC_MODEL = "claude-opus-5"
-OLLAMA_MODEL = "qwen3.5:9b"
+OLLAMA_MODEL = "qwen3.5:4b"
 OLLAMA_HOST = "http://localhost:11434"
 
 # (tool name, arguments, call id, raw provider steps).

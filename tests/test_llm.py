@@ -152,7 +152,7 @@ def test_provider_for_falls_back_to_ollama_when_no_key_is_set(monkeypatch):
 
     p = provider_for()
     assert isinstance(p, OllamaProvider)
-    assert p.model == "qwen3.5:9b"
+    assert p.model == "qwen3.5:4b"
 
 
 def test_gemini_echoes_the_models_function_call_back_into_history():
@@ -367,4 +367,4 @@ def test_provider_for_picks_ollama(monkeypatch):
     from mandate.llm import OllamaProvider
     p = provider_for()
     assert isinstance(p, OllamaProvider)
-    assert p.model == "qwen3.5:9b"
+    assert p.model == "qwen3.5:4b"

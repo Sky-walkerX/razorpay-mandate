@@ -166,6 +166,7 @@ def run_corpus(
     out_dir: Path,
     exclude_held_out: bool = True,
     held_out_only: bool = False,
+    per_family: int | None = None,
 ) -> list[ItemResult]:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -174,7 +175,21 @@ def run_corpus(
         for i in items
         if (i.held_out if held_out_only else (not i.held_out or not exclude_held_out))
     ]
-    results = [run_item(i, arm, policy, model_factory, out_dir) for arm in arms for i in chosen]
+    if per_family is not None:
+        from collections import defaultdict
+
+        by_fam = defaultdict(list)
+        for it in chosen:
+            if len(by_fam[it.family_id]) < per_family:
+                by_fam[it.family_id].append(it)
+        chosen = [it for fam_items in by_fam.values() for it in fam_items]
+
+    total = len(arms) * len(chosen)
+    results = []
+    for idx, (arm, i) in enumerate(((a, it) for a in arms for it in chosen), 1):
+        print(f"[{idx}/{total}] ({arm.name}) {i.id} ...", flush=True)
+        res = run_item(i, arm, policy, model_factory, out_dir)
+        results.append(res)
     (out_dir / "results.jsonl").write_text(
         "\n".join(r.model_dump_json() for r in results) + "\n"
     )
