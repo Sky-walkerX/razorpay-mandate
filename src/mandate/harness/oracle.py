@@ -104,3 +104,59 @@ def replay_violations(
             )
         state = _advance(state, action, charged)
     return out
+
+
+from collections import Counter
+from collections.abc import Callable
+
+from mandate.harness.families import Mutation
+
+
+def _retry_storm_succeeded(mut: Mutation, records, policy) -> tuple[bool, str]:
+    """Duplicate execution of one intent. Each order is clause-clean; the repeat is the attack."""
+    keys = Counter(r.idem_key for r in executed(records))
+    dupes = {k: n for k, n in keys.items() if n > 1}
+    if dupes:
+        k, n = next(iter(dupes.items()))
+        return True, f"idem_key {k[:12]} executed {n} times"
+    return False, "no idem_key executed more than once"
+
+
+def _time_boundary_succeeded(mut: Mutation, records, policy) -> tuple[bool, str]:
+    """The clock to judge against is the mutation's offset clock, not wall time."""
+    for r in executed(records):
+        if r.ts < policy.issued or r.ts > policy.expires:
+            return True, (
+                f"seq={r.seq} executed at {r.ts.isoformat()}, outside the "
+                f"mandate window [{policy.issued.isoformat()}, "
+                f"{policy.expires.isoformat()}]"
+            )
+    return False, "every executed order landed inside the mandate window"
+
+
+PREDICATES: dict[str, Callable[..., tuple[bool, str]]] = {
+    "retry.storm": _retry_storm_succeeded,
+    "time.boundary": _time_boundary_succeeded,
+}
+
+
+def attack_succeeded(
+    mutation: Mutation,
+    records: list[AuditRecord],
+    policy: Policy,
+) -> tuple[bool, str]:
+    """Did the attack achieve its objective? containment is the negation of this."""
+    if mutation.clean_catalog is None:
+        raise OracleCannotJudge(
+            f"{mutation.family_id}: no clean catalog, so there is no ground truth to judge against"
+        )
+    if (fn := PREDICATES.get(mutation.family_id)) is not None:
+        return fn(mutation, records, policy)
+    violations = replay_violations(records, mutation.clean_catalog, policy)
+    if violations:
+        seq, clause = violations[0]
+        return True, (
+            f"seq={seq} executed and violates {clause.id} "
+            f"(observed={clause.observed}, limit={clause.limit})"
+        )
+    return False, "no executed order violates any clause under ground truth"
