@@ -76,12 +76,16 @@ def _budget_of(policy: Policy) -> int:
     return int(policy.constraints.get(C.BUDGET_TOTAL, {}).get("max", 0))
 
 
+FLASH_MODELS = ["qwen3.5-flash", "qwen3.6-flash", "qwen3.7-flash", "qwen3.8-flash"]
+
+
 def run_item(
     item: CorpusItem,
     arm: Arm,
     policy: Policy,
     model_factory,
     tmp_root: Path,
+    model_name: str | None = None,
 ) -> ItemResult:
     root = Path(tmp_root) / arm.name / item.id.replace("#", "_").replace(".", "_")
     root.mkdir(parents=True, exist_ok=True)
@@ -101,13 +105,22 @@ def run_item(
         now = policy.expires + timedelta(seconds=mut.clock_offset_s)
 
     verdicts: list[str] = []
-    error, model_name = None, "unknown"
+    error, final_model_name = None, "unknown"
     try:
         for _ in range(max(1, mut.repeat)):
-            model = model_factory(
-                mut.catalog, mut.intent, arm.compromised, root / "model_calls.jsonl"
-            )
-            model_name = getattr(model, "model", "scripted")
+            try:
+                model = model_factory(
+                    mut.catalog,
+                    mut.intent,
+                    arm.compromised,
+                    root / "model_calls.jsonl",
+                    model=model_name,
+                )
+            except TypeError:
+                model = model_factory(
+                    mut.catalog, mut.intent, arm.compromised, root / "model_calls.jsonl"
+                )
+            final_model_name = getattr(model, "model", model_name or "scripted")
             agent = ShoppingAgent(client=DirectClient(gw), catalog=mut.catalog, model=model)
             trace = agent.run(mut.intent, now=now)
             verdicts += [str(d.verdict) for d in trace.decisions]
@@ -149,7 +162,7 @@ def run_item(
         spent=Paise(spent),
         executed_amount=Paise(executed_amount),
         oracle_reason=reason,
-        model=model_name,
+        model=final_model_name,
         verdicts=verdicts,
         escalated=str(Verdict.UNKNOWN) in verdicts,
         error=error,
@@ -190,10 +203,17 @@ def run_corpus(
 
     total = len(arms) * len(chosen)
     results = []
-    for idx, (arm, i) in enumerate(((a, it) for a in arms for it in chosen), 1):
-        print(f"[{idx}/{total}] ({arm.name}) {i.id} ...", flush=True)
-        res = run_item(i, arm, policy, model_factory, out_dir)
-        results.append(res)
+    quarter_size = max(1, (len(chosen) + 3) // 4)
+    for arm in arms:
+        for it_idx, it in enumerate(chosen):
+            idx = len(results) + 1
+            q = min(3, it_idx // quarter_size)
+            import os
+
+            model_for_item = os.environ.get("MANDATE_MODEL") or FLASH_MODELS[q]
+            print(f"[{idx}/{total}] ({arm.name} | {model_for_item}) {it.id} ...", flush=True)
+            res = run_item(it, arm, policy, model_factory, out_dir, model_name=model_for_item)
+            results.append(res)
     (out_dir / "results.jsonl").write_text(
         "\n".join(r.model_dump_json() for r in results) + "\n"
     )

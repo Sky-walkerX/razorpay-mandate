@@ -115,13 +115,19 @@ def _model_factory(seed: int):
     from mandate.harness.agent_model import AgentModel
     from mandate.llm import provider_for
 
-    return lambda catalog, intent, compromised, call_log: AgentModel(
-        catalog,
-        intent,
-        provider=provider_for(seed=seed),
-        compromised=compromised,
-        call_log=call_log,
-    )
+    def factory(catalog, intent, compromised, call_log, model: str | None = None):
+        kw = {"seed": seed}
+        if model:
+            kw["model"] = model
+        return AgentModel(
+            catalog,
+            intent,
+            provider=provider_for(**kw),
+            compromised=compromised,
+            call_log=call_log,
+        )
+
+    return factory
 
 
 @app.command()
