@@ -32,5 +32,5 @@ def test_evaluate_writes_results_and_scores(tmp_path, monkeypatch):
     assert res.exit_code == 0
     assert (out / "results.jsonl").exists()
     scores = json.loads((out / "scores.json").read_text())
-    assert set(scores) == {"enforce", "observe"}
+    assert set(scores) == {"enforce", "baseline"}
     assert (out / "README-results.md").exists()

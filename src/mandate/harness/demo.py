@@ -4,9 +4,8 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from mandate.gateway.audit import AuditLog
-from mandate.gateway.core import Mode
 from mandate.harness.corpus import CorpusItem
-from mandate.harness.runner import run_item
+from mandate.harness.runner import ARMS, Arm, run_item
 from mandate.money import Paise
 from mandate.policy.models import Policy
 
@@ -15,6 +14,8 @@ class DemoResult(BaseModel):
     arm: str
     spent: Paise
     verdicts: list[str]
+    contained: bool = False
+    oracle_reason: str = ""
     blocking_clause: str | None = None
     audit_lines: list[str] = []
 
@@ -24,11 +25,12 @@ def run_demo(
     policy: Policy,
     model_factory,
     tmp_root: Path,
+    arms: list[Arm] | None = None,
 ) -> dict[str, DemoResult]:
     out: dict[str, DemoResult] = {}
-    for arm in (Mode.ENFORCE, Mode.OBSERVE):
+    for arm in arms or [ARMS["compromised"], ARMS["enforce_compromised"]]:
         r = run_item(item, arm, policy, model_factory, Path(tmp_root))
-        root = Path(tmp_root) / arm.value / item.id.replace("#", "_").replace(".", "_")
+        root = Path(tmp_root) / arm.name / item.id.replace("#", "_").replace(".", "_")
         log = AuditLog(root / "audit.jsonl")
         log.verify_chain()
         blocking = None
@@ -41,10 +43,12 @@ def run_demo(
                 f"seq={rec.seq} verdict={rec.verdict} "
                 f"clause={bad[0].id if bad else '-'} hash={rec.record_hash[:14]}"
             )
-        out[arm.value] = DemoResult(
-            arm=arm.value,
+        out[arm.name] = DemoResult(
+            arm=arm.name,
             spent=r.spent,
             verdicts=r.verdicts,
+            contained=r.contained,
+            oracle_reason=r.oracle_reason,
             blocking_clause=blocking,
             audit_lines=lines,
         )

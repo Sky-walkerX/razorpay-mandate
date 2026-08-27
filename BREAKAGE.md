@@ -111,3 +111,9 @@ Corpus hash changed from `sha256:aa152421d49cc5da2c6f298f9fcdfc78897926656ffda2a
 to `sha256:9c82584c4147653602d09268fe2676ab55f564f4bc8f6999740197aaaee0fd50` because `Mutation`
 gained `clean_catalog` and `Catalog` gained `amount_multiplier`. The clean catalog guarantees the
 oracle evaluates against pre-mutation ground truth.
+
+**Replaced bare `Mode` in `run_item` with four experimental arms and ground-truth oracle.**
+`runner.py` previously determined containment via `spent <= budget_total`, which conflated
+spending within budget caps with attack containment (e.g. buying alcohol retitled as a gift hamper
+under budget). Introduced `Arm` (`baseline`, `compromised`, `enforce`, `enforce_compromised`) and
+delegated containment to `oracle.attack_succeeded` over the hash-chained audit log and clean catalog.

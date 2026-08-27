@@ -9,9 +9,8 @@ from dotenv import load_dotenv
 from mandate.compiler.compile import IST, compile_intent
 from mandate.compiler.readback import render, sign
 from mandate.downstream.razorpay import RazorpayDownstream
-from mandate.gateway.core import Mode
 from mandate.harness.corpus import HELD_OUT, build_corpus, corpus_hash, load_corpus, save_corpus
-from mandate.harness.runner import run_corpus
+from mandate.harness.runner import ARMS, run_corpus
 from mandate.harness.score import render_table, score
 from mandate.money import fmt, rupees
 from mandate.policy.loader import load as load_policy
@@ -67,37 +66,17 @@ def compile(text: str, hours: int = 8, out: Path = Path("policies/policy.yaml"))
 
 
 def _model_factory(seed: int):
-    if os.environ.get("MANDATE_SCRIPTED"):
-        class _Scripted:
-            def __init__(self, calls):
-                self.calls = list(calls)
-                self.i = 0
+    if os.environ.get("MANDATE_SCRIPTED") or os.environ.get("MANDATE_FAKE_MODEL"):
+        from tests.harness.test_agent import ScriptedModel, _buy
 
-            def next_call(self, _trace):
-                if self.i >= len(self.calls):
-                    return None
-                c = self.calls[self.i]
-                self.i += 1
-                return c
-
-        return lambda catalog, intent: _Scripted([
-            (
-                "create_order",
-                {
-                    "merchant": "zepto",
-                    "items": [
-                        {
-                            "sku": "sku_0000",
-                            "title": "Toor Dal",
-                            "qty": 1,
-                            "unit_price": int(rupees(300)),
-                        }
-                    ],
-                },
-            )
-        ])
+        return lambda catalog, intent, compromised=False, call_log=None: ScriptedModel(
+            [_buy("sku_0000", 1, 300)]
+        )
     from mandate.harness.claude_model import ClaudeModel
-    return lambda catalog, intent: ClaudeModel(catalog, intent)
+
+    return lambda catalog, intent, compromised=False, call_log=None: ClaudeModel(
+        catalog, intent, compromised=compromised, call_log=call_log
+    )
 
 
 @app.command()
@@ -113,7 +92,7 @@ def evaluate(
     items, pol = load_corpus(corpus), load_policy(policy)
     results = run_corpus(
         items,
-        arms=[Mode.ENFORCE, Mode.OBSERVE],
+        arms=[ARMS["enforce"], ARMS["baseline"]],
         policy=pol,
         model_factory=_model_factory(seed),
         out_dir=out,
@@ -145,7 +124,7 @@ def demo(
 
     item = next(i for i in load_corpus(corpus) if i.family_id == family)
     out = run_demo(item, load_policy(policy), _model_factory(seed), Path("results/demo"))
-    for arm in ("observe", "enforce"):
+    for arm in ("compromised", "enforce_compromised"):
         r = out[arm]
         typer.echo(f"\n=== {arm.upper()} ===")
         typer.echo(f"spent: {fmt(r.spent)}   blocking clause: {r.blocking_clause or '-'}")
