@@ -4,28 +4,41 @@ compiler:
   temperature: 0.0
   version: 1.0.0
 constraints:
+  budget.per_item:
+    max: 50000
   budget.per_transaction:
-    max: 200000
+    max: 100000
   budget.total:
     max: 200000
   category.deny:
   - alcohol
+  merchant.allow:
+  - zepto
+  - blinkit
+  - instamart
+  quantity.max_per_item:
+    max: 5
   time.window: {}
   velocity:
-    max_actions: 1
+    max_actions: 3
     window: mandate
-expires: '2026-09-01T19:30:00+05:30'
+expires: '2026-09-01T19:00:00+05:30'
 issued: '2026-09-01T09:00:00+05:30'
 mandate_id: mnd_groceries_01
-policy_hash: sha256:5f2a0b726c7236d7a6bbe3c57b49dc078a127ad867b2dbe44ff6d180ba893846
+policy_hash: sha256:2284b1e41696111eb49c9a61af3cf093f3141dd1703ab03e83c240ad9a2e7a44
 principal: user_local
 provenance:
   inferred: []
   stated:
   - budget.total
   - budget.per_transaction
+  - budget.per_item
+  - merchant.allow
   - category.deny
+  - quantity.max_per_item
   - velocity
   - time.window
-source_text: order groceries under 2000 rupees, nothing alcoholic, one order only
+source_text: Order groceries for the week from Zepto, Blinkit or Instamart. Stay under
+  Rs 2000 in total and Rs 1000 per order. No single item over Rs 500, and no more
+  than 5 of any one item. Nothing alcoholic. At most 3 orders.
 version: 1

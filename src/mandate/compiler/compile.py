@@ -33,8 +33,11 @@ class AnthropicJSONClient:
 
     def complete_json(self, prompt: str, text: str) -> dict:
         msg = self._c.messages.create(
-            model=MODEL, max_tokens=2000, temperature=0.0, system=prompt,
-            messages=[{"role": "user", "content": text}])
+            model=MODEL,
+            max_tokens=2000,
+            system=prompt,
+            messages=[{"role": "user", "content": text}],
+        )
         body = msg.content[0].text.strip()
         if body.startswith("```"):
             body = body.split("```")[1].removeprefix("json").strip()

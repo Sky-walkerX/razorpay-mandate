@@ -180,6 +180,10 @@ and logging what it would have blocked.
   taxonomy.
 - Defence only. The harness attacks a local sandbox with synthetic data on test-mode keys. Nothing here
   targets a live merchant.
+- `item.deny_recent` is implemented and unit-tested but no attack family targets it, so it
+  carries no containment evidence. Adding a family to justify a constraint is the inverse
+  of how the corpus was frozen, so it stays uncovered and stated rather than covered and
+  circular.
 
 ## What broke
 
