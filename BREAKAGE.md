@@ -133,3 +133,44 @@ Added `amount_multiplier` to `Catalog` and `FakeDownstream` so downstream orders
 and had identical `budget.total` and `budget.per_transaction` caps (200,000 paise).
 Re-compiled and signed the policy with stated constraints for all 8 targeted constraint types,
 ensuring `budget.per_transaction` (100,000 paise) binds tighter than `budget.total`.
+
+## Day 15, 27 Aug: the measurement had never run
+
+Three failures found in one sitting, each hiding the next.
+
+**The Anthropic key was the placeholder from `.env.example`.** `ANTHROPIC_API_KEY` was literally
+`sk-ant-xxxxxxxx`, fifteen characters, copied from the example file and never replaced. So no
+compiler and no agent had ever executed. Both the original build and the oracle rebuild silently
+fell back to a scripted model, which is why all 576 committed result rows carried
+`model=scripted` and why the `baseline` and `compromised` arms agreed to the decimal: the stub
+ignores the `compromised` flag, and it ignores the attack catalog. `provider_for()` now refuses a
+placeholder key outright instead of falling back to anything. This was found by checking the key's
+shape, not by reading code.
+
+**`policies/policy.yaml` was hand-written while claiming a compiler produced it.** It carried
+`compiler: model: claude-opus-5, temperature: 0.0` and an `issued` date that no run could have
+produced, because `mandate compile` cannot have executed without a key. The constraint content was
+correct; the provenance was fiction. Regenerated through a compiler that actually runs.
+
+**Gemini 3.7 signs its reasoning, and the signature must survive the round trip.** After porting to
+Gemini, every multi-turn run died on `400 invalid_request`. The first fix was wrong: reconstructing
+the `function_call` step by hand from its name, arguments and id looks equivalent and is not. Gemini
+3 emits a `thought` step carrying a cryptographic `signature`, and the API rejects a follow-up turn
+whose history has dropped it. Resolved by probing the live API with both shapes side by side rather
+than guessing a second time: echoing every step verbatim succeeds, reconstructing fails. The
+provider now returns its raw steps as an opaque payload and the driver echoes them without
+inspecting them. `AnthropicProvider` skips a foreign vendor's steps rather than crashing on them.
+
+**The retry helper treated every rate limit as fatal.** `RETRYABLE` contained `"rate_limit"`, but
+the SDK raises `RateLimitError` with a message saying `too_many_requests`, and neither string
+contains that substring. So the one error class guaranteed to happen on a free tier was the one
+class not retried. Two fixes: match on the tokens that actually appear (`429`, `ratelimit`,
+`too_many_requests`, `resource_exhausted`, `quota`), and add a `FATAL` list checked first so a 400
+that happens to mention a quota in prose stays fatal. It now also honours the server's own
+`retry in Ns` hint, since sleeping less than the server asked just burns another attempt against
+the same window.
+
+The pattern across all four: every one was a claim that looked verified and was not. A key that
+looked set, a policy that looked compiled, a history that looked equivalent, a retry list that
+looked complete. None of them failed loudly. The scripted fallback, in particular, produced a
+clean-looking table of confidence intervals from a stub that never read the attack.
