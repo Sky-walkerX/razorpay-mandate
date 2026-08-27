@@ -40,6 +40,7 @@ class Product(BaseModel):
 class Catalog(BaseModel):
     products: list[Product]
     merchant_names: dict[str, str]
+    amount_multiplier: dict[str, int] = {}
 
     def by_sku(self, sku: str) -> Product:
         return next(p for p in self.products if p.sku == sku)

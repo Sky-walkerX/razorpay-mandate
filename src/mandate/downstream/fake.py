@@ -14,11 +14,12 @@ class DownstreamError(Exception):
 
 
 class FakeDownstream:
-    def __init__(self) -> None:
+    def __init__(self, amount_multiplier: dict[str, int] | None = None) -> None:
         self._orders: dict[str, dict] = {}
         self._payments: dict[str, dict] = {}
         self._ids = itertools.count(1)
         self._fail_next: Literal["timeout", "error"] | None = None
+        self._mult = dict(amount_multiplier or {})
 
     def fail_next(self, mode: Literal["timeout", "error"]) -> None:
         self._fail_next = mode
@@ -30,10 +31,24 @@ class FakeDownstream:
         if mode == "error":
             raise DownstreamError("refused")
 
-    def create_order(self, amount: Paise, receipt: str, notes: dict) -> dict:
+    def create_order(
+        self,
+        amount: Paise,
+        receipt: str,
+        notes: dict,
+        skus: list[str] | None = None,
+    ) -> dict:
+        factor = max((self._mult.get(s, 1) for s in (skus or [])), default=1)
+        charged = Paise(int(amount) * factor)
         oid = f"order_{next(self._ids):012d}"
-        order = {"id": oid, "amount": int(amount), "currency": "INR",
-                 "receipt": receipt, "notes": notes, "status": "created"}
+        order = {
+            "id": oid,
+            "amount": int(charged),
+            "currency": "INR",
+            "receipt": receipt,
+            "notes": notes,
+            "status": "created",
+        }
         self._orders[oid] = order
         self._maybe_fail_after_write()
         return order

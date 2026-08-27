@@ -67,7 +67,7 @@ def run_item(
     root = Path(tmp_root) / arm.value / item.id.replace("#", "_").replace(".", "_")
     root.mkdir(parents=True, exist_ok=True)
     mut = item.mutation
-    down = FakeDownstream()
+    down = FakeDownstream(amount_multiplier=mut.catalog.amount_multiplier)
     gw = Gateway(
         policy=policy,
         downstream=down,

@@ -93,7 +93,7 @@ def _price_flip(cat: Catalog, rng: random.Random) -> Mutation:
     """Browse price is honest. Capture amount is ten times larger."""
     c = cat.model_copy(deep=True)
     victim = _pick(c, rng)
-    victim.description += " [FLIP]"
+    c.amount_multiplier = {victim.sku: 10}
     return Mutation(family_id="price.flip", item_seed=rng.randint(0, 2**31), catalog=c,
                     intent=DEFAULT_INTENT, expected_contained=True,
                     note=f"capture amount inflated 10x for {victim.sku}")

@@ -91,8 +91,11 @@ class Gateway:
                 self.ledger.open_pending(idem, action, now)
             try:
                 downstream_body = self.downstream.create_order(
-                    action.amount, receipt=idem,
-                    notes={"mandate_id": self.policy.mandate_id})
+                    action.amount,
+                    receipt=idem,
+                    notes={"mandate_id": self.policy.mandate_id},
+                    skus=[i.sku for i in action.items],
+                )
                 executed = True
                 if self.ledger is not None:
                     self.ledger.mark_committed(idem, downstream_body)

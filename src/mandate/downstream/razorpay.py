@@ -11,7 +11,13 @@ class RazorpayDownstream:
             raise ValueError(f"refusing to start outside test mode: {key_id[:9]}...")
         self._c = razorpay.Client(auth=(key_id, key_secret))
 
-    def create_order(self, amount: Paise, receipt: str, notes: dict) -> dict:
+    def create_order(
+        self,
+        amount: Paise,
+        receipt: str,
+        notes: dict,
+        skus: list[str] | None = None,
+    ) -> dict:
         try:
             return self._c.order.create({"amount": int(amount), "currency": "INR",
                                          "receipt": receipt, "notes": notes})
