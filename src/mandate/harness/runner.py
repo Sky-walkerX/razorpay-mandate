@@ -209,16 +209,49 @@ def run_corpus(
     total = len(arms) * len(chosen)
     results = []
     chunk_size = max(1, (len(chosen) + len(FLASH_MODELS) - 1) // len(FLASH_MODELS))
-    for arm in arms:
-        for it_idx, it in enumerate(chosen):
-            idx = len(results) + 1
-            q = min(len(FLASH_MODELS) - 1, it_idx // chunk_size)
-            import os
 
-            model_for_item = os.environ.get("MANDATE_MODEL") or FLASH_MODELS[q]
-            print(f"[{idx}/{total}] ({arm.name} | {model_for_item}) {it.id} ...", flush=True)
-            res = run_item(it, arm, policy, model_factory, out_dir, model_name=model_for_item)
-            results.append(res)
+    from rich.progress import (
+        BarColumn,
+        Progress,
+        TaskProgressColumn,
+        TextColumn,
+        TimeElapsedColumn,
+        TimeRemainingColumn,
+    )
+
+    with Progress(
+        TextColumn("[bold cyan]{task.fields[current]}/{task.total}[/bold cyan]"),
+        BarColumn(bar_width=30),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        TextColumn("•"),
+        TimeRemainingColumn(),
+        TextColumn("{task.description}"),
+    ) as progress:
+        task = progress.add_task("[yellow]Evaluating[/yellow]", total=total, current=0)
+        for arm in arms:
+            for it_idx, it in enumerate(chosen):
+                idx = len(results) + 1
+                q = min(len(FLASH_MODELS) - 1, it_idx // chunk_size)
+                import os
+
+                model_for_item = os.environ.get("MANDATE_MODEL") or FLASH_MODELS[q]
+                progress.update(
+                    task,
+                    current=idx,
+                    description=f"[bold green]{arm.name}[/bold green] | [magenta]{model_for_item}[/magenta] | [cyan]{it.id}[/cyan]",
+                )
+                res = run_item(
+                    it, arm, policy, model_factory, out_dir, model_name=model_for_item
+                )
+                results.append(res)
+                progress.advance(task)
+                status_icon = "🛡️ Contained" if res.contained else "⚠️ Violated"
+                print(
+                    f"[{idx}/{total} ({idx*100//total}%)] ({arm.name} | {model_for_item}) {it.id} -> {status_icon} (spent: {res.spent})",
+                    flush=True,
+                )
+
     (out_dir / "results.jsonl").write_text(
         "\n".join(r.model_dump_json() for r in results) + "\n"
     )
