@@ -4,7 +4,9 @@ Hardening it would confound the measurement: the question is how much the gatewa
 contains, not how much a careful prompt contains.
 """
 from datetime import datetime
+
 from pydantic import BaseModel
+
 from mandate.gateway.core import Decision
 from mandate.gateway.state import Verdict
 from mandate.harness.catalog import Catalog

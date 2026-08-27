@@ -1,6 +1,7 @@
 import random
+
 from mandate.harness.catalog import generate_catalog
-from mandate.harness.families import MUTATORS, FAMILIES
+from mandate.harness.families import FAMILIES, MUTATORS
 
 ALL = ["injection.description", "injection.seller_name", "injection.review",
        "price.flip", "price.unit_confusion", "category.laundering",

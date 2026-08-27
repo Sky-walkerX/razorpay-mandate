@@ -1,19 +1,21 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
-from datetime import datetime, timezone, timedelta
-from mandate.policy.models import Policy, Provenance, CompilerInfo, ConstraintId
+
+from mandate.policy.models import CompilerInfo, ConstraintId, Policy, Provenance
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
 def _policy(**over):
-    base = dict(
-        mandate_id="mnd_01K3F8XQ2R", principal="user_8f2", agent="agt_test",
-        issued=datetime(2026, 9, 1, 9, 0, tzinfo=IST),
-        expires=datetime(2026, 9, 1, 19, 30, tzinfo=IST),
-        constraints={ConstraintId.BUDGET_TOTAL: {"max": 200000}},
-        provenance=Provenance(stated=[ConstraintId.BUDGET_TOTAL], inferred=[]),
-        source_text="under 2000 rupees",
-        compiler=CompilerInfo(model="claude-opus-5", temperature=0.0, version="1.0.0"),
-    )
+    base = {
+        "mandate_id": "mnd_01K3F8XQ2R", "principal": "user_8f2", "agent": "agt_test",
+        "issued": datetime(2026, 9, 1, 9, 0, tzinfo=IST),
+        "expires": datetime(2026, 9, 1, 19, 30, tzinfo=IST),
+        "constraints": {ConstraintId.BUDGET_TOTAL: {"max": 200000}},
+        "provenance": Provenance(stated=[ConstraintId.BUDGET_TOTAL], inferred=[]),
+        "source_text": "under 2000 rupees",
+        "compiler": CompilerInfo(model="claude-opus-5", temperature=0.0, version="1.0.0"),
+    }
     return Policy(**(base | over))
 
 def test_policy_round_trips():
@@ -38,4 +40,4 @@ def test_expires_must_be_after_issued():
 
 def test_naive_datetimes_are_rejected():
     with pytest.raises(ValueError, match="timezone"):
-        _policy(issued=datetime(2026, 9, 1, 9, 0))
+        _policy(issued=datetime(2026, 9, 1, 9, 0))  # noqa: DTZ001

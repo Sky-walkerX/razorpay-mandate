@@ -1,14 +1,18 @@
 import pytest
-from mandate.gateway.action import Action, LineItem, ActionType, canonical_intent
+
+from mandate.gateway.action import Action, ActionType, LineItem, canonical_intent
 from mandate.money import rupees
 
-def _item(sku="sku_0001", qty=1, unit=rupees(80)):
+
+def _item(sku="sku_0001", qty=1, unit=None):
+    if unit is None:
+        unit = rupees(80)
     return LineItem(sku=sku, title="Toor Dal", qty=qty, unit_price=unit,
                     amount=rupees(80 * qty))
 
 def _action(**over):
-    base = dict(type=ActionType.CREATE_ORDER, amount=rupees(80), currency="INR",
-                merchant="zepto", items=[_item()])
+    base = {"type": ActionType.CREATE_ORDER, "amount": rupees(80), "currency": "INR",
+            "merchant": "zepto", "items": [_item()]}
     return Action(**(base | over))
 
 def test_line_amount_must_equal_qty_times_unit_price():

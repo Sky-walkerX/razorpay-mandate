@@ -1,5 +1,7 @@
 import pytest
+
 from mandate.downstream.razorpay import RazorpayDownstream
+
 
 def test_refuses_live_keys():
     with pytest.raises(ValueError, match="test mode"):

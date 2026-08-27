@@ -7,9 +7,11 @@ import hashlib
 import json
 import random
 from pathlib import Path
+
 from pydantic import BaseModel
+
 from mandate.harness.catalog import generate_catalog
-from mandate.harness.families import FAMILIES, MUTATORS, Mutation, DEFAULT_INTENT
+from mandate.harness.families import DEFAULT_INTENT, FAMILIES, MUTATORS, Mutation
 
 # One from each mechanism: prompt trust, arithmetic, accumulation.
 HELD_OUT = frozenset({"injection.review", "price.unit_confusion", "budget.salami"})

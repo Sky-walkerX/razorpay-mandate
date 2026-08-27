@@ -1,10 +1,12 @@
 """Accumulated state and the evaluation context. No I/O lives here."""
 from datetime import datetime
 from enum import StrEnum
+
 from pydantic import BaseModel, Field
-from mandate.money import Paise
+
 from mandate.gateway.action import Action
-from mandate.policy.models import Policy, ConstraintId
+from mandate.money import Paise
+from mandate.policy.models import ConstraintId, Policy
 
 
 class Verdict(StrEnum):

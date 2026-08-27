@@ -1,8 +1,10 @@
 import itertools
-from mandate.gateway.lattice import combine, first_blocking, evaluate_all
+
+from mandate.gateway.lattice import combine, evaluate_all, first_blocking
 from mandate.gateway.state import ClauseResult, Verdict
 from mandate.money import rupees
 from tests.gateway.test_constraints_budget import _ctx
+
 
 def _r(v, cid="x"):
     return ClauseResult(id=cid, result=v)

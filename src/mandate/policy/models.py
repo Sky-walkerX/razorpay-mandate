@@ -1,6 +1,7 @@
 """The policy document. Nine constraint types, closed set, no user-defined predicates."""
 from datetime import datetime
 from enum import StrEnum
+
 from pydantic import BaseModel, Field, model_validator
 
 

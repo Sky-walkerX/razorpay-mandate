@@ -1,7 +1,16 @@
-import pytest
 from pathlib import Path
-from mandate.harness.corpus import (build_corpus, corpus_hash, save_corpus, load_corpus,
-                                    HELD_OUT, CorpusFrozen)
+
+import pytest
+
+from mandate.harness.corpus import (
+    HELD_OUT,
+    CorpusFrozen,
+    build_corpus,
+    corpus_hash,
+    load_corpus,
+    save_corpus,
+)
+
 
 def test_held_out_has_three_families_spanning_different_mechanisms():
     assert len(HELD_OUT) == 3

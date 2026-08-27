@@ -1,7 +1,9 @@
 import json
+from datetime import datetime, timedelta, timezone
+
 import pytest
-from datetime import datetime, timezone, timedelta
-from mandate.compiler.compile import compile_intent, CompileResult
+
+from mandate.compiler.compile import compile_intent
 from mandate.policy.models import ConstraintId as C
 
 IST = timezone(timedelta(hours=5, minutes=30))

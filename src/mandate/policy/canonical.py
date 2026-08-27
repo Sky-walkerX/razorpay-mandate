@@ -1,6 +1,8 @@
 """Canonical form: sorted keys, integer paise, RFC3339 timestamps. Then hash it."""
 import hashlib
+
 import yaml
+
 from mandate.policy.models import Policy
 
 HASHED_FIELDS = ("version", "mandate_id", "principal", "agent", "issued", "expires",

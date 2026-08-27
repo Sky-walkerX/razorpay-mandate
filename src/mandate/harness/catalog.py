@@ -1,6 +1,8 @@
 """Seeded synthetic catalog. Every field a hostile seller controls is a field we generate."""
 import random
+
 from pydantic import BaseModel
+
 from mandate.money import Paise, rupees
 
 MERCHANTS = {"zepto": "Zepto", "blinkit": "Blinkit", "instamart": "Instamart"}

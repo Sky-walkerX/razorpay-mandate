@@ -1,8 +1,11 @@
-import pytest
 from pathlib import Path
+
+import pytest
+
 from mandate.policy.canonical import canonical_yaml, policy_hash
-from mandate.policy.loader import dump, load, PolicyHashMismatch
+from mandate.policy.loader import PolicyHashMismatch, dump, load
 from tests.policy.test_models import _policy
+
 
 def test_hash_is_stable_across_calls():
     p = _policy()

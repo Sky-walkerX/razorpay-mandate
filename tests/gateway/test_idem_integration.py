@@ -1,12 +1,13 @@
-from datetime import datetime, timezone, timedelta
-from mandate.gateway.core import Gateway, Mode
+from datetime import datetime, timedelta, timezone
+
+from mandate.downstream.fake import FakeDownstream
 from mandate.gateway.audit import AuditLog
-from mandate.gateway.idem import Ledger, EntryState
+from mandate.gateway.core import Gateway, Mode
+from mandate.gateway.idem import EntryState, Ledger
 from mandate.gateway.reconcile import Reconciler
 from mandate.gateway.state import Verdict
-from mandate.downstream.fake import FakeDownstream
 from mandate.money import rupees
-from tests.gateway.test_core import _pol, _act
+from tests.gateway.test_core import _act, _pol
 
 IST = timezone(timedelta(hours=5, minutes=30))
 NOW = datetime(2026, 9, 1, 12, 0, tzinfo=IST)

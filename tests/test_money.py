@@ -1,5 +1,7 @@
 import pytest
-from mandate.money import Paise, rupees, fmt
+
+from mandate.money import Paise, fmt, rupees
+
 
 def test_rupees_from_int():
     assert rupees(2000) == 200000

@@ -7,10 +7,12 @@ import json
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
+
 from pydantic import BaseModel
-from mandate.money import Paise
+
 from mandate.gateway.action import Action
 from mandate.gateway.state import AccumulatedState
+from mandate.money import Paise
 
 
 class EntryState(StrEnum):

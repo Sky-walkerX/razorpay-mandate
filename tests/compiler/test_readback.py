@@ -1,6 +1,8 @@
 from mandate.compiler.readback import render
-from mandate.policy.models import ConstraintId as C, Provenance
+from mandate.policy.models import ConstraintId as C
+from mandate.policy.models import Provenance
 from tests.policy.test_models import _policy
+
 
 def _p():
     return _policy(
@@ -18,7 +20,7 @@ def test_inferred_constraints_are_flagged_to_the_user():
     assert "I inferred this" in render(_p())
 
 def test_stated_constraints_are_not_flagged():
-    line = [l for l in render(_p()).splitlines() if "₹2,000.00" in l][0]
+    line = next(l for l in render(_p()).splitlines() if "₹2,000.00" in l)
     assert "I inferred this" not in line
 
 def test_denied_categories_are_listed_in_plain_words():

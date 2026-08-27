@@ -1,9 +1,9 @@
-from mandate.gateway.constraints import merchant_allow, category_deny, quantity_max_per_item
+from mandate.gateway.action import LineItem
+from mandate.gateway.constraints import category_deny, merchant_allow, quantity_max_per_item
 from mandate.gateway.state import Verdict
+from mandate.money import rupees
 from mandate.policy.models import ConstraintId as C
 from tests.gateway.test_constraints_budget import _ctx  # reuse the builder
-from mandate.gateway.action import LineItem
-from mandate.money import rupees
 
 
 def _with(ctx, cid, spec, stated=True):

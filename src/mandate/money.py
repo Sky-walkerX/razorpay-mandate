@@ -5,7 +5,7 @@ from typing import NewType
 Paise = NewType("Paise", int)
 
 
-def rupees(x: str | int | float) -> Paise:
+def rupees(x: str | float) -> Paise:
     """Convert a rupee amount to paise. Rejects precision finer than one paise."""
     try:
         d = Decimal(str(x))

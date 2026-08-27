@@ -4,8 +4,9 @@ The harness runs hundreds of items; an MCP transport per item would be slow and 
 and the thing under test is the gateway, not the transport.
 """
 from datetime import datetime
-from mandate.gateway.core import Gateway, Decision
-from mandate.gateway.action import Action, LineItem, ActionType
+
+from mandate.gateway.action import Action, ActionType, LineItem
+from mandate.gateway.core import Decision, Gateway
 from mandate.money import Paise
 
 TOOLS = [{

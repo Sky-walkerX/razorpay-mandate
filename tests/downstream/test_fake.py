@@ -1,6 +1,8 @@
 import pytest
+
+from mandate.downstream.fake import DownstreamTimeout, FakeDownstream
 from mandate.money import rupees
-from mandate.downstream.fake import FakeDownstream, DownstreamTimeout
+
 
 def test_create_order_returns_id_and_is_findable():
     d = FakeDownstream()

@@ -1,6 +1,7 @@
 """In-memory downstream with fault injection. Used by every test and the harness."""
 import itertools
 from typing import Literal
+
 from mandate.money import Paise
 
 

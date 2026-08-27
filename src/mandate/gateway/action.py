@@ -2,7 +2,9 @@
 import hashlib
 import json
 from enum import StrEnum
+
 from pydantic import BaseModel, model_validator
+
 from mandate.money import Paise
 
 

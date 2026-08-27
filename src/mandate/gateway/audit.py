@@ -3,10 +3,12 @@ import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
+
 from pydantic import BaseModel
+
 from mandate.gateway.action import Action
-from mandate.gateway.state import ClauseResult, Verdict
 from mandate.gateway.lattice import combine
+from mandate.gateway.state import ClauseResult, Verdict
 
 GENESIS = "sha256:" + "0" * 64
 

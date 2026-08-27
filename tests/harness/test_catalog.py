@@ -1,5 +1,6 @@
 from mandate.harness.catalog import generate_catalog
 
+
 def test_same_seed_gives_identical_catalog():
     a, b = generate_catalog(seed=7), generate_catalog(seed=7)
     assert a.model_dump() == b.model_dump()

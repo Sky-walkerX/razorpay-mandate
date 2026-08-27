@@ -1,19 +1,25 @@
 import json
+from datetime import datetime, timedelta, timezone
+
 import pytest
-from datetime import datetime, timezone, timedelta
-from mandate.gateway.audit import AuditLog, AuditChainBroken, replay_verdict
-from mandate.gateway.state import ClauseResult, Verdict
+
 from mandate.gateway.action import Action, ActionType
+from mandate.gateway.audit import AuditChainBroken, AuditLog, replay_verdict
+from mandate.gateway.state import ClauseResult, Verdict
 from mandate.money import rupees
 
 IST = timezone(timedelta(hours=5, minutes=30))
 NOW = datetime(2026, 9, 1, 12, 0, tzinfo=IST)
 
 
-def _act(amount=rupees(100)):
+def _act(amount=None):
+    if amount is None:
+        amount = rupees(100)
     return Action(type=ActionType.CREATE_ORDER, amount=amount, merchant="zepto", items=[])
 
-def _append(log, verdict=Verdict.ALLOW, amount=rupees(100)):
+def _append(log, verdict=Verdict.ALLOW, amount=None):
+    if amount is None:
+        amount = rupees(100)
     return log.append(ts=NOW, mandate_id="mnd_1", policy_hash="sha256:aa",
                       idem_key="idm_1", action=_act(amount), verdict=verdict,
                       clauses=[ClauseResult(id="budget.total", result=verdict)],

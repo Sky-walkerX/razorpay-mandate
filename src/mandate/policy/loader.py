@@ -1,8 +1,10 @@
 """Load a policy and refuse it if the stored hash does not match a recompute."""
 from pathlib import Path
+
 import yaml
-from mandate.policy.models import Policy
+
 from mandate.policy.canonical import canonical_yaml, policy_hash
+from mandate.policy.models import Policy
 
 
 class PolicyHashMismatch(Exception):

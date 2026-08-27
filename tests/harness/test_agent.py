@@ -1,12 +1,13 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 from mandate.adapters.direct import DirectClient
-from mandate.harness.agent import ShoppingAgent, AgentTrace
-from mandate.harness.catalog import generate_catalog
-from mandate.gateway.core import Gateway, Mode
+from mandate.downstream.fake import FakeDownstream
 from mandate.gateway.audit import AuditLog
+from mandate.gateway.core import Gateway, Mode
 from mandate.gateway.idem import Ledger
 from mandate.gateway.state import Verdict
-from mandate.downstream.fake import FakeDownstream
+from mandate.harness.agent import ShoppingAgent
+from mandate.harness.catalog import generate_catalog
 from mandate.money import rupees
 from tests.gateway.test_core import _pol
 

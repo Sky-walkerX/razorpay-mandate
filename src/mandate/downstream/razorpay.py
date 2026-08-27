@@ -1,7 +1,8 @@
 """Razorpay REST client. Test mode only, asserted at construction."""
 import razorpay
-from mandate.money import Paise
+
 from mandate.downstream.fake import DownstreamError, DownstreamTimeout
+from mandate.money import Paise
 
 
 class RazorpayDownstream:

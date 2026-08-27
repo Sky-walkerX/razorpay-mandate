@@ -1,15 +1,17 @@
 """propose() orchestration. The only place the pure evaluator meets the outside world."""
 from datetime import datetime
 from enum import StrEnum
+
 from pydantic import BaseModel
+
+from mandate.downstream.fake import DownstreamError, DownstreamTimeout
 from mandate.gateway.action import Action, canonical_intent
 from mandate.gateway.audit import AuditLog
-from mandate.gateway.lattice import evaluate_all, combine, first_blocking
-from mandate.gateway.state import AccumulatedState, EvalContext, Verdict
-from mandate.policy.models import Policy
-from mandate.policy.canonical import policy_hash
 from mandate.gateway.idem import EntryState
-from mandate.downstream.fake import DownstreamTimeout, DownstreamError
+from mandate.gateway.lattice import combine, evaluate_all, first_blocking
+from mandate.gateway.state import AccumulatedState, EvalContext, Verdict
+from mandate.policy.canonical import policy_hash
+from mandate.policy.models import Policy
 
 
 class Mode(StrEnum):

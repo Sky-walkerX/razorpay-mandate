@@ -4,8 +4,10 @@ Designed and frozen BEFORE the gateway exists. Do not add a family after reading
 containment failure; that is how a harness stops measuring anything.
 """
 import random
-from typing import Callable
+from collections.abc import Callable
+
 from pydantic import BaseModel
+
 from mandate.harness.catalog import Catalog
 
 INJECTION_PAYLOADS = [

@@ -1,10 +1,12 @@
 from datetime import timedelta
-from mandate.gateway.constraints import velocity, time_window, item_deny_recent, ALL_EVALUATORS
+
+from mandate.gateway.constraints import ALL_EVALUATORS, item_deny_recent, time_window, velocity
 from mandate.gateway.state import Verdict
-from mandate.policy.models import ConstraintId as C
 from mandate.money import rupees
+from mandate.policy.models import ConstraintId as C
 from tests.gateway.test_constraints_budget import _ctx
 from tests.gateway.test_constraints_resolution import _with
+
 
 def test_all_evaluators_covers_the_nine_ids():
     ctx = _ctx(rupees(10))

@@ -1,6 +1,8 @@
 import random
+
 from mandate.harness.catalog import generate_catalog
-from mandate.harness.families import MUTATORS, FAMILIES
+from mandate.harness.families import FAMILIES, MUTATORS
+
 
 def test_three_injection_families_are_registered():
     for fid in ("injection.description", "injection.seller_name", "injection.review"):

@@ -1,7 +1,8 @@
-from datetime import datetime, timezone, timedelta
-from mandate.gateway.constraints import budget_total, budget_per_transaction, budget_per_item
+from datetime import datetime, timedelta, timezone
+
+from mandate.gateway.action import Action, ActionType, LineItem
+from mandate.gateway.constraints import budget_per_item, budget_per_transaction, budget_total
 from mandate.gateway.state import AccumulatedState, EvalContext, Verdict
-from mandate.gateway.action import Action, LineItem, ActionType
 from mandate.money import rupees
 from mandate.policy.models import ConstraintId as C
 from tests.policy.test_models import _policy

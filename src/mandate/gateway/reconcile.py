@@ -2,7 +2,7 @@
 
 The receipt field carries the idem_key, which is what makes this possible at all.
 """
-from mandate.gateway.idem import Ledger, EntryState
+from mandate.gateway.idem import EntryState, Ledger
 
 
 class Reconciler:

@@ -1,8 +1,10 @@
 """What the user actually signs. Not the YAML, and not their own prose."""
 from pathlib import Path
-from mandate.money import fmt, Paise
-from mandate.policy.models import Policy, ConstraintId as C
+
+from mandate.money import Paise, fmt
 from mandate.policy.loader import dump
+from mandate.policy.models import ConstraintId as C
+from mandate.policy.models import Policy
 
 FLAG = "  (I inferred this, is it right?)"
 

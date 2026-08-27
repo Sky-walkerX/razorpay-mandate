@@ -4,11 +4,12 @@ from pathlib import Path
 
 import typer
 from dotenv import load_dotenv
-from mandate.money import rupees, fmt
+
+from mandate.compiler.compile import IST, compile_intent
+from mandate.compiler.readback import render, sign
 from mandate.downstream.razorpay import RazorpayDownstream
 from mandate.harness.corpus import HELD_OUT, build_corpus, corpus_hash, save_corpus
-from mandate.compiler.compile import compile_intent, IST
-from mandate.compiler.readback import render, sign
+from mandate.money import fmt, rupees
 
 app = typer.Typer(no_args_is_help=True)
 

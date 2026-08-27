@@ -3,7 +3,7 @@
 Every evaluator returns ALLOW when its constraint is absent from the policy.
 Absence means unconstrained, not forbidden.
 """
-from mandate.gateway.state import EvalContext, ClauseResult, Verdict
+from mandate.gateway.state import ClauseResult, EvalContext, Verdict
 from mandate.policy.models import ConstraintId as C
 
 

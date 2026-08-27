@@ -3,8 +3,8 @@
 This is the most important four lines in the system, which is why it lives alone
 in its own module with its own tests.
 """
-from mandate.gateway.state import ClauseResult, Verdict, EvalContext
 from mandate.gateway.constraints import ALL_EVALUATORS
+from mandate.gateway.state import ClauseResult, EvalContext, Verdict
 
 _RANK = {Verdict.ALLOW: 0, Verdict.UNKNOWN: 1, Verdict.DENY: 2}
 

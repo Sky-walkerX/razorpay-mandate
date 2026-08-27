@@ -1,11 +1,13 @@
-from datetime import datetime, timezone, timedelta
-from mandate.gateway.core import Gateway, Mode
-from mandate.gateway.action import Action, LineItem, ActionType
-from mandate.gateway.audit import AuditLog
-from mandate.gateway.state import Verdict
+from datetime import datetime, timedelta, timezone
+
 from mandate.downstream.fake import FakeDownstream
+from mandate.gateway.action import Action, ActionType, LineItem
+from mandate.gateway.audit import AuditLog
+from mandate.gateway.core import Gateway, Mode
+from mandate.gateway.state import Verdict
 from mandate.money import rupees
-from mandate.policy.models import ConstraintId as C, Provenance
+from mandate.policy.models import ConstraintId as C
+from mandate.policy.models import Provenance
 from tests.policy.test_models import _policy
 
 IST = timezone(timedelta(hours=5, minutes=30))

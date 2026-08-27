@@ -2,11 +2,13 @@
 import json
 import os
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 from pydantic import BaseModel
+
 from mandate.compiler.prompts import COMPILE_PROMPT, COMPILER_VERSION
-from mandate.policy.models import Policy, Provenance, CompilerInfo
 from mandate.policy.canonical import policy_hash
+from mandate.policy.models import CompilerInfo, Policy, Provenance
 
 MODEL = "claude-opus-5"
 IST = timezone(timedelta(hours=5, minutes=30))
