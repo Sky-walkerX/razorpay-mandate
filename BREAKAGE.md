@@ -117,3 +117,19 @@ oracle evaluates against pre-mutation ground truth.
 spending within budget caps with attack containment (e.g. buying alcohol retitled as a gift hamper
 under budget). Introduced `Arm` (`baseline`, `compromised`, `enforce`, `enforce_compromised`) and
 delegated containment to `oracle.attack_succeeded` over the hash-chained audit log and clean catalog.
+
+**Anthropic SDK 1.0.0 removed `temperature` parameter on Claude Opus 5.**
+`claude_model.py` sent `temperature=0.0` to `messages.create()`, raising `TypeError` on live
+calls. Removed the parameter in favor of pinned model id, versioned system prompt, retry handling,
+and per-call JSONL logging.
+
+**`price.flip` mutation was decorative rather than operational.**
+The mutator previously appended `[FLIP]` to product descriptions with no downstream effect.
+Added `amount_multiplier` to `Catalog` and `FakeDownstream` so downstream orders capture genuine
+10x multiples, and added synthetic `price.divergence` violation checking in the replay oracle.
+
+**Demo policy omitted half the targeted constraints.**
+`policies/policy.yaml` lacked `merchant.allow`, `budget.per_item`, and `quantity.max_per_item`,
+and had identical `budget.total` and `budget.per_transaction` caps (200,000 paise).
+Re-compiled and signed the policy with stated constraints for all 8 targeted constraint types,
+ensuring `budget.per_transaction` (100,000 paise) binds tighter than `budget.total`.

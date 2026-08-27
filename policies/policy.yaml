@@ -22,10 +22,10 @@ constraints:
   velocity:
     max_actions: 3
     window: mandate
-expires: '2026-09-01T19:00:00+05:30'
+expires: '2026-09-01T19:30:00+05:30'
 issued: '2026-09-01T09:00:00+05:30'
 mandate_id: mnd_groceries_01
-policy_hash: sha256:2284b1e41696111eb49c9a61af3cf093f3141dd1703ab03e83c240ad9a2e7a44
+policy_hash: sha256:62f908dd8f4cc8f0f99725686afc94e6ef1d7321c6dbaf44fcf0d3d111d6469a
 principal: user_local
 provenance:
   inferred: []

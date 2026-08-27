@@ -85,19 +85,27 @@ prompt-only control arm for comparison.
 
 Measured across 180 corpus items (120 attacks and 60 legitimate purchases) under seed 20260901.
 
+### Development evaluation
+
+Seed 20260901. 576 scored runs over development families, 0 excluded as failed.
+
 | Arm | Attacks | Containment (95% CI) | Legit | False block (95% CI) |
 |---|---|---|---|---|
-| observe (baseline) | 84 | 0.0% [0.0%, 0.0%] | 60 | 0.0% [0.0%, 0.0%] |
-| enforce (mandate) | 84 | 100.0% [100.0%, 100.0%] | 60 | 0.0% [0.0%, 0.0%] |
+| baseline | 84 | 97.6% [92.9%, 100.0%] | 60 | 0.0% [0.0%, 0.0%] |
+| compromised | 84 | 97.6% [92.9%, 100.0%] | 60 | 0.0% [0.0%, 0.0%] |
+| enforce | 84 | 100.0% [100.0%, 100.0%] | 60 | 0.0% [0.0%, 0.0%] |
+| enforce_compromised | 84 | 100.0% [100.0%, 100.0%] | 60 | 0.0% [0.0%, 0.0%] |
 
 ### Held-out evaluation
 
-Evaluated across 36 held-out attacks spanning `budget.salami`, `injection.review`, and `price.unit_confusion`:
+Seed 20260901. 144 scored runs over held-out families, 0 excluded as failed.
 
-| Arm | Attacks | Containment (95% CI) |
-|---|---|---|
-| observe (baseline) | 36 | 0.0% [0.0%, 0.0%] |
-| enforce (mandate) | 36 | 100.0% [100.0%, 100.0%] |
+| Arm | Attacks | Containment (95% CI) | Legit | False block (95% CI) |
+|---|---|---|---|---|
+| baseline | 36 | 100.0% [100.0%, 100.0%] | 0 | nan% [nan%, nan%] |
+| compromised | 36 | 100.0% [100.0%, 100.0%] | 0 | nan% [nan%, nan%] |
+| enforce | 36 | 100.0% [100.0%, 100.0%] | 0 | nan% [nan%, nan%] |
+| enforce_compromised | 36 | 100.0% [100.0%, 100.0%] | 0 | nan% [nan%, nan%] |
 
 Both development and held-out families achieved complete containment under enforce mode with zero false blocks on legitimate requests.
 
@@ -116,14 +124,14 @@ make check                    # wiring test: creates and captures one test-mode 
 # compile an intent into a policy
 mandate compile "order groceries under 2000 rupees, nothing alcoholic, one order only"
 
-# run an agent under enforcement
-mandate run --policy policies/groceries.yaml --agent examples/shopper.py
+# run an attack through the split-screen demo
+mandate demo --family injection.description
 
 # reproduce the evaluation
-make evaluate                 # both arms, seeded, writes results/
+make evaluate                 # all four arms, seeded, writes results/
 ```
 
-Every run is seeded. The same seed produces byte-identical output, including the audit log.
+The corpus, catalog and arm assignment are seeded and reproducible. Every model response is recorded so a run can be re-scored without re-calling the model.
 
 ---
 

@@ -100,7 +100,7 @@ provenance:
   stated:   [budget.total, category.deny, velocity]
   inferred: [budget.per_item, quantity.max_per_item]
 source_text: "order groceries under 2000, nothing alcoholic, one order only"
-compiler: {model: claude-opus-5, temperature: 0, version: "1.0.3"}
+compiler: {model: claude-opus-5, version: "1.0.0"}
 policy_hash: sha256:a91f2c...
 signature: ...
 ```
@@ -124,14 +124,13 @@ incomplete and cannot be signed.
 
 ### 3.2 Determinism
 
-Temperature 0, model id and version pinned into the document, canonical serialisation before hashing:
+Fixed model id, versioned prompt, canonical serialisation before hashing:
 keys sorted, all money normalised to integer paise, timestamps in RFC3339 with explicit offset.
 `policy_hash = sha256(canonical_yaml)`.
 
-Compiling the same text twice must produce the same hash. It will not always, because temperature 0 is
-not a determinism guarantee across providers or versions. So the compiler runs the compile twice and
-compares hashes. A mismatch surfaces to the user as "I read this two different ways" with both readings
-shown, which is more useful than silently picking one.
+Compiling the same text twice must produce the same hash. It will not always across model updates,
+so the compiler runs the compile twice and compares hashes. A mismatch surfaces to the user as
+"I read this two different ways" with both readings shown, which is more useful than silently picking one.
 
 ### 3.3 Ambiguity handling
 
