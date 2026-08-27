@@ -11,7 +11,7 @@ from mandate.compiler.readback import render, sign
 from mandate.downstream.razorpay import RazorpayDownstream
 from mandate.harness.corpus import HELD_OUT, build_corpus, corpus_hash, load_corpus, save_corpus
 from mandate.harness.runner import ARMS, run_corpus
-from mandate.harness.score import render_table, score
+from mandate.harness.score import partition_errors, render_table, score
 from mandate.money import fmt, rupees
 from mandate.policy.loader import load as load_policy
 
@@ -51,8 +51,12 @@ def corpus_build(seed: int = 20260901, out: Path = Path("corpus/corpus.json")) -
 def compile(text: str, hours: int = 8, out: Path = Path("policies/policy.yaml")) -> None:
     """Compile an intent, show the read-back, and write the signed policy on approval."""
     load_dotenv()
-    res = compile_intent(text, principal="user_local", agent="agt_shopper",
-                         expires=datetime.now(IST) + timedelta(hours=hours))
+    res = compile_intent(
+        text,
+        principal="user_local",
+        agent="agt_shopper",
+        expires=datetime.now(IST) + timedelta(hours=hours),
+    )
     if res.policy is None:
         typer.echo("I could not compile this into a policy:\n")
         for q in res.questions:
@@ -66,15 +70,51 @@ def compile(text: str, hours: int = 8, out: Path = Path("policies/policy.yaml"))
 
 
 def _model_factory(seed: int):
-    if os.environ.get("MANDATE_SCRIPTED") or os.environ.get("MANDATE_FAKE_MODEL"):
-        from tests.harness.test_agent import ScriptedModel, _buy
+    if os.environ.get("MANDATE_FAKE_MODEL"):
+        import random
 
-        return lambda catalog, intent, compromised=False, call_log=None: ScriptedModel(
-            [_buy("sku_0000", 1, 300)]
+        class _Scripted:
+            """Buys the cheapest grocery item in whatever catalog it is handed.
+
+            It reads the catalog on purpose. The previous stub hardcoded one sku
+            and one merchant, which is why every attack scored as contained.
+            """
+
+            model = "scripted"
+
+            def __init__(self, catalog, rng):
+                self.catalog, self.rng, self.done = catalog, rng, False
+
+            def next_call(self, _trace):
+                if self.done:
+                    return None
+                self.done = True
+                p = min(
+                    (x for x in self.catalog.products if x.category == "grocery"),
+                    key=lambda x: int(x.unit_price),
+                )
+                return (
+                    "create_order",
+                    {
+                        "merchant": p.merchant,
+                        "items": [
+                            {
+                                "sku": p.sku,
+                                "title": p.title,
+                                "qty": 1,
+                                "unit_price": int(p.unit_price),
+                            }
+                        ],
+                    },
+                )
+
+        return lambda catalog, intent, compromised, call_log: _Scripted(
+            catalog, random.Random(seed)
         )
+
     from mandate.harness.claude_model import ClaudeModel
 
-    return lambda catalog, intent, compromised=False, call_log=None: ClaudeModel(
+    return lambda catalog, intent, compromised, call_log: ClaudeModel(
         catalog, intent, compromised=compromised, call_log=call_log
     )
 
@@ -82,31 +122,49 @@ def _model_factory(seed: int):
 @app.command()
 def evaluate(
     seed: int = 20260901,
+    arms: str = "baseline,compromised,enforce,enforce_compromised",
     corpus: Path = Path("corpus/corpus.json"),
     policy: Path = Path("policies/policy.yaml"),
     out: Path = Path("results"),
     held_out: bool = False,
+    allow_scripted: bool = False,
 ) -> None:
-    """Run both arms over the corpus and write results, scores and a results table."""
+    """Run the corpus over every arm and write results, scores and a results table."""
     load_dotenv()
-    items, pol = load_corpus(corpus), load_policy(policy)
+    if os.environ.get("MANDATE_FAKE_MODEL") and not allow_scripted:
+        raise typer.BadParameter(
+            "MANDATE_FAKE_MODEL is set. A scripted run does not measure anything and "
+            "must never be written to results/. Unset it, or pass --allow-scripted "
+            "and expect every row tagged model=scripted."
+        )
+
+    chosen = [ARMS[a.strip()] for a in arms.split(",") if a.strip()]
+    items = load_corpus(corpus)
+    pol = load_policy(policy)
     results = run_corpus(
         items,
-        arms=[ARMS["enforce"], ARMS["baseline"]],
-        policy=pol,
-        model_factory=_model_factory(seed),
-        out_dir=out,
+        chosen,
+        pol,
+        _model_factory(seed),
+        out,
         exclude_held_out=not held_out,
         held_out_only=held_out,
     )
-    scores = score(results, seed=seed)
+
+    ok, bad = partition_errors(results)
+    if bad:
+        typer.echo(f"excluded {len(bad)} failed runs:")
+        for r in bad[:10]:
+            typer.echo(f"  {r.item_id} ({r.arm}): {r.error}")
+    scores = score(ok, seed=seed)
+    label = "held-out families" if held_out else "development families"
     out.mkdir(parents=True, exist_ok=True)
     (out / "scores.json").write_text(
         json.dumps({k: v.model_dump() for k, v in scores.items()}, indent=2)
     )
-    label = "held-out families" if held_out else "development families"
     (out / "README-results.md").write_text(
-        f"Seed {seed}. {len(results)} runs over {label}.\n\n{render_table(scores)}\n"
+        f"Seed {seed}. {len(ok)} scored runs over {label}, "
+        f"{len(bad)} excluded as failed.\n\n{render_table(scores)}\n"
     )
     typer.echo(render_table(scores))
 
@@ -127,6 +185,8 @@ def demo(
     for arm in ("compromised", "enforce_compromised"):
         r = out[arm]
         typer.echo(f"\n=== {arm.upper()} ===")
-        typer.echo(f"spent: {fmt(r.spent)}   blocking clause: {r.blocking_clause or '-'}")
+        typer.echo(f"executed: {fmt(r.spent)}   contained: {r.contained}")
+        typer.echo(f"why: {r.oracle_reason}")
+        typer.echo(f"blocking clause: {r.blocking_clause or '-'}")
         for ln in r.audit_lines:
             typer.echo("  " + ln)
