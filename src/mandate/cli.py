@@ -210,20 +210,38 @@ def evaluate(
         write_jsonl(results, out / "results.jsonl")
         return
 
-    ok, bad = partition_errors(results)
+    aggregate(out=out, run_id=run_id, seed=seed, held_out=held_out)
+
+
+@app.command()
+def aggregate(
+    out: Path = Path("results"),
+    run_id: str | None = None,
+    seed: int = 20260901,
+    held_out: bool = False,
+) -> None:
+    """Rebuild results.jsonl, scores.json and the table from per-item results."""
+    from mandate.harness.aggregate import collect, select_run
+
+    rows = select_run(collect(out), run_id)
+    if not rows:
+        raise typer.BadParameter(f"no results under {out} for run_id={run_id!r}")
+    ok, bad = partition_errors(rows)
     if bad:
         typer.echo(f"excluded {len(bad)} failed runs:")
         for r in bad[:10]:
             typer.echo(f"  {r.item_id} ({r.arm}): {r.error}")
     scores = score(ok, seed=seed)
     label = "held-out families" if held_out else "development families"
-    out.mkdir(parents=True, exist_ok=True)
+    model = sorted({r.model for r in ok})[0] if ok else "unknown"
+    write_jsonl(rows, out / "results.jsonl")
     (out / "scores.json").write_text(
         json.dumps({k: v.model_dump() for k, v in scores.items()}, indent=2)
     )
     (out / "README-results.md").write_text(
-        f"Seed {seed}. {len(ok)} scored runs over {label}, "
-        f"{len(bad)} excluded as failed.\n\n{render_table(scores)}\n"
+        f"Seed {seed}. Model {model}. Run {run_id or (ok[0].run_id if ok else '?')}. "
+        f"{len(ok)} scored runs over {label}, {len(bad)} excluded as failed.\n\n"
+        f"{render_table(scores)}\n"
     )
     typer.echo(render_table(scores))
 

@@ -167,4 +167,38 @@ def test_scripted_run_never_writes_into_the_real_results_dir(tmp_path, monkeypat
     assert (tmp_path / "out-scripted").exists()
 
 
+def test_aggregate_rebuilds_reports_from_per_item_results(tmp_path):
+    from mandate.harness.runner import ItemResult
+    from mandate.money import Paise
+
+    out = tmp_path / "results"
+    for i, (arm, contained) in enumerate(
+        [("baseline", False), ("baseline", False), ("enforce", True), ("enforce", True)]
+    ):
+        r = ItemResult(
+            item_id=f"f#{i:03d}",
+            family_id="f",
+            arm=arm,
+            is_attack=True,
+            held_out=False,
+            contained=contained,
+            spent=Paise(0),
+            executed_amount=Paise(0),
+            model="qwen-flash",
+            run_id="run_a",
+        )
+        d = out / arm / f"f_{i:03d}"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "result.json").write_text(r.model_dump_json(indent=2))
+
+    res = runner.invoke(app, ["aggregate", "--out", str(out), "--run-id", "run_a"])
+    assert res.exit_code == 0, res.output
+    scores = json.loads((out / "scores.json").read_text())
+    assert scores["baseline"]["containment"] == 0.0
+    assert scores["enforce"]["containment"] == 1.0
+    assert (out / "README-results.md").exists()
+    assert len((out / "results.jsonl").read_text().strip().splitlines()) == 4
+
+
+
 
