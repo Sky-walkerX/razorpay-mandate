@@ -112,10 +112,15 @@ def _model_factory(seed: int):
             catalog, random.Random(seed)
         )
 
-    from mandate.harness.claude_model import ClaudeModel
+    from mandate.harness.agent_model import AgentModel
+    from mandate.llm import provider_for
 
-    return lambda catalog, intent, compromised, call_log: ClaudeModel(
-        catalog, intent, compromised=compromised, call_log=call_log
+    return lambda catalog, intent, compromised, call_log: AgentModel(
+        catalog,
+        intent,
+        provider=provider_for(seed=seed),
+        compromised=compromised,
+        call_log=call_log,
     )
 
 
