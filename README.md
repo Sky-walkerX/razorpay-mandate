@@ -152,10 +152,12 @@ mandate/
 │   └── resolve.py    category resolver with an explicit UNKNOWN state
 ├── harness/
 │   ├── families/     attack families, each a seeded catalog mutation
+│   ├── agent.py      the shopping agent under test, deliberately not hardened
+│   ├── agent_model.py  drives a real model through the provider shim
+│   ├── oracle.py     ground-truth replay; decides containment
 │   ├── runner.py     runs one corpus item against one arm
 │   └── score.py      containment, false-block, cluster bootstrap CIs
 ├── corpus/           attack + legitimate items, with the held-out split
-├── examples/         a plain shopping agent, deliberately not hardened
 └── results/          generated. Never edited by hand.
 ```
 
