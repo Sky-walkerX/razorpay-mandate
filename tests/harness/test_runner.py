@@ -100,3 +100,21 @@ def test_an_agent_error_is_recorded_not_swallowed(tmp_path):
         item, arm=ARMS["enforce"], policy=_pol(), model_factory=boom, tmp_root=tmp_path
     )
     assert r.error and "model exploded" in r.error
+
+
+def test_run_item_stamps_provenance(tmp_path):
+    item = next(i for i in build_corpus(seed=5) if i.is_attack)
+    r = run_item(
+        item,
+        arm=ARMS["enforce"],
+        policy=_pol(),
+        model_factory=_behave_factory,
+        tmp_root=tmp_path,
+        run_id="run_abc",
+        corpus_hash="sha256:deadbeef",
+        policy_id="mandate_xyz",
+    )
+    assert r.run_id == "run_abc"
+    assert r.corpus_hash == "sha256:deadbeef"
+    assert r.policy_id == "mandate_xyz"
+

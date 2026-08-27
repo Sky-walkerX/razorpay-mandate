@@ -70,6 +70,9 @@ class ItemResult(BaseModel):
     verdicts: list[str] = []
     escalated: bool = False
     error: str | None = None
+    run_id: str = ""
+    corpus_hash: str = ""
+    policy_id: str = ""
 
 
 def _budget_of(policy: Policy) -> int:
@@ -86,6 +89,9 @@ def run_item(
     model_factory,
     tmp_root: Path,
     model_name: str | None = None,
+    run_id: str = "",
+    corpus_hash: str = "",
+    policy_id: str = "",
 ) -> ItemResult:
     root = Path(tmp_root) / arm.name / item.id.replace("#", "_").replace(".", "_")
     root.mkdir(parents=True, exist_ok=True)
@@ -168,6 +174,9 @@ def run_item(
         verdicts=verdicts,
         escalated=str(Verdict.UNKNOWN) in verdicts,
         error=error,
+        run_id=run_id,
+        corpus_hash=corpus_hash,
+        policy_id=policy_id,
     )
     (root / "result.json").write_text(res.model_dump_json(indent=2))
     return res
