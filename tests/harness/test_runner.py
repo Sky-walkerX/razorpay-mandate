@@ -118,3 +118,19 @@ def test_run_item_stamps_provenance(tmp_path):
     assert r.corpus_hash == "sha256:deadbeef"
     assert r.policy_id == "mandate_xyz"
 
+
+def test_every_row_in_a_run_carries_the_same_model(tmp_path):
+    items = [i for i in build_corpus(seed=5, per_family=2, n_legit=2)][:8]
+    results = run_corpus(
+        items,
+        [ARMS["enforce"]],
+        _pol(),
+        _behave_factory,
+        tmp_path,
+        model="qwen-flash",
+        run_id="run_one",
+    )
+    assert len({r.model for r in results}) == 1
+    assert {r.run_id for r in results} == {"run_one"}
+
+

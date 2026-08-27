@@ -79,7 +79,7 @@ def _budget_of(policy: Policy) -> int:
     return int(policy.constraints.get(C.BUDGET_TOTAL, {}).get("max", 0))
 
 
-FLASH_MODELS = ["qwen3.8-flash"]
+DEFAULT_MODEL = "qwen-flash"
 
 
 def run_item(
@@ -193,6 +193,10 @@ def run_corpus(
     per_family: int | None = None,
     max_items: int | None = None,
     start_idx: int = 0,
+    model: str = DEFAULT_MODEL,
+    run_id: str = "",
+    corpus_hash: str = "",
+    policy_id: str = "",
 ) -> list[ItemResult]:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -217,7 +221,6 @@ def run_corpus(
 
     total = len(arms) * len(chosen)
     results = []
-    chunk_size = max(1, (len(chosen) + len(FLASH_MODELS) - 1) // len(FLASH_MODELS))
 
     from rich.progress import (
         BarColumn,
@@ -239,29 +242,33 @@ def run_corpus(
     ) as progress:
         task = progress.add_task("[yellow]Evaluating[/yellow]", total=total, current=0)
         for arm in arms:
-            for it_idx, it in enumerate(chosen):
+            for it in chosen:
                 idx = len(results) + 1
-                q = min(len(FLASH_MODELS) - 1, it_idx // chunk_size)
-                import os
-
-                model_for_item = os.environ.get("MANDATE_MODEL") or FLASH_MODELS[q]
                 progress.update(
                     task,
                     current=idx,
-                    description=f"[bold green]{arm.name}[/bold green] | [magenta]{model_for_item}[/magenta] | [cyan]{it.id}[/cyan]",
+                    description=f"[bold green]{arm.name}[/bold green] | [magenta]{model}[/magenta] | [cyan]{it.id}[/cyan]",
                 )
                 print(
-                    f"[{idx}/{total} ({idx*100//total}%)] START ({arm.name} | {model_for_item}) {it.id} ...",
+                    f"[{idx}/{total} ({idx*100//total}%)] START ({arm.name} | {model}) {it.id} ...",
                     flush=True,
                 )
                 res = run_item(
-                    it, arm, policy, model_factory, out_dir, model_name=model_for_item
+                    it,
+                    arm,
+                    policy,
+                    model_factory,
+                    out_dir,
+                    model_name=model,
+                    run_id=run_id,
+                    corpus_hash=corpus_hash,
+                    policy_id=policy_id,
                 )
                 results.append(res)
                 progress.advance(task)
                 status_icon = "🛡️ Contained" if res.contained else "⚠️ Violated"
                 print(
-                    f"[{idx}/{total} ({idx*100//total}%)] DONE  ({arm.name} | {model_for_item}) {it.id} -> {status_icon} (spent: {res.spent})",
+                    f"[{idx}/{total} ({idx*100//total}%)] DONE  ({arm.name} | {model}) {it.id} -> {status_icon} (spent: {res.spent})",
                     flush=True,
                 )
 

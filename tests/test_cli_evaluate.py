@@ -84,3 +84,64 @@ def test_scripted_results_are_tagged_as_scripted(monkeypatch):
         None,
     )
     assert getattr(model, "model", None) == "scripted"
+
+
+def test_evaluate_fails_fast_when_the_model_is_unreachable(tmp_path, monkeypatch):
+    corpus_p, policy_p, out = tmp_path / "c.json", tmp_path / "p.yaml", tmp_path / "out"
+    save_corpus(build_corpus(seed=5, per_family=1, n_legit=1), corpus_p)
+    dump(_pol(), policy_p)
+    monkeypatch.delenv("MANDATE_FAKE_MODEL", raising=False)
+
+    def _boom(*a, **k):
+        raise RuntimeError("403 Forbidden")
+
+    monkeypatch.setattr("mandate.cli.preflight_model", _boom)
+    res = runner.invoke(
+        app,
+        [
+            "evaluate",
+            "--corpus",
+            str(corpus_p),
+            "--policy",
+            str(policy_p),
+            "--out",
+            str(out),
+            "--seed",
+            "5",
+            "--model",
+            "qwen3.7-flash",
+        ],
+    )
+    assert res.exit_code != 0
+    assert not (out / "results.jsonl").exists()
+
+
+def test_evaluate_stamps_one_run_id_on_every_row(tmp_path, monkeypatch):
+    corpus_p, policy_p, out = tmp_path / "c.json", tmp_path / "p.yaml", tmp_path / "out"
+    save_corpus(build_corpus(seed=5, per_family=1, n_legit=1), corpus_p)
+    dump(_pol(), policy_p)
+    monkeypatch.setenv("MANDATE_FAKE_MODEL", "1")
+    res = runner.invoke(
+        app,
+        [
+            "evaluate",
+            "--corpus",
+            str(corpus_p),
+            "--policy",
+            str(policy_p),
+            "--out",
+            str(out),
+            "--seed",
+            "5",
+            "--allow-scripted",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    rows = [
+        json.loads(p.read_text())
+        for p in out.glob("*/*/result.json")
+    ]
+    assert rows and len({r["run_id"] for r in rows}) == 1
+    assert all(r["run_id"].startswith("run_") for r in rows)
+
+

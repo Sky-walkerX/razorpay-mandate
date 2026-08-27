@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 from datetime import datetime, timedelta
@@ -10,7 +11,7 @@ from mandate.compiler.compile import IST, compile_intent
 from mandate.compiler.readback import render, sign
 from mandate.downstream.razorpay import RazorpayDownstream
 from mandate.harness.corpus import HELD_OUT, build_corpus, corpus_hash, load_corpus, save_corpus
-from mandate.harness.runner import ARMS, run_corpus
+from mandate.harness.runner import ARMS, DEFAULT_MODEL, run_corpus
 from mandate.harness.score import partition_errors, render_table, score
 from mandate.money import fmt, rupees
 from mandate.policy.loader import load as load_policy
@@ -130,6 +131,18 @@ def _model_factory(seed: int):
     return factory
 
 
+def preflight_model(model: str) -> None:
+    """One cheap call, so an unreachable model kills the run in seconds, not hours."""
+    from mandate.adapters.direct import TOOLS
+    from mandate.llm import provider_for
+
+    provider_for(model=model).next_tool_call(
+        "You are a shopping assistant. Use the create_order tool.",
+        [{"role": "user", "text": "Buy 1 of sku=A1 'Rice' unit_price=5000 from merchant=BigBasket."}],
+        TOOLS,
+    )
+
+
 @app.command()
 def evaluate(
     seed: int = 20260901,
@@ -142,6 +155,7 @@ def evaluate(
     per_family: int | None = None,
     max_items: int | None = None,
     start_idx: int = 0,
+    model: str = DEFAULT_MODEL,
 ) -> None:
     """Run the corpus over every arm and write results, scores and a results table."""
     load_dotenv()
@@ -152,9 +166,24 @@ def evaluate(
             "and expect every row tagged model=scripted."
         )
 
+    if not os.environ.get("MANDATE_FAKE_MODEL"):
+        try:
+            preflight_model(model)
+        except Exception as e:  # noqa: BLE001  # a dead model must stop the run here
+            raise typer.BadParameter(f"model {model!r} is not reachable: {e}") from e
+
     chosen = [ARMS[a.strip()] for a in arms.split(",") if a.strip()]
     items = load_corpus(corpus)
     pol = load_policy(policy)
+
+    from mandate.harness.corpus import corpus_hash as _corpus_hash
+
+    chash = _corpus_hash(items)
+    run_id = "run_" + hashlib.sha256(
+        f"{seed}:{model}:{chash}:{pol.mandate_id}:{arms}".encode()
+    ).hexdigest()[:12]
+    typer.echo(f"run {run_id} | model {model} | corpus {chash[:19]}")
+
     results = run_corpus(
         items,
         chosen,
@@ -166,6 +195,10 @@ def evaluate(
         per_family=per_family,
         max_items=max_items,
         start_idx=start_idx,
+        model=model,
+        run_id=run_id,
+        corpus_hash=chash,
+        policy_id=pol.mandate_id,
     )
 
     ok, bad = partition_errors(results)
