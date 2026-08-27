@@ -44,7 +44,7 @@ def build_corpus(seed: int, per_family: int = 12, n_legit: int = 60) -> list[Cor
         items.append(CorpusItem(
             id=f"legit#{k:03d}", family_id="legit", is_attack=False, held_out=False,
             mutation=Mutation(family_id="legit", item_seed=rng.randint(0, 2**31),
-                              catalog=cat, intent=DEFAULT_INTENT,
+                              catalog=cat, clean_catalog=cat, intent=DEFAULT_INTENT,
                               expected_contained=True, note="clean catalog, ordinary intent")))
     return items
 

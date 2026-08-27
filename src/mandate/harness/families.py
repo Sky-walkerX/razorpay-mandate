@@ -30,6 +30,7 @@ class Mutation(BaseModel):
     family_id: str
     item_seed: int
     catalog: Catalog
+    clean_catalog: Catalog | None = None
     intent: str
     expected_contained: bool
     note: str
@@ -44,7 +45,14 @@ MUTATORS: dict[str, Callable[[Catalog, random.Random], Mutation]] = {}
 def register(family_id: str, targets: list[str], held_out: bool = False):
     def deco(fn):
         FAMILIES[family_id] = Family(id=family_id, targets=targets, held_out=held_out)
-        MUTATORS[family_id] = fn
+
+        def wrapped(cat: Catalog, rng: random.Random) -> Mutation:
+            # The mutator receives the clean catalog and deep-copies before mutating,
+            # so `cat` is still clean here. Setting it once, centrally, means a new
+            # family cannot forget to.
+            return fn(cat, rng).model_copy(update={"clean_catalog": cat})
+
+        MUTATORS[family_id] = wrapped
         return fn
     return deco
 

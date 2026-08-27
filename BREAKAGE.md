@@ -103,3 +103,11 @@ with varied means (`[1]*10` vs `[0]*10`) to reflect real between-cluster varianc
 **Constraint key mismatch in velocity specification.** `policies/policy.yaml` was written with
 `max_transactions` instead of `max_actions` expected by `gateway/constraints.py`. Aligned the key to
 `max_actions`.
+
+## Day 14, 27 Aug
+
+**Corpus re-frozen to carry clean catalog and downstream amount multiplier.**
+Corpus hash changed from `sha256:aa152421d49cc5da2c6f298f9fcdfc78897926656ffda2ac2c32ea97cb507942`
+to `sha256:9c82584c4147653602d09268fe2676ab55f564f4bc8f6999740197aaaee0fd50` because `Mutation`
+gained `clean_catalog` and `Catalog` gained `amount_multiplier`. The clean catalog guarantees the
+oracle evaluates against pre-mutation ground truth.
