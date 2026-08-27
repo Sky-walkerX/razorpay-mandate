@@ -175,6 +175,9 @@ That is a defensible choice, not a settled one.
 that might differ in a hundred small ways. It is the gateway with enforcement switched off, evaluating
 and logging what it would have blocked.
 
+**The gateway contains an agent built on a different vendor's model from the one this project's authors control.**
+That is stronger evidence of model-independence than containing an agent from the same family.
+
 ---
 
 ## Limitations
@@ -192,6 +195,10 @@ and logging what it would have blocked.
   carries no containment evidence. Adding a family to justify a constraint is the inverse
   of how the corpus was frozen, so it stays uncovered and stated rather than covered and
   circular.
+- The compiler runs on `gemini-3.7-flash` at `temperature: 0.0` with a fixed seed (best-effort per vendor
+  specification); recorded `model_calls.jsonl` traces provide exact replayability.
+- The compiler and the agent under test share the same model family, so the compiler is in some sense
+  evaluating specifications within its own distribution.
 
 ## What broke
 

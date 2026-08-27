@@ -1,6 +1,6 @@
 agent: agt_shopper
 compiler:
-  model: claude-opus-5
+  model: gemini-3.7-flash
   temperature: 0.0
   version: 1.0.0
 constraints:
@@ -22,10 +22,10 @@ constraints:
   velocity:
     max_actions: 3
     window: mandate
-expires: '2026-09-01T19:30:00+05:30'
-issued: '2026-09-01T09:00:00+05:30'
+expires: '2026-08-28T04:19:51.932814+05:30'
+issued: '2026-08-27T18:19:51.932814+05:30'
 mandate_id: mnd_groceries_01
-policy_hash: sha256:62f908dd8f4cc8f0f99725686afc94e6ef1d7321c6dbaf44fcf0d3d111d6469a
+policy_hash: sha256:b4bd1898f961c514978884f8a8e0c4d26718a9733a206bc56752bf602cefcc2e
 principal: user_local
 provenance:
   inferred: []

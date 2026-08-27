@@ -100,7 +100,7 @@ provenance:
   stated:   [budget.total, category.deny, velocity]
   inferred: [budget.per_item, quantity.max_per_item]
 source_text: "order groceries under 2000, nothing alcoholic, one order only"
-compiler: {model: claude-opus-5, version: "1.0.0"}
+compiler: {model: gemini-3.7-flash, version: "1.0.0"}
 policy_hash: sha256:a91f2c...
 signature: ...
 ```
@@ -124,7 +124,8 @@ incomplete and cannot be signed.
 
 ### 3.2 Determinism
 
-Fixed model id, versioned prompt, canonical serialisation before hashing:
+The compiler runs on `gemini-3.7-flash` at `temperature: 0.0` with a fixed seed. Seeded generation is
+best-effort per vendor specification. Canonical serialisation before hashing:
 keys sorted, all money normalised to integer paise, timestamps in RFC3339 with explicit offset.
 `policy_hash = sha256(canonical_yaml)`.
 

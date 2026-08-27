@@ -72,3 +72,21 @@ def test_unknown_constraint_id_from_the_model_is_rejected():
 def test_compiler_info_is_recorded_on_the_policy():
     r = _compile([CLEAN, CLEAN])
     assert r.policy.compiler.temperature == 0.0 and r.policy.compiler.version
+
+
+class _FakeTextProvider:
+    def __init__(self, responses, model="gemini-3.7-flash"):
+        self.responses = list(responses)
+        self.model = model
+        self.seen = []
+
+    def next_text(self, system, history):
+        self.seen.append({"system": system, "history": history})
+        return self.responses.pop(0)
+
+
+def test_compiler_works_with_provider():
+    p = _FakeTextProvider([json.dumps(CLEAN), json.dumps(CLEAN)], model="gemini-3.7-flash")
+    r = compile_intent("buy food", principal="user_1", agent="agt_1", expires=EXP, provider=p)
+    assert r.policy is not None
+    assert r.policy.compiler.model == "gemini-3.7-flash"
