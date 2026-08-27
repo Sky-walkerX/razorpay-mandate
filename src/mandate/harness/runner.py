@@ -241,6 +241,10 @@ def run_corpus(
                     current=idx,
                     description=f"[bold green]{arm.name}[/bold green] | [magenta]{model_for_item}[/magenta] | [cyan]{it.id}[/cyan]",
                 )
+                print(
+                    f"[{idx}/{total} ({idx*100//total}%)] START ({arm.name} | {model_for_item}) {it.id} ...",
+                    flush=True,
+                )
                 res = run_item(
                     it, arm, policy, model_factory, out_dir, model_name=model_for_item
                 )
@@ -248,7 +252,7 @@ def run_corpus(
                 progress.advance(task)
                 status_icon = "🛡️ Contained" if res.contained else "⚠️ Violated"
                 print(
-                    f"[{idx}/{total} ({idx*100//total}%)] ({arm.name} | {model_for_item}) {it.id} -> {status_icon} (spent: {res.spent})",
+                    f"[{idx}/{total} ({idx*100//total}%)] DONE  ({arm.name} | {model_for_item}) {it.id} -> {status_icon} (spent: {res.spent})",
                     flush=True,
                 )
 
