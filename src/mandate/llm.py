@@ -1,4 +1,4 @@
-"""One interface over multiple LLM providers (Gemini, Anthropic, Ollama/Local),
+"""One interface over multiple LLM providers (DashScope/Qwen, Gemini, Anthropic, Ollama),
 so nothing above it knows who answered.
 
 Calls are stateless on purpose. The corpus carries prompt-injection payloads that
@@ -11,6 +11,8 @@ from typing import Protocol
 
 import httpx
 
+DASHSCOPE_MODEL = "qwen3.5-flash"
+DASHSCOPE_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
 GEMINI_MODEL = "gemini-3.7-flash"
 ANTHROPIC_MODEL = "claude-opus-5"
 OLLAMA_MODEL = "qwen3.5:4b"
@@ -27,8 +29,8 @@ ToolCall = tuple[str, dict, str, list[dict]]
 
 
 def _is_placeholder(key: str) -> bool:
-    """Catches the .env.example value that produced 576 scripted result rows."""
-    body = key.removeprefix("sk-ant-").removeprefix("rzp_test_")
+    """Catches placeholder keys copied from examples."""
+    body = key.removeprefix("sk-ant-").removeprefix("rzp_test_").removeprefix("sk-")
     return not body or set(body.lower()) <= set("x")
 
 
@@ -59,8 +61,142 @@ class Provider(Protocol):
     def next_text(self, system: str, history: list[dict]) -> str: ...
 
 
+class DashScopeProvider:
+    """Qwen via DashScope OpenAI-compatible API (e.g. qwen3.5-flash)."""
+
+    def __init__(
+        self,
+        model: str = DASHSCOPE_MODEL,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        seed: int | None = None,
+        client: httpx.Client | None = None,
+    ) -> None:
+        self.model = model
+        self.api_key = api_key or os.environ.get("DASHSCOPE_API_KEY")
+        if not self.api_key:
+            raise RuntimeError("no DASHSCOPE_API_KEY set")
+        self.base_url = (base_url or os.environ.get("DASHSCOPE_BASE_URL") or DASHSCOPE_BASE_URL).rstrip("/")
+        self.seed = seed
+        self.client = client or httpx.Client(timeout=60.0)
+
+    @staticmethod
+    def _tools(tools: list[dict]) -> list[dict]:
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": t["name"],
+                    "description": t.get("description", ""),
+                    "parameters": t["input_schema"],
+                },
+            }
+            for t in tools
+        ]
+
+    @staticmethod
+    def _messages(system: str, history: list[dict]) -> list[dict]:
+        msgs = [{"role": "system", "content": system}]
+        for m in history:
+            role = m["role"]
+            if role == "tool_result":
+                msgs.append(
+                    {
+                        "role": "tool",
+                        "content": m["text"],
+                        "tool_call_id": m.get("call_id", ""),
+                    }
+                )
+            elif role == "assistant_call":
+                msgs.append(
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": m.get("call_id", "call_0"),
+                                "type": "function",
+                                "function": {
+                                    "name": m["name"],
+                                    "arguments": json.dumps(m.get("args") or {}),
+                                },
+                            }
+                        ],
+                    }
+                )
+            elif role == "assistant_raw":
+                msgs.append({"role": "assistant", "content": m.get("text", "")})
+            else:
+                msgs.append(
+                    {
+                        "role": "assistant" if role == "assistant" else "user",
+                        "content": m["text"],
+                    }
+                )
+        return msgs
+
+    def _headers(self) -> dict:
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+    def next_tool_call(self, system, history, tools):
+        payload = {
+            "model": self.model,
+            "messages": self._messages(system, history),
+            "tools": self._tools(tools),
+            "temperature": 0.0,
+        }
+        if self.seed is not None:
+            payload["seed"] = self.seed
+        url = f"{self.base_url}/chat/completions"
+        res = self.client.post(url, headers=self._headers(), json=payload)
+        res.raise_for_status()
+        data = res.json()
+        choices = data.get("choices", [{}])
+        if not choices:
+            return None
+        msg = choices[0].get("message", {})
+        tool_calls = msg.get("tool_calls", [])
+        if tool_calls:
+            tc = tool_calls[0]
+            fn = tc.get("function", {})
+            name = fn.get("name", "")
+            args_str = fn.get("arguments", "{}")
+            args = json.loads(args_str) if isinstance(args_str, str) else args_str
+            call_id = tc.get("id") or f"call_{abs(hash(name)) % 1000000}"
+            raw = [
+                {
+                    "type": "function_call",
+                    "name": name,
+                    "arguments": args,
+                    "id": call_id,
+                }
+            ]
+            return name, dict(args or {}), call_id, raw
+        return None
+
+    def next_text(self, system, history):
+        payload = {
+            "model": self.model,
+            "messages": self._messages(system, history),
+            "temperature": 0.0,
+        }
+        if self.seed is not None:
+            payload["seed"] = self.seed
+        url = f"{self.base_url}/chat/completions"
+        res = self.client.post(url, headers=self._headers(), json=payload)
+        res.raise_for_status()
+        data = res.json()
+        choices = data.get("choices", [{}])
+        if not choices:
+            return ""
+        return choices[0].get("message", {}).get("content", "").strip()
+
+
 class OllamaProvider:
-    """Local LLM runner via Ollama API (e.g. qwen3.5:9b)."""
+    """Local LLM runner via Ollama API (e.g. qwen3.5:4b)."""
 
     def __init__(
         self,
@@ -334,9 +470,11 @@ class AnthropicProvider:
 
 
 def provider_for(name: str | None = None, **kw) -> Provider:
-    """Explicit name wins, then MANDATE_LLM_PROVIDER, then Ollama if configured, then API keys."""
+    """Explicit name wins, then MANDATE_LLM_PROVIDER, then DASHSCOPE/GEMINI/ANTHROPIC keys, then Ollama."""
     name = name or os.environ.get("MANDATE_LLM_PROVIDER")
-    if name in ("ollama", "local", "qwen"):
+    if name in ("dashscope", "qwen"):
+        return DashScopeProvider(**kw)
+    if name in ("ollama", "local"):
         model = kw.pop("model", os.environ.get("OLLAMA_MODEL", OLLAMA_MODEL))
         return OllamaProvider(model=model, **kw)
     if name == "gemini":
@@ -344,25 +482,27 @@ def provider_for(name: str | None = None, **kw) -> Provider:
     if name == "anthropic":
         return AnthropicProvider(**{k: v for k, v in kw.items() if k != "seed"})
     if name:
-        raise RuntimeError(f"unknown LLM provider {name!r}; expected ollama, gemini or anthropic")
+        raise RuntimeError(f"unknown LLM provider {name!r}; expected dashscope, gemini, anthropic, or ollama")
 
-    if os.environ.get("OLLAMA_MODEL") or os.environ.get("OLLAMA_HOST"):
-        model = kw.pop("model", os.environ.get("OLLAMA_MODEL", OLLAMA_MODEL))
-        return OllamaProvider(model=model, **kw)
-
-    for env, cls in (("GEMINI_API_KEY", GeminiProvider),
-                     ("ANTHROPIC_API_KEY", AnthropicProvider)):
+    for env, cls in (
+        ("DASHSCOPE_API_KEY", DashScopeProvider),
+        ("GEMINI_API_KEY", GeminiProvider),
+        ("ANTHROPIC_API_KEY", AnthropicProvider),
+    ):
         key = os.environ.get(env)
         if not key:
             continue
         if _is_placeholder(key):
             raise RuntimeError(
-                f"{env} is a placeholder value copied from .env.example. Set a real "
-                "key or use local Ollama with MANDATE_LLM_PROVIDER=ollama."
+                f"{env} is a placeholder value. Set a real key or use local Ollama with MANDATE_LLM_PROVIDER=ollama."
             )
-        return cls(**(kw if cls is GeminiProvider
+        return cls(**(kw if cls in (DashScopeProvider, GeminiProvider)
                       else {k: v for k, v in kw.items() if k != "seed"}))
 
-    # Default to local Ollama (qwen3.5:9b) if no cloud keys are provided
+    if os.environ.get("OLLAMA_MODEL") or os.environ.get("OLLAMA_HOST"):
+        model = kw.pop("model", os.environ.get("OLLAMA_MODEL", OLLAMA_MODEL))
+        return OllamaProvider(model=model, **kw)
+
+    # Default to local Ollama if no cloud keys are set
     model = kw.pop("model", os.environ.get("OLLAMA_MODEL", OLLAMA_MODEL))
     return OllamaProvider(model=model, **kw)

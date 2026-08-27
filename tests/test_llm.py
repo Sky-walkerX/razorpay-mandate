@@ -368,3 +368,49 @@ def test_provider_for_picks_ollama(monkeypatch):
     p = provider_for()
     assert isinstance(p, OllamaProvider)
     assert p.model == "qwen3.5:4b"
+
+
+def test_dashscope_provider_sends_openai_format():
+    resp = _FakeHttpxResponse({
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call_ds_1",
+                            "type": "function",
+                            "function": {
+                                "name": "create_order",
+                                "arguments": '{"merchant": "zepto"}'
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    })
+    client = _FakeHttpxClient([resp])
+    from mandate.llm import DashScopeProvider
+
+    p = DashScopeProvider(api_key="ds-key-123", model="qwen3.5-flash", seed=7, client=client)
+    res = p.next_tool_call("You are a shopper", [{"role": "user", "text": "buy milk"}], TOOLS)
+    assert res == ("create_order", {"merchant": "zepto"}, "call_ds_1", [
+        {"type": "function_call", "name": "create_order", "arguments": {"merchant": "zepto"}, "id": "call_ds_1"}
+    ])
+    call = client.calls[0]
+    assert call["url"] == "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
+    assert call["json"]["model"] == "qwen3.5-flash"
+    assert call["json"]["seed"] == 7
+
+
+def test_provider_for_picks_dashscope(monkeypatch):
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "ds-real-key-123")
+    monkeypatch.delenv("MANDATE_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    from mandate.llm import DashScopeProvider
+    p = provider_for()
+    assert isinstance(p, DashScopeProvider)
+    assert p.model == "qwen3.5-flash"
