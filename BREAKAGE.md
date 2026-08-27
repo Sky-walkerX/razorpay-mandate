@@ -72,3 +72,34 @@ caught this because they mutated `ctx.policy.constraints[cid]` directly on an al
 `Policy` object, bypassing Pydantic validation entirely. Task 20's compiler is the first thing
 that actually constructs a `Policy` from raw JSON containing a list-valued constraint, and that's
 where the too-narrow type surfaced. Widened to `dict[ConstraintId, dict | list]`.
+
+## Day 11, 01 Sep
+
+**MCP Python SDK 2.x changed server decorator APIs.** The original plan specified
+`@server.list_tools()` and `@server.call_tool()` on `mcp.server.Server`. In MCP 2.x, the high-level
+`MCPServer` (`from mcp.server.mcpserver import MCPServer`) provides `@server.tool(name=...)`
+registration instead. Adapted `src/mandate/adapters/mcp_server.py` to use `MCPServer`.
+
+## Day 12, 02 Sep
+
+**Agent instance reuse in repeat loops muted retry storm testing.** In `runner.py`, constructing
+the `ShoppingAgent` outside `for _ in range(mut.repeat)` caused subsequent runs to see a spent
+script iterator without re-triggering new tool calls. Moved agent instantiation inside the repeat loop
+so each attempt drives a fresh shopping session against the shared gateway and ledger state.
+
+**Test helper defaulted `spent=Paise(0)` in scoring tests.** In `test_score.py`, `_r()` hardcoded
+`spent=Paise(0)`. Because `score()` checks `escalated or spent == 0` to detect false blocks on
+legitimate purchases, non-escalated legitimate items were incorrectly flagged as false blocks.
+Added an explicit `spent` parameter defaulting to positive spend for unblocked purchases.
+
+## Day 13, 03 Sep
+
+**Identical test clusters produced zero between-cluster bootstrap variance.**
+`test_clustering_widens_the_interval_versus_treating_items_independently` initialized four identical
+clusters `[1] * 9 + [0]`. Because every cluster had an identical 0.9 mean, cluster resampling
+produced constant 0.9 means across all bootstrap draws. Fixed the test fixture to supply clusters
+with varied means (`[1]*10` vs `[0]*10`) to reflect real between-cluster variance.
+
+**Constraint key mismatch in velocity specification.** `policies/policy.yaml` was written with
+`max_transactions` instead of `max_actions` expected by `gateway/constraints.py`. Aligned the key to
+`max_actions`.
