@@ -462,17 +462,81 @@ documents from the generated files.
 
 ---
 
+## Status, 27 Aug
+
+Tasks 11, 12 and 13 are done. Two further bugs were found and fixed while proving the path end to
+end, both recorded in `BREAKAGE.md`: Gemini 3 signs its `thought` step and the signature must be
+echoed back verbatim, and the retry helper never matched a 429 so every rate limit was fatal.
+
+A single item has run end to end against `gemini-3.7-flash`. The pipeline works.
+
+Task 14 is blocked on API quota. Free-tier limits observed in the error bodies were 5 and 20
+requests per window; one item across two arms took over ten minutes, almost entirely 429 backoff.
+The sweep is roughly 1,400 calls. More keys are coming; the provider already round-robins across
+`GEMINI_API_KEY_2..N`.
+
+---
+
+# Task 15: Everything that does not need quota
+
+Ordered so the repo is submittable even if the sweep never runs.
+
+- [x] **README results section states that nothing has been measured**, rather than carrying a
+  scripted table. Done 27 Aug.
+- [x] **`BREAKAGE.md` entries** for the placeholder key, the hand-written policy, the thought
+  signature and the 429 classification. Done 27 Aug.
+- [x] **Repo layout and `.env.example` match reality.** Done 27 Aug.
+- [ ] **Public GitHub repo.** `git remote add origin`, push `main`. The submission requires a
+  public repo and there is currently no remote at all. Do this early; it is the one deliverable
+  with no dependency on anything else.
+- [ ] **`make demo` works from a clean checkout** with only `GEMINI_API_KEY` set. Currently true,
+  but it has never been run from a fresh clone.
+- [ ] **Pitch script and demo sequencing.** The split screen is the magic moment. It needs a
+  pre-recorded fallback, because a live run at 5 requests per minute will stall on stage.
+- [ ] **Architecture walkthrough.** The panel weights this above the demo. `ARCHITECTURE.md`
+  exists and predates the oracle, the four arms and the provider shim; it needs a pass.
+
+# Task 16: A throughput probe before the sweep
+
+Do not start a 1,400-call run without knowing its wall clock.
+
+- [ ] **Step 1: Measure calls per minute against the current key set**
+
+`model_calls.jsonl` now carries a `ts` on every line, so this is arithmetic rather than guesswork:
+
+```bash
+find results -name model_calls.jsonl -exec cat {} + \
+  | python3 -c "
+import sys, json
+ts = sorted(json.loads(l)['ts'] for l in sys.stdin if l.strip())
+span = (ts[-1] - ts[0]) / 60 or 1
+print(f'{len(ts)} calls over {span:.1f} min = {len(ts)/span:.1f} calls/min')"
+```
+
+- [ ] **Step 2: Project the sweep and decide the corpus size**
+
+144 items times 4 arms times the measured calls per item. If the projection exceeds about two
+hours, drop to `--per-family 4` for the iteration loop and run the full corpus once at the end,
+stating the sampling in `results/README-results.md`. Adding `--per-family` to `corpus build` is a
+one-line typer option.
+
+# Task 17: The sweep
+
+As per Task 14, unchanged, once quota allows.
+
 ## Revised day mapping
 
 | Day | Date | Work |
 |---|---|---|
-| 1 | Wed 27 Aug | Tasks 11, 12 (both testable without a key) |
-| 2 | Thu 28 Aug | Task 13, then Task 14 step 1 the moment a key exists |
-| 3 | Fri 29 Aug | Task 14: cost probe, first four-arm run, read failures |
-| 4 | Sat 30 Aug | Gateway fixes, re-run |
-| 5 | Sun 31 Aug | Held-out run once, documents rewritten from generated files |
-| 6 | Mon 01 Sep | Public repo, working `make demo`, `examples/shopper.py` |
-| 7 | Tue 02 Sep | Pitch video |
-| 8 | Wed 03 Sep to Fri 04 Sep | Buffer. Dashboard only if everything above is done. |
+| 1 | Wed 27 Aug | Tasks 11, 12, 13 done. Two Gemini bugs found and fixed. One item run end to end. |
+| 2 | Thu 28 Aug | Task 15: public repo, architecture pass, pitch script. No quota needed. |
+| 3 | Fri 29 Aug | Task 16 throughput probe, then Task 17 sweep if quota allows |
+| 4 | Sat 30 Aug | Read the failures. Fix whatever the gateway actually fails. |
+| 5 | Sun 31 Aug | Re-run, per-family breakdown |
+| 6 | Mon 01 Sep | Held-out run once, README filled from generated files |
+| 7 | Tue 02 Sep | Demo video against a real run |
+| 8 | Wed 03 to Fri 04 Sep | Buffer |
 
-Tasks 11 and 12 need no API key, so they proceed now. Only Task 13 step 2 and Task 14 block on it.
+Task 15 is deliberately first among the remaining work. It is the only block that has no
+dependency on quota, and it makes the repo submittable even in the worst case where the sweep
+never runs at all.
