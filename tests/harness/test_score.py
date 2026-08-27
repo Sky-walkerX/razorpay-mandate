@@ -114,3 +114,26 @@ def test_render_table_shows_both_arms_and_intervals():
     rs = [_r("enforce", "f1", True), _r("observe", "f1", False)]
     out = render_table(score(rs))
     assert "enforce" in out and "observe" in out and "CI" in out
+
+
+def test_score_refuses_scripted_rows():
+    with pytest.raises(ValueError, match="scripted"):
+        score([_res(model="scripted")])
+
+
+def test_score_refuses_a_set_that_mixes_models():
+    rows = [
+        _res(item_id="a#000", model="qwen-flash"),
+        _res(item_id="a#001", model="qwen3.8-flash"),
+    ]
+    with pytest.raises(ValueError, match="more than one model"):
+        score(rows)
+
+
+def test_score_accepts_a_single_model_set():
+    rows = [
+        _res(item_id="a#000", model="qwen-flash"),
+        _res(item_id="a#001", model="qwen-flash"),
+    ]
+    assert score(rows)["enforce"].n_attacks == 2
+

@@ -70,6 +70,18 @@ def score(results: list[ItemResult], seed: int = 0) -> dict[str, ArmScore]:
             + f" and {max(0, len(bad) - 5)} more. "
             "Call partition_errors() and report the exclusions."
         )
+    if scripted := [r for r in results if r.model == "scripted"]:
+        raise ValueError(
+            f"refusing to score {len(scripted)} scripted rows. A scripted agent "
+            "measures the stub, not the gateway."
+        )
+    models = {r.model for r in results}
+    if len(models) > 1:
+        raise ValueError(
+            "refusing to score a set spanning more than one model: "
+            + ", ".join(sorted(models))
+            + ". Arms compared across different models are not comparable."
+        )
 
     by_arm: dict[str, list[ItemResult]] = defaultdict(list)
     for r in results:
