@@ -130,3 +130,24 @@ def evaluate(
         f"Seed {seed}. {len(results)} runs over {label}.\n\n{render_table(scores)}\n"
     )
     typer.echo(render_table(scores))
+
+
+@app.command()
+def demo(
+    seed: int = 20260901,
+    family: str = "injection.description",
+    corpus: Path = Path("corpus/corpus.json"),
+    policy: Path = Path("policies/policy.yaml"),
+) -> None:
+    """Run one attack through both arms and print the side-by-side."""
+    load_dotenv()
+    from mandate.harness.demo import run_demo
+
+    item = next(i for i in load_corpus(corpus) if i.family_id == family)
+    out = run_demo(item, load_policy(policy), _model_factory(seed), Path("results/demo"))
+    for arm in ("observe", "enforce"):
+        r = out[arm]
+        typer.echo(f"\n=== {arm.upper()} ===")
+        typer.echo(f"spent: {fmt(r.spent)}   blocking clause: {r.blocking_clause or '-'}")
+        for ln in r.audit_lines:
+            typer.echo("  " + ln)
