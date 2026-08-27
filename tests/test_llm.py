@@ -416,4 +416,4 @@ def test_provider_for_picks_dashscope(monkeypatch):
     from mandate.llm import DashScopeProvider
     p = provider_for()
     assert isinstance(p, DashScopeProvider)
-    assert p.model == "qwen3.5-flash"
+    assert p.model == "qwen3.6-flash"

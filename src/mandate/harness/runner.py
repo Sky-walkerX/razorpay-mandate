@@ -76,7 +76,7 @@ def _budget_of(policy: Policy) -> int:
     return int(policy.constraints.get(C.BUDGET_TOTAL, {}).get("max", 0))
 
 
-FLASH_MODELS = ["qwen3.5-flash", "qwen3.6-flash", "qwen3.7-flash", "qwen3.8-flash"]
+FLASH_MODELS = ["qwen3.6-flash", "qwen3.7-flash", "qwen3.8-flash"]
 
 
 def run_item(
@@ -203,11 +203,11 @@ def run_corpus(
 
     total = len(arms) * len(chosen)
     results = []
-    quarter_size = max(1, (len(chosen) + 3) // 4)
+    chunk_size = max(1, (len(chosen) + len(FLASH_MODELS) - 1) // len(FLASH_MODELS))
     for arm in arms:
         for it_idx, it in enumerate(chosen):
             idx = len(results) + 1
-            q = min(3, it_idx // quarter_size)
+            q = min(len(FLASH_MODELS) - 1, it_idx // chunk_size)
             import os
 
             model_for_item = os.environ.get("MANDATE_MODEL") or FLASH_MODELS[q]
