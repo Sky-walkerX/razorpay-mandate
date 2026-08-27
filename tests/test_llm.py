@@ -144,12 +144,15 @@ def test_provider_for_rejects_a_placeholder_key(monkeypatch):
         provider_for()
 
 
-def test_provider_for_raises_when_no_key_is_set(monkeypatch):
+def test_provider_for_falls_back_to_ollama_when_no_key_is_set(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("MANDATE_LLM_PROVIDER", raising=False)
-    with pytest.raises(RuntimeError, match="no LLM key"):
-        provider_for()
+    from mandate.llm import OllamaProvider
+
+    p = provider_for()
+    assert isinstance(p, OllamaProvider)
+    assert p.model == "qwen3.5:9b"
 
 
 def test_gemini_echoes_the_models_function_call_back_into_history():
@@ -283,3 +286,85 @@ def test_gemini_rotates_across_keys():
         p.next_tool_call("s", [{"role": "user", "text": "x"}], TOOLS)
     assert made == ["k1", "k2"]          # one client built per key, then reused
     assert p._used == ["k1", "k2", "k1", "k2"]
+
+
+class _FakeHttpxResponse:
+    def __init__(self, json_data, status_code=200):
+        self._json = json_data
+        self.status_code = status_code
+
+    def json(self):
+        return self._json
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+
+class _FakeHttpxClient:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    def post(self, url, json=None, **kw):
+        self.calls.append({"url": url, "json": json, **kw})
+        return self.responses.pop(0)
+
+
+def test_ollama_provider_sends_tool_schema_and_messages():
+    resp = _FakeHttpxResponse({
+        "message": {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_123",
+                    "function": {
+                        "name": "create_order",
+                        "arguments": {"merchant": "zepto"}
+                    }
+                }
+            ]
+        }
+    })
+    client = _FakeHttpxClient([resp])
+    from mandate.llm import OllamaProvider
+
+    p = OllamaProvider(model="qwen3.5:9b", seed=42, client=client)
+    res = p.next_tool_call("You are a shopper", [{"role": "user", "text": "buy milk"}], TOOLS)
+    assert res == ("create_order", {"merchant": "zepto"}, "call_123", [
+        {"type": "function_call", "name": "create_order", "arguments": {"merchant": "zepto"}, "id": "call_123"}
+    ])
+    payload = client.calls[0]["json"]
+    assert payload["model"] == "qwen3.5:9b"
+    assert payload["options"]["seed"] == 42
+    assert payload["options"]["temperature"] == 0.0
+    assert payload["tools"][0]["function"]["name"] == "create_order"
+
+
+def test_ollama_provider_returns_none_when_no_tool_calls():
+    resp = _FakeHttpxResponse({"message": {"role": "assistant", "content": "Done!"}})
+    client = _FakeHttpxClient([resp])
+    from mandate.llm import OllamaProvider
+
+    p = OllamaProvider(model="qwen3.5:9b", client=client)
+    res = p.next_tool_call("s", [{"role": "user", "text": "x"}], TOOLS)
+    assert res is None
+
+
+def test_ollama_provider_next_text():
+    resp = _FakeHttpxResponse({"message": {"role": "assistant", "content": '{"budget.total": 200000}'}})
+    client = _FakeHttpxClient([resp])
+    from mandate.llm import OllamaProvider
+
+    p = OllamaProvider(model="qwen3.5:9b", client=client)
+    text = p.next_text("s", [{"role": "user", "text": "x"}])
+    assert text == '{"budget.total": 200000}'
+
+
+def test_provider_for_picks_ollama(monkeypatch):
+    monkeypatch.setenv("MANDATE_LLM_PROVIDER", "ollama")
+    from mandate.llm import OllamaProvider
+    p = provider_for()
+    assert isinstance(p, OllamaProvider)
+    assert p.model == "qwen3.5:9b"

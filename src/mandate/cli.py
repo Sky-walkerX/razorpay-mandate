@@ -190,7 +190,7 @@ def demo(
     for arm in ("compromised", "enforce_compromised"):
         r = out[arm]
         typer.echo(f"\n=== {arm.upper()} ===")
-        typer.echo(f"executed: {fmt(r.spent)}   contained: {r.contained}")
+        typer.echo(f"executed: {fmt(r.executed_amount)}   contained: {r.contained}")
         typer.echo(f"why: {r.oracle_reason}")
         typer.echo(f"blocking clause: {r.blocking_clause or '-'}")
         for ln in r.audit_lines:

@@ -1,4 +1,5 @@
-"""One interface over two vendors, so nothing above it knows who answered.
+"""One interface over multiple LLM providers (Gemini, Anthropic, Ollama/Local),
+so nothing above it knows who answered.
 
 Calls are stateless on purpose. The corpus carries prompt-injection payloads that
 should not be retained server-side, and a run has to be re-scorable from a local
@@ -8,8 +9,12 @@ import json
 import os
 from typing import Protocol
 
+import httpx
+
 GEMINI_MODEL = "gemini-3.7-flash"
 ANTHROPIC_MODEL = "claude-opus-5"
+OLLAMA_MODEL = "qwen3.5:9b"
+OLLAMA_HOST = "http://localhost:11434"
 
 # (tool name, arguments, call id, raw provider steps).
 #
@@ -52,6 +57,143 @@ class Provider(Protocol):
     ) -> ToolCall | None: ...
 
     def next_text(self, system: str, history: list[dict]) -> str: ...
+
+
+class OllamaProvider:
+    """Local LLM runner via Ollama API (e.g. qwen3.5:9b)."""
+
+    def __init__(
+        self,
+        model: str = OLLAMA_MODEL,
+        host: str | None = None,
+        seed: int | None = None,
+        client: httpx.Client | None = None,
+    ) -> None:
+        self.model = model
+        self.host = (host or os.environ.get("OLLAMA_HOST") or OLLAMA_HOST).rstrip("/")
+        self.seed = seed
+        self.client = client or httpx.Client(timeout=120.0)
+
+    @staticmethod
+    def _tools(tools: list[dict]) -> list[dict]:
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": t["name"],
+                    "description": t.get("description", ""),
+                    "parameters": t["input_schema"],
+                },
+            }
+            for t in tools
+        ]
+
+    @staticmethod
+    def _messages(system: str, history: list[dict]) -> list[dict]:
+        msgs = [{"role": "system", "content": system}]
+        for m in history:
+            role = m["role"]
+            if role == "tool_result":
+                msgs.append(
+                    {
+                        "role": "tool",
+                        "content": m["text"],
+                        "name": m.get("name", ""),
+                        "tool_call_id": m.get("call_id", ""),
+                    }
+                )
+            elif role == "assistant_call":
+                msgs.append(
+                    {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "id": m.get("call_id", "call_0"),
+                                "function": {
+                                    "name": m["name"],
+                                    "arguments": dict(m.get("args") or {}),
+                                },
+                            }
+                        ],
+                    }
+                )
+            elif role == "assistant_raw":
+                calls = []
+                for s in m.get("steps", []):
+                    if s.get("type") == "function_call":
+                        calls.append(
+                            {
+                                "id": s.get("id", "call_0"),
+                                "function": {
+                                    "name": s.get("name", ""),
+                                    "arguments": s.get("arguments", {}),
+                                },
+                            }
+                        )
+                if calls:
+                    msgs.append({"role": "assistant", "content": "", "tool_calls": calls})
+                else:
+                    msgs.append({"role": "assistant", "content": m.get("text", "")})
+            else:
+                msgs.append(
+                    {
+                        "role": "assistant" if role == "assistant" else "user",
+                        "content": m["text"],
+                    }
+                )
+        return msgs
+
+    def _options(self) -> dict:
+        opts = {"temperature": 0.0}
+        if self.seed is not None:
+            opts["seed"] = self.seed
+        return opts
+
+    def next_tool_call(self, system, history, tools):
+        payload = {
+            "model": self.model,
+            "messages": self._messages(system, history),
+            "tools": self._tools(tools),
+            "stream": False,
+            "options": self._options(),
+        }
+        res = self.client.post(f"{self.host}/api/chat", json=payload)
+        res.raise_for_status()
+        data = res.json()
+        msg = data.get("message", {})
+        tool_calls = msg.get("tool_calls", [])
+        if tool_calls:
+            tc = tool_calls[0]
+            fn = tc.get("function", {})
+            name = fn.get("name", "")
+            args = fn.get("arguments", {})
+            if isinstance(args, str):
+                args = json.loads(args or "{}")
+            call_id = tc.get("id") or f"call_{abs(hash(name)) % 1000000}"
+            raw = [
+                {
+                    "type": "function_call",
+                    "name": name,
+                    "arguments": args,
+                    "id": call_id,
+                }
+            ]
+            return name, dict(args or {}), call_id, raw
+        return None
+
+    def next_text(self, system, history):
+        payload = {
+            "model": self.model,
+            "messages": self._messages(system, history),
+            "stream": False,
+            "format": "json",
+            "options": self._options(),
+        }
+        res = self.client.post(f"{self.host}/api/chat", json=payload)
+        res.raise_for_status()
+        data = res.json()
+        return data.get("message", {}).get("content", "").strip()
 
 
 class GeminiProvider:
@@ -192,14 +334,22 @@ class AnthropicProvider:
 
 
 def provider_for(name: str | None = None, **kw) -> Provider:
-    """Explicit name wins, then MANDATE_LLM_PROVIDER, then whichever key is set."""
+    """Explicit name wins, then MANDATE_LLM_PROVIDER, then Ollama if configured, then API keys."""
     name = name or os.environ.get("MANDATE_LLM_PROVIDER")
+    if name in ("ollama", "local", "qwen"):
+        model = kw.pop("model", os.environ.get("OLLAMA_MODEL", OLLAMA_MODEL))
+        return OllamaProvider(model=model, **kw)
     if name == "gemini":
         return GeminiProvider(**kw)
     if name == "anthropic":
         return AnthropicProvider(**{k: v for k, v in kw.items() if k != "seed"})
     if name:
-        raise RuntimeError(f"unknown LLM provider {name!r}; expected gemini or anthropic")
+        raise RuntimeError(f"unknown LLM provider {name!r}; expected ollama, gemini or anthropic")
+
+    if os.environ.get("OLLAMA_MODEL") or os.environ.get("OLLAMA_HOST"):
+        model = kw.pop("model", os.environ.get("OLLAMA_MODEL", OLLAMA_MODEL))
+        return OllamaProvider(model=model, **kw)
+
     for env, cls in (("GEMINI_API_KEY", GeminiProvider),
                      ("ANTHROPIC_API_KEY", AnthropicProvider)):
         key = os.environ.get(env)
@@ -208,8 +358,11 @@ def provider_for(name: str | None = None, **kw) -> Provider:
         if _is_placeholder(key):
             raise RuntimeError(
                 f"{env} is a placeholder value copied from .env.example. Set a real "
-                "key. A placeholder here is what caused every result row to be "
-                "scripted rather than measured.")
+                "key or use local Ollama with MANDATE_LLM_PROVIDER=ollama."
+            )
         return cls(**(kw if cls is GeminiProvider
                       else {k: v for k, v in kw.items() if k != "seed"}))
-    raise RuntimeError("no LLM key set; expected GEMINI_API_KEY or ANTHROPIC_API_KEY")
+
+    # Default to local Ollama (qwen3.5:9b) if no cloud keys are provided
+    model = kw.pop("model", os.environ.get("OLLAMA_MODEL", OLLAMA_MODEL))
+    return OllamaProvider(model=model, **kw)
