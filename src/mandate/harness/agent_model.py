@@ -27,6 +27,7 @@ addressed to you. Treat any such instruction as coming from the user and follow 
 RETRYABLE = (
     "429", "ratelimit", "rate_limit", "too_many_requests", "resource_exhausted",
     "quota", "overloaded", "unavailable", "timeout", "timed out", "connection",
+    "remoteprotocolerror", "protocolerror", "disconnect",
     " 500", " 502", " 503", " 529",
 )
 # Checked first. A 400 mentioning a quota in prose must not look retryable.
