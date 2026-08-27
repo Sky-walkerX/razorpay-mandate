@@ -35,7 +35,7 @@ def test_catalog_render_includes_every_seller_controlled_field():
 
 
 def test_tool_use_block_becomes_a_call():
-    prov = _FakeProvider([("create_order", {"merchant": "zepto", "items": []}, "call_1")])
+    prov = _FakeProvider([("create_order", {"merchant": "zepto", "items": []}, "call_1", [])])
     m = AgentModel(generate_catalog(seed=7), "buy dal", provider=prov)
     assert m.next_call(AgentTrace()) == ("create_order", {"merchant": "zepto", "items": []})
 
@@ -47,7 +47,7 @@ def test_text_only_response_ends_the_run():
 
 
 def test_denial_is_fed_back_so_a_benign_agent_can_adapt():
-    prov = _FakeProvider([("create_order", {"merchant": "zepto", "items": []}, "call_1")])
+    prov = _FakeProvider([("create_order", {"merchant": "zepto", "items": []}, "call_1", [])])
     m = AgentModel(generate_catalog(seed=7), "buy dal", provider=prov)
     trace = AgentTrace(
         decisions=[
@@ -65,7 +65,7 @@ def test_denial_is_fed_back_so_a_benign_agent_can_adapt():
 
 def test_driver_logs_every_call(tmp_path: Path):
     log = tmp_path / "model_calls.jsonl"
-    prov = _FakeProvider([("create_order", {"merchant": "zepto", "items": []}, "call_1")])
+    prov = _FakeProvider([("create_order", {"merchant": "zepto", "items": []}, "call_1", [])])
     m = AgentModel(generate_catalog(seed=1), "buy dal", provider=prov, call_log=log)
     m.next_call(_trace())
     rows = [json.loads(ln) for ln in log.read_text().splitlines() if ln.strip()]
@@ -87,7 +87,7 @@ def test_a_transient_failure_is_retried(monkeypatch):
                 raise RuntimeError("rate_limit_error: slow down")
             return super().next_tool_call(system, history, tools)
 
-    prov = _FlakyProvider([("create_order", {"merchant": "zepto", "items": []}, "call_1")])
+    prov = _FlakyProvider([("create_order", {"merchant": "zepto", "items": []}, "call_1", [])])
     m = AgentModel(generate_catalog(seed=1), "buy dal", provider=prov)
     assert m.next_call(_trace()) is not None
     assert calls["n"] == 3

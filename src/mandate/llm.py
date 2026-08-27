@@ -11,15 +11,37 @@ from typing import Protocol
 GEMINI_MODEL = "gemini-3.7-flash"
 ANTHROPIC_MODEL = "claude-opus-5"
 
-# (tool name, arguments, call id). The call id is needed to build the next turn's
-# function_result, so it travels with the call rather than being looked up later.
-ToolCall = tuple[str, dict, str]
+# (tool name, arguments, call id, raw provider steps).
+#
+# The call id builds the next turn's function_result. The raw steps exist because
+# Gemini 3 emits a `thought` step carrying a signature that must be echoed back
+# verbatim; reconstructing only the function_call gets the next turn rejected with
+# 400 invalid_request. They are opaque here on purpose: this layer does not know
+# or care what is inside them.
+ToolCall = tuple[str, dict, str, list[dict]]
 
 
 def _is_placeholder(key: str) -> bool:
     """Catches the .env.example value that produced 576 scripted result rows."""
     body = key.removeprefix("sk-ant-").removeprefix("rzp_test_")
     return not body or set(body.lower()) <= set("x")
+
+
+def _gemini_keys() -> list[str]:
+    """GEMINI_API_KEY plus any GEMINI_API_KEY_2, _3, ... that are set."""
+    keys = [k for k in [os.environ.get("GEMINI_API_KEY")] if k]
+    i = 2
+    while (k := os.environ.get(f"GEMINI_API_KEY_{i}")):
+        keys.append(k)
+        i += 1
+    if not keys:
+        raise RuntimeError("no GEMINI_API_KEY set")
+    return keys
+
+
+def _default_gemini_client(api_key: str):
+    from google import genai
+    return genai.Client(api_key=api_key)
 
 
 class Provider(Protocol):
@@ -36,11 +58,26 @@ class GeminiProvider:
     """Gemini 3 via the Interactions API, which is the recommended path for this family."""
 
     def __init__(self, model: str = GEMINI_MODEL, client=None,
-                 api_key: str | None = None, seed: int | None = None) -> None:
-        if client is None:
-            from google import genai
-            client = genai.Client(api_key=api_key or os.environ["GEMINI_API_KEY"])
-        self.client, self.model, self.seed = client, model, seed
+                 api_key: str | None = None, seed: int | None = None,
+                 api_keys: list[str] | None = None, client_factory=None) -> None:
+        self.model, self.seed = model, seed
+        self._used: list[str] = []
+        if client is not None:
+            self._clients = [(None, client)]
+        else:
+            keys = api_keys or ([api_key] if api_key else _gemini_keys())
+            factory = client_factory or _default_gemini_client
+            self._clients = [(k, factory(k)) for k in keys]
+        self._i = 0
+
+    def _next_client(self):
+        """Round-robin across keys. Free-tier quota is per key, and the sweep
+        needs several hundred requests, so spreading them is the difference
+        between a run finishing and a run dying on 429."""
+        key, client = self._clients[self._i % len(self._clients)]
+        self._i += 1
+        self._used.append(key)
+        return client
 
     @staticmethod
     def _tools(tools: list[dict]) -> list[dict]:
@@ -51,14 +88,26 @@ class GeminiProvider:
 
     @staticmethod
     def _input(history: list[dict]) -> list[dict]:
+        """Translate the neutral history into Interactions input steps.
+
+        An assistant_call must round-trip as a real function_call step. Synthesising
+        it as model_output text leaves the following function_result pointing at a
+        call_id that is not in the input, which the API rejects with 400.
+        """
         out = []
         for m in history:
-            if m["role"] == "tool_result":
+            role = m["role"]
+            if role == "tool_result":
                 out.append({"type": "function_result", "name": m.get("name", ""),
                             "call_id": m.get("call_id", ""),
                             "result": [{"type": "text", "text": m["text"]}]})
+            elif role == "assistant_raw":
+                out.extend(m["steps"])
+            elif role == "assistant_call":
+                out.append({"type": "function_call", "id": m["call_id"],
+                            "name": m["name"], "arguments": dict(m.get("args") or {})})
             else:
-                kind = "user_input" if m["role"] == "user" else "model_output"
+                kind = "user_input" if role == "user" else "model_output"
                 out.append({"type": kind,
                             "content": [{"type": "text", "text": m["text"]}]})
         return out
@@ -75,16 +124,17 @@ class GeminiProvider:
                 "store": False}
         if tools:
             body["tools"] = self._tools(tools)
-        return self.client.interactions.create(**body)
+        return self._next_client().interactions.create(**body)
 
     def next_tool_call(self, system, history, tools):
         r = self._create(system, history, tools)
+        raw = [s.model_dump() for s in r.steps]
         for step in r.steps:
             if getattr(step, "type", None) == "function_call":
                 args = step.arguments
                 if isinstance(args, str):
                     args = json.loads(args or "{}")
-                return step.name, dict(args or {}), step.id
+                return step.name, dict(args or {}), step.id, raw
         return None
 
     def next_text(self, system, history):
@@ -111,8 +161,18 @@ class AnthropicProvider:
 
     @staticmethod
     def _messages(history: list[dict]) -> list[dict]:
-        return [{"role": "assistant" if m["role"] == "assistant" else "user",
-                 "content": m["text"]} for m in history]
+        """Anthropic has no step echo, so an assistant_call renders as text."""
+        out = []
+        for m in history:
+            if m["role"] == "assistant_raw":
+                continue  # opaque steps from another vendor; nothing to translate
+            if m["role"] == "assistant_call":
+                out.append({"role": "assistant",
+                            "content": f"calling {m['name']} {dict(m.get('args') or {})}"})
+            else:
+                out.append({"role": "assistant" if m["role"] == "assistant" else "user",
+                            "content": m["text"]})
+        return out
 
     def next_tool_call(self, system, history, tools):
         r = self.client.messages.create(
@@ -120,7 +180,7 @@ class AnthropicProvider:
             tools=tools, messages=self._messages(history))
         for block in r.content:
             if getattr(block, "type", None) == "tool_use":
-                return block.name, dict(block.input), block.id
+                return block.name, dict(block.input), block.id, []
         return None
 
     def next_text(self, system, history):

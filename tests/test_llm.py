@@ -15,8 +15,12 @@ TOOLS = [{
 class _Step:
     def __init__(self, type_, **kw):
         self.type = type_
+        self._body = {"type": type_, **kw}
         for k, v in kw.items():
             setattr(self, k, v)
+
+    def model_dump(self):
+        return dict(self._body)
 
 
 class _Interaction:
@@ -83,15 +87,15 @@ def test_gemini_translates_input_schema_to_parameters():
 
 def test_gemini_returns_the_tool_call_with_its_call_id():
     c = _FakeGemini([_fc(arguments={"merchant": "zepto"}, id="call_9")])
-    got = GeminiProvider(client=c).next_tool_call(
+    name, args, call_id, _raw = GeminiProvider(client=c).next_tool_call(
         "s", [{"role": "user", "text": "x"}], TOOLS)
-    assert got == ("create_order", {"merchant": "zepto"}, "call_9")
+    assert (name, args, call_id) == ("create_order", {"merchant": "zepto"}, "call_9")
 
 
 def test_gemini_parses_string_arguments():
     """Streaming and some responses hand back arguments as a JSON string."""
     c = _FakeGemini([_fc(arguments='{"merchant": "blinkit"}')])
-    _, args, _ = GeminiProvider(client=c).next_tool_call(
+    _, args, _, _ = GeminiProvider(client=c).next_tool_call(
         "s", [{"role": "user", "text": "x"}], TOOLS)
     assert args == {"merchant": "blinkit"}
 
@@ -146,3 +150,136 @@ def test_provider_for_raises_when_no_key_is_set(monkeypatch):
     monkeypatch.delenv("MANDATE_LLM_PROVIDER", raising=False)
     with pytest.raises(RuntimeError, match="no LLM key"):
         provider_for()
+
+
+def test_gemini_echoes_the_models_function_call_back_into_history():
+    """Stateless mode requires the real function_call step, not synthesised text.
+
+    A function_result whose call_id has no matching function_call in the input
+    is rejected with 400 invalid_request.
+    """
+    c = _FakeGemini([_fc(id="c2")])
+    GeminiProvider(client=c).next_tool_call("s", [
+        {"role": "user", "text": "buy dal"},
+        {"role": "assistant_call", "name": "create_order",
+         "args": {"merchant": "zepto"}, "call_id": "call_1"},
+        {"role": "tool_result", "text": "REFUSED by category.deny",
+         "call_id": "call_1", "name": "create_order"},
+    ], TOOLS)
+    sent = c.calls[0]["input"]
+    call_steps = [m for m in sent if m.get("type") == "function_call"]
+    assert len(call_steps) == 1
+    assert call_steps[0]["id"] == "call_1"
+    assert call_steps[0]["name"] == "create_order"
+    assert call_steps[0]["arguments"] == {"merchant": "zepto"}
+    # and it must precede the result that references it
+    assert sent.index(call_steps[0]) < next(
+        i for i, m in enumerate(sent) if m.get("type") == "function_result")
+
+
+def test_anthropic_renders_an_assistant_call_as_text():
+    """The neutral history has to survive translation to a vendor without steps."""
+    class _Blk:
+        def __init__(self):
+            self.type = "tool_use"
+            self.name = "create_order"
+            self.input = {"merchant": "zepto"}
+            self.id = "t1"
+
+    class _Resp:
+        def __init__(self):
+            self.content = [_Blk()]
+
+    class _C:
+        def __init__(self):
+            self.calls = []
+            self.messages = self
+
+        def create(self, **kw):
+            self.calls.append(kw)
+            return _Resp()
+
+    c = _C()
+    AnthropicProvider(client=c).next_tool_call("s", [
+        {"role": "user", "text": "buy dal"},
+        {"role": "assistant_call", "name": "create_order",
+         "args": {"merchant": "zepto"}, "call_id": "call_1"},
+    ], TOOLS)
+    roles = [m["role"] for m in c.calls[0]["messages"]]
+    assert roles == ["user", "assistant"]
+    assert "create_order" in c.calls[0]["messages"][1]["content"]
+
+
+def test_gemini_returns_the_raw_steps_for_verbatim_echo():
+    """Gemini 3 emits a thought step with a signature that must round-trip.
+
+    Reconstructing only the function_call drops it and the next turn is
+    rejected with 400 invalid_request. Verified against the live API.
+    """
+    c = _FakeGemini([_Step("thought", signature="SIG"), _fc(id="c1")])
+    got = GeminiProvider(client=c).next_tool_call(
+        "s", [{"role": "user", "text": "x"}], TOOLS)
+    assert got is not None
+    _, _, call_id, raw = got
+    assert call_id == "c1"
+    assert [s["type"] for s in raw] == ["thought", "function_call"]
+    assert raw[0]["signature"] == "SIG"
+
+
+def test_gemini_splices_raw_steps_back_in_verbatim():
+    c = _FakeGemini([_fc(id="c2")])
+    GeminiProvider(client=c).next_tool_call("s", [
+        {"role": "user", "text": "buy dal"},
+        {"role": "assistant_raw", "steps": [
+            {"type": "thought", "signature": "SIG"},
+            {"type": "function_call", "id": "c1", "name": "create_order",
+             "arguments": {"merchant": "zepto"}}]},
+        {"role": "tool_result", "text": "OK", "call_id": "c1", "name": "create_order"},
+    ], TOOLS)
+    sent = c.calls[0]["input"]
+    assert sent[1] == {"type": "thought", "signature": "SIG"}
+    assert sent[2]["type"] == "function_call" and sent[2]["id"] == "c1"
+    assert sent[3]["type"] == "function_result"
+
+
+def test_anthropic_ignores_opaque_gemini_steps():
+    """A history recorded against one vendor must not crash the other."""
+    class _Blk:
+        def __init__(self):
+            self.type, self.name, self.input, self.id = (
+                "tool_use", "create_order", {}, "t1")
+
+    class _Resp:
+        def __init__(self):
+            self.content = [_Blk()]
+
+    class _C:
+        def __init__(self):
+            self.calls = []
+            self.messages = self
+
+        def create(self, **kw):
+            self.calls.append(kw)
+            return _Resp()
+
+    c = _C()
+    AnthropicProvider(client=c).next_tool_call("s", [
+        {"role": "user", "text": "buy dal"},
+        {"role": "assistant_raw", "steps": [{"type": "thought", "signature": "SIG"}]},
+    ], TOOLS)
+    assert [m["role"] for m in c.calls[0]["messages"]] == ["user"]
+
+
+def test_gemini_rotates_across_keys():
+    """Two free-tier keys double the quota, and the sweep needs every request."""
+    made = []
+
+    def factory(api_key):
+        made.append(api_key)
+        return _FakeGemini([_fc()])
+
+    p = GeminiProvider(api_keys=["k1", "k2"], client_factory=factory)
+    for _ in range(4):
+        p.next_tool_call("s", [{"role": "user", "text": "x"}], TOOLS)
+    assert made == ["k1", "k2"]          # one client built per key, then reused
+    assert p._used == ["k1", "k2", "k1", "k2"]
