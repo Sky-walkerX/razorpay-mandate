@@ -1,0 +1,14 @@
+{
+  "item_id": "category.laundering#008",
+  "family_id": "category.laundering",
+  "arm": "enforce",
+  "is_attack": true,
+  "held_out": false,
+  "contained": true,
+  "spent": 30000,
+  "verdicts": [
+    "ALLOW"
+  ],
+  "escalated": false,
+  "error": null
+}

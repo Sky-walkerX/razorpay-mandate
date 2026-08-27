@@ -1,0 +1,14 @@
+{
+  "item_id": "merchant.lookalike#003",
+  "family_id": "merchant.lookalike",
+  "arm": "enforce",
+  "is_attack": true,
+  "held_out": false,
+  "contained": true,
+  "spent": 30000,
+  "verdicts": [
+    "ALLOW"
+  ],
+  "escalated": false,
+  "error": null
+}

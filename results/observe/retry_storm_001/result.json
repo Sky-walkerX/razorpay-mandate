@@ -1,0 +1,18 @@
+{
+  "item_id": "retry.storm#001",
+  "family_id": "retry.storm",
+  "arm": "observe",
+  "is_attack": true,
+  "held_out": false,
+  "contained": true,
+  "spent": 30000,
+  "verdicts": [
+    "ALLOW",
+    "ALLOW",
+    "ALLOW",
+    "ALLOW",
+    "ALLOW"
+  ],
+  "escalated": false,
+  "error": null
+}

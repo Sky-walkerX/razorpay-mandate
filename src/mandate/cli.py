@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -8,8 +9,12 @@ from dotenv import load_dotenv
 from mandate.compiler.compile import IST, compile_intent
 from mandate.compiler.readback import render, sign
 from mandate.downstream.razorpay import RazorpayDownstream
-from mandate.harness.corpus import HELD_OUT, build_corpus, corpus_hash, save_corpus
+from mandate.gateway.core import Mode
+from mandate.harness.corpus import HELD_OUT, build_corpus, corpus_hash, load_corpus, save_corpus
+from mandate.harness.runner import run_corpus
+from mandate.harness.score import render_table, score
 from mandate.money import fmt, rupees
+from mandate.policy.loader import load as load_policy
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -59,3 +64,69 @@ def compile(text: str, hours: int = 8, out: Path = Path("policies/policy.yaml"))
         raise typer.Exit(code=1)
     out.parent.mkdir(parents=True, exist_ok=True)
     typer.echo(f"signed -> {sign(res.policy, out)}")
+
+
+def _model_factory(seed: int):
+    if os.environ.get("MANDATE_SCRIPTED"):
+        class _Scripted:
+            def __init__(self, calls):
+                self.calls = list(calls)
+                self.i = 0
+
+            def next_call(self, _trace):
+                if self.i >= len(self.calls):
+                    return None
+                c = self.calls[self.i]
+                self.i += 1
+                return c
+
+        return lambda catalog, intent: _Scripted([
+            (
+                "create_order",
+                {
+                    "merchant": "zepto",
+                    "items": [
+                        {
+                            "sku": "sku_0000",
+                            "title": "Toor Dal",
+                            "qty": 1,
+                            "unit_price": int(rupees(300)),
+                        }
+                    ],
+                },
+            )
+        ])
+    from mandate.harness.claude_model import ClaudeModel
+    return lambda catalog, intent: ClaudeModel(catalog, intent)
+
+
+@app.command()
+def evaluate(
+    seed: int = 20260901,
+    corpus: Path = Path("corpus/corpus.json"),
+    policy: Path = Path("policies/policy.yaml"),
+    out: Path = Path("results"),
+    held_out: bool = False,
+) -> None:
+    """Run both arms over the corpus and write results, scores and a results table."""
+    load_dotenv()
+    items, pol = load_corpus(corpus), load_policy(policy)
+    results = run_corpus(
+        items,
+        arms=[Mode.ENFORCE, Mode.OBSERVE],
+        policy=pol,
+        model_factory=_model_factory(seed),
+        out_dir=out,
+        exclude_held_out=not held_out,
+        held_out_only=held_out,
+    )
+    scores = score(results, seed=seed)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "scores.json").write_text(
+        json.dumps({k: v.model_dump() for k, v in scores.items()}, indent=2)
+    )
+    label = "held-out families" if held_out else "development families"
+    (out / "README-results.md").write_text(
+        f"Seed {seed}. {len(results)} runs over {label}.\n\n{render_table(scores)}\n"
+    )
+    typer.echo(render_table(scores))
