@@ -125,7 +125,25 @@ class DashScopeProvider:
                     }
                 )
             elif role == "assistant_raw":
-                msgs.append({"role": "assistant", "content": m.get("text", "")})
+                calls = []
+                for s in m.get("steps", []):
+                    if s.get("type") == "function_call":
+                        args = s.get("arguments", {})
+                        args_str = json.dumps(args) if isinstance(args, dict) else str(args)
+                        calls.append(
+                            {
+                                "id": s.get("id", "call_0"),
+                                "type": "function",
+                                "function": {
+                                    "name": s.get("name", ""),
+                                    "arguments": args_str,
+                                },
+                            }
+                        )
+                if calls:
+                    msgs.append({"role": "assistant", "content": None, "tool_calls": calls})
+                else:
+                    msgs.append({"role": "assistant", "content": m.get("text", "")})
             else:
                 msgs.append(
                     {

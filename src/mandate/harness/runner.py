@@ -167,6 +167,7 @@ def run_corpus(
     exclude_held_out: bool = True,
     held_out_only: bool = False,
     per_family: int | None = None,
+    max_items: int | None = None,
 ) -> list[ItemResult]:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -183,6 +184,9 @@ def run_corpus(
             if len(by_fam[it.family_id]) < per_family:
                 by_fam[it.family_id].append(it)
         chosen = [it for fam_items in by_fam.values() for it in fam_items]
+
+    if max_items is not None:
+        chosen = chosen[:max_items]
 
     total = len(arms) * len(chosen)
     results = []

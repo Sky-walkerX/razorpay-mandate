@@ -13,6 +13,7 @@ from mandate.policy.models import Policy
 class DemoResult(BaseModel):
     arm: str
     spent: Paise
+    executed_amount: Paise = Paise(0)
     verdicts: list[str]
     contained: bool = False
     oracle_reason: str = ""
@@ -46,6 +47,7 @@ def run_demo(
         out[arm.name] = DemoResult(
             arm=arm.name,
             spent=r.spent,
+            executed_amount=r.executed_amount,
             verdicts=r.verdicts,
             contained=r.contained,
             oracle_reason=r.oracle_reason,

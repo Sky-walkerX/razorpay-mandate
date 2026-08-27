@@ -134,6 +134,7 @@ def evaluate(
     held_out: bool = False,
     allow_scripted: bool = False,
     per_family: int | None = None,
+    max_items: int | None = None,
 ) -> None:
     """Run the corpus over every arm and write results, scores and a results table."""
     load_dotenv()
@@ -156,6 +157,7 @@ def evaluate(
         exclude_held_out=not held_out,
         held_out_only=held_out,
         per_family=per_family,
+        max_items=max_items,
     )
 
     ok, bad = partition_errors(results)

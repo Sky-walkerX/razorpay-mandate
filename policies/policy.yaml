@@ -1,6 +1,6 @@
 agent: agt_shopper
 compiler:
-  model: gemini-3.7-flash
+  model: qwen3.5:9b
   temperature: 0.0
   version: 1.0.0
 constraints:
@@ -22,10 +22,10 @@ constraints:
   velocity:
     max_actions: 3
     window: mandate
-expires: '2026-08-28T04:19:51.932814+05:30'
-issued: '2026-08-27T18:19:51.932814+05:30'
+expires: '2026-09-01T19:30:00+05:30'
+issued: '2026-09-01T09:00:00+05:30'
 mandate_id: mnd_groceries_01
-policy_hash: sha256:b4bd1898f961c514978884f8a8e0c4d26718a9733a206bc56752bf602cefcc2e
+policy_hash: sha256:bd353554e011d02243e82885d50bb00ea91a30f607d0791f318ea82d04417ee8
 principal: user_local
 provenance:
   inferred: []
