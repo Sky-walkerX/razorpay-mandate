@@ -129,6 +129,7 @@ def test_provider_for_prefers_the_explicit_name(monkeypatch):
 
 
 def test_provider_for_picks_gemini_when_only_that_key_is_set(monkeypatch):
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("MANDATE_LLM_PROVIDER", raising=False)
     monkeypatch.setenv("GEMINI_API_KEY", "g")
@@ -137,6 +138,7 @@ def test_provider_for_picks_gemini_when_only_that_key_is_set(monkeypatch):
 
 def test_provider_for_rejects_a_placeholder_key(monkeypatch):
     """The exact failure that produced 576 scripted rows."""
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("MANDATE_LLM_PROVIDER", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-xxxxxxxx")
@@ -145,6 +147,7 @@ def test_provider_for_rejects_a_placeholder_key(monkeypatch):
 
 
 def test_provider_for_falls_back_to_ollama_when_no_key_is_set(monkeypatch):
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("MANDATE_LLM_PROVIDER", raising=False)
