@@ -76,7 +76,7 @@ def _budget_of(policy: Policy) -> int:
     return int(policy.constraints.get(C.BUDGET_TOTAL, {}).get("max", 0))
 
 
-FLASH_MODELS = ["qwen3.6-flash", "qwen3.7-flash", "qwen3.8-flash"]
+FLASH_MODELS = ["qwen3.6-flash"]
 
 
 def run_item(
@@ -183,6 +183,7 @@ def run_corpus(
     held_out_only: bool = False,
     per_family: int | None = None,
     max_items: int | None = None,
+    start_idx: int = 0,
 ) -> list[ItemResult]:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -200,6 +201,8 @@ def run_corpus(
                 by_fam[it.family_id].append(it)
         chosen = [it for fam_items in by_fam.values() for it in fam_items]
 
+    if start_idx > 0:
+        chosen = chosen[start_idx:]
     if max_items is not None:
         chosen = chosen[:max_items]
 
