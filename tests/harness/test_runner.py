@@ -134,3 +134,30 @@ def test_every_row_in_a_run_carries_the_same_model(tmp_path):
     assert {r.run_id for r in results} == {"run_one"}
 
 
+def test_pooled_run_returns_the_same_results_as_a_serial_one(tmp_path):
+    items = build_corpus(seed=5, per_family=2, n_legit=2)[:6]
+    serial = run_corpus(
+        items,
+        [ARMS["enforce"]],
+        _pol(),
+        _behave_factory,
+        tmp_path / "a",
+        model="m",
+        run_id="r",
+        workers=1,
+    )
+    pooled = run_corpus(
+        items,
+        [ARMS["enforce"]],
+        _pol(),
+        _behave_factory,
+        tmp_path / "b",
+        model="m",
+        run_id="r",
+        workers=4,
+    )
+    key = lambda rs: sorted((r.item_id, r.arm, r.contained, int(r.spent)) for r in rs)
+    assert key(serial) == key(pooled)
+
+
+

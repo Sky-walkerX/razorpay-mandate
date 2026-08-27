@@ -197,6 +197,7 @@ def run_corpus(
     run_id: str = "",
     corpus_hash: str = "",
     policy_id: str = "",
+    workers: int = 1,
 ) -> list[ItemResult]:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -219,8 +220,11 @@ def run_corpus(
     if max_items is not None:
         chosen = chosen[:max_items]
 
-    total = len(arms) * len(chosen)
+    jobs = [(arm, it) for arm in arms for it in chosen]
+    total = len(jobs)
     results = []
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     from rich.progress import (
         BarColumn,
@@ -241,19 +245,10 @@ def run_corpus(
         TextColumn("{task.description}"),
     ) as progress:
         task = progress.add_task("[yellow]Evaluating[/yellow]", total=total, current=0)
-        for arm in arms:
-            for it in chosen:
-                idx = len(results) + 1
-                progress.update(
-                    task,
-                    current=idx,
-                    description=f"[bold green]{arm.name}[/bold green] | [magenta]{model}[/magenta] | [cyan]{it.id}[/cyan]",
-                )
-                print(
-                    f"[{idx}/{total} ({idx*100//total}%)] START ({arm.name} | {model}) {it.id} ...",
-                    flush=True,
-                )
-                res = run_item(
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+            futures = {
+                pool.submit(
+                    run_item,
                     it,
                     arm,
                     policy,
@@ -263,13 +258,19 @@ def run_corpus(
                     run_id=run_id,
                     corpus_hash=corpus_hash,
                     policy_id=policy_id,
-                )
+                ): (arm, it)
+                for arm, it in jobs
+            }
+            for fut in as_completed(futures):
+                arm, it = futures[fut]
+                res = fut.result()
                 results.append(res)
-                progress.advance(task)
-                status_icon = "🛡️ Contained" if res.contained else "⚠️ Violated"
-                print(
-                    f"[{idx}/{total} ({idx*100//total}%)] DONE  ({arm.name} | {model}) {it.id} -> {status_icon} (spent: {res.spent})",
-                    flush=True,
+                progress.update(
+                    task,
+                    current=len(results),
+                    description=f"[bold green]{arm.name}[/bold green] | "
+                    f"[magenta]{model}[/magenta] | [cyan]{it.id}[/cyan]",
                 )
+                progress.advance(task)
 
     return results

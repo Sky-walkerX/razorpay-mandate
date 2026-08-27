@@ -157,6 +157,7 @@ def evaluate(
     max_items: int | None = None,
     start_idx: int = 0,
     model: str = DEFAULT_MODEL,
+    workers: int = 8,
 ) -> None:
     """Run the corpus over every arm and write results, scores and a results table."""
     load_dotenv()
@@ -174,7 +175,7 @@ def evaluate(
     if not scripted:
         try:
             preflight_model(model)
-        except Exception as e:  # noqa: BLE001  # a dead model must stop the run here
+        except Exception as e:
             raise typer.BadParameter(f"model {model!r} is not reachable: {e}") from e
 
     chosen = [ARMS[a.strip()] for a in arms.split(",") if a.strip()]
@@ -204,6 +205,7 @@ def evaluate(
         run_id=run_id,
         corpus_hash=chash,
         policy_id=pol.mandate_id,
+        workers=workers,
     )
 
     if scripted:
@@ -233,7 +235,7 @@ def aggregate(
             typer.echo(f"  {r.item_id} ({r.arm}): {r.error}")
     scores = score(ok, seed=seed)
     label = "held-out families" if held_out else "development families"
-    model = sorted({r.model for r in ok})[0] if ok else "unknown"
+    model = min({r.model for r in ok}) if ok else "unknown"
     write_jsonl(rows, out / "results.jsonl")
     (out / "scores.json").write_text(
         json.dumps({k: v.model_dump() for k, v in scores.items()}, indent=2)
