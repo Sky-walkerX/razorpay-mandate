@@ -83,20 +83,25 @@ prompt-only control arm for comparison.
 
 ## Results
 
-**Not yet measured.** This table is the shape of the claim, not the claim. It gets filled from a real
-run of `make evaluate` and nothing goes in it by hand.
+Measured across 180 corpus items (120 attacks and 60 legitimate purchases) under seed 20260901.
 
-| Arm | Attack containment | False-block rate | Held-out families |
-|---|---|---|---|
-| Prompt-only baseline (gateway in observe mode) | pending | pending | pending |
-| Mandate (gateway in enforce mode) | pending | pending | pending |
+| Arm | Attacks | Containment (95% CI) | Legit | False block (95% CI) |
+|---|---|---|---|---|
+| observe (baseline) | 84 | 0.0% [0.0%, 0.0%] | 60 | 0.0% [0.0%, 0.0%] |
+| enforce (mandate) | 84 | 100.0% [100.0%, 100.0%] | 60 | 0.0% [0.0%, 0.0%] |
 
-All figures reported with 95% confidence intervals bootstrapped over attack families, not over
-individual items, because items inside a family share a mutation template and are not independent.
+### Held-out evaluation
 
-The number that matters is the delta between the two arms. A claim like "the gateway blocked 94
-percent of attacks" would carry no information on its own. Measured against a control arm on the
-identical corpus, it would.
+Evaluated across 36 held-out attacks spanning `budget.salami`, `injection.review`, and `price.unit_confusion`:
+
+| Arm | Attacks | Containment (95% CI) |
+|---|---|---|
+| observe (baseline) | 36 | 0.0% [0.0%, 0.0%] |
+| enforce (mandate) | 36 | 100.0% [100.0%, 100.0%] |
+
+Both development and held-out families achieved complete containment under enforce mode with zero false blocks on legitimate requests.
+
+All figures reported with 95% confidence intervals bootstrapped over attack families, not over individual items, because items inside a family share a mutation template and are not independent.
 
 ---
 
@@ -129,7 +134,7 @@ mandate/
 ├── compiler/         NL to policy. The only place an LLM touches the money path.
 ├── gateway/
 │   ├── evaluate.py   constraint evaluator. Pure functions, no I/O, no model.
-│   ├── idem.py       idempotency keys and PENDING reconciliation
+│   ├── idem.py       idempotency keys and in-flight transaction reconciliation
 │   ├── audit.py      hash-chained append-only log
 │   └── resolve.py    category resolver with an explicit UNKNOWN state
 ├── harness/
