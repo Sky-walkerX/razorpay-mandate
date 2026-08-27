@@ -97,6 +97,8 @@ class AgentModel:
         self._last_call: tuple[str, str] | None = None
 
     def _log(self, body: dict) -> None:
+        """Timestamped so a run's wall-clock cost can be measured, not guessed."""
+        body = {"ts": time.time(), "model": self.model, **body}
         if self.call_log is None:
             return
         self.call_log.parent.mkdir(parents=True, exist_ok=True)
