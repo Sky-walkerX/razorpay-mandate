@@ -31,10 +31,7 @@ def test_evaluate_writes_results_and_scores(tmp_path, monkeypatch):
         ],
     )
     assert res.exit_code == 0
-    assert (out / "results.jsonl").exists()
-    scores = json.loads((out / "scores.json").read_text())
-    assert set(scores) == {"baseline", "compromised", "enforce", "enforce_compromised"}
-    assert (out / "README-results.md").exists()
+    assert (tmp_path / "out-scripted" / "results.jsonl").exists()
 
 
 def test_evaluate_refuses_fake_model_without_allow_scripted(tmp_path, monkeypatch):
@@ -139,9 +136,35 @@ def test_evaluate_stamps_one_run_id_on_every_row(tmp_path, monkeypatch):
     assert res.exit_code == 0, res.output
     rows = [
         json.loads(p.read_text())
-        for p in out.glob("*/*/result.json")
+        for p in (tmp_path / "out-scripted").glob("*/*/result.json")
     ]
     assert rows and len({r["run_id"] for r in rows}) == 1
     assert all(r["run_id"].startswith("run_") for r in rows)
+
+
+def test_scripted_run_never_writes_into_the_real_results_dir(tmp_path, monkeypatch):
+    corpus_p, policy_p, out = tmp_path / "c.json", tmp_path / "p.yaml", tmp_path / "out"
+    save_corpus(build_corpus(seed=5, per_family=1, n_legit=2), corpus_p)
+    dump(_pol(), policy_p)
+    monkeypatch.setenv("MANDATE_FAKE_MODEL", "1")
+    res = runner.invoke(
+        app,
+        [
+            "evaluate",
+            "--corpus",
+            str(corpus_p),
+            "--policy",
+            str(policy_p),
+            "--out",
+            str(out),
+            "--seed",
+            "5",
+            "--allow-scripted",
+        ],
+    )
+    assert res.exit_code == 0
+    assert not out.exists()
+    assert (tmp_path / "out-scripted").exists()
+
 
 

@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from mandate.compiler.compile import IST, compile_intent
 from mandate.compiler.readback import render, sign
 from mandate.downstream.razorpay import RazorpayDownstream
+from mandate.harness.aggregate import write_jsonl
 from mandate.harness.corpus import HELD_OUT, build_corpus, corpus_hash, load_corpus, save_corpus
 from mandate.harness.runner import ARMS, DEFAULT_MODEL, run_corpus
 from mandate.harness.score import partition_errors, render_table, score
@@ -159,14 +160,18 @@ def evaluate(
 ) -> None:
     """Run the corpus over every arm and write results, scores and a results table."""
     load_dotenv()
-    if os.environ.get("MANDATE_FAKE_MODEL") and not allow_scripted:
+    scripted = bool(os.environ.get("MANDATE_FAKE_MODEL"))
+    if scripted and not allow_scripted:
         raise typer.BadParameter(
             "MANDATE_FAKE_MODEL is set. A scripted run does not measure anything and "
             "must never be written to results/. Unset it, or pass --allow-scripted "
-            "and expect every row tagged model=scripted."
+            "and expect the output in a -scripted directory."
         )
+    if scripted:
+        out = out.parent / f"{out.name}-scripted"
+        typer.echo(f"scripted run: writing to {out} and skipping scoring")
 
-    if not os.environ.get("MANDATE_FAKE_MODEL"):
+    if not scripted:
         try:
             preflight_model(model)
         except Exception as e:  # noqa: BLE001  # a dead model must stop the run here
@@ -200,6 +205,10 @@ def evaluate(
         corpus_hash=chash,
         policy_id=pol.mandate_id,
     )
+
+    if scripted:
+        write_jsonl(results, out / "results.jsonl")
+        return
 
     ok, bad = partition_errors(results)
     if bad:
