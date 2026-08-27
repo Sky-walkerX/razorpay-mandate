@@ -47,6 +47,7 @@ class ItemResult(BaseModel):
     held_out: bool
     contained: bool
     spent: Paise
+    model: str = "unknown"
     verdicts: list[str] = []
     escalated: bool = False
     error: str | None = None
