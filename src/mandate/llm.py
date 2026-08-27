@@ -11,7 +11,7 @@ from typing import Protocol
 
 import httpx
 
-DASHSCOPE_MODEL = "qwen3.7-flash"
+DASHSCOPE_MODEL = "qwen3.8-flash"
 DASHSCOPE_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
 GEMINI_MODEL = "gemini-3.7-flash"
 ANTHROPIC_MODEL = "claude-opus-5"

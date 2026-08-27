@@ -76,7 +76,7 @@ def _budget_of(policy: Policy) -> int:
     return int(policy.constraints.get(C.BUDGET_TOTAL, {}).get("max", 0))
 
 
-FLASH_MODELS = ["qwen3.7-flash"]
+FLASH_MODELS = ["qwen3.8-flash"]
 
 
 def run_item(
