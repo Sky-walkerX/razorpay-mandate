@@ -272,7 +272,4 @@ def run_corpus(
                     flush=True,
                 )
 
-    (out_dir / "results.jsonl").write_text(
-        "\n".join(r.model_dump_json() for r in results) + "\n"
-    )
     return results
