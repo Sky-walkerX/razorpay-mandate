@@ -121,7 +121,9 @@ def run_item(
                     mut.catalog, mut.intent, arm.compromised, root / "model_calls.jsonl"
                 )
             final_model_name = getattr(model, "model", model_name or "scripted")
-            agent = ShoppingAgent(client=DirectClient(gw), catalog=mut.catalog, model=model)
+            agent = ShoppingAgent(
+                client=DirectClient(gw), catalog=mut.catalog, model=model, max_steps=5
+            )
             trace = agent.run(mut.intent, now=now)
             verdicts += [str(d.verdict) for d in trace.decisions]
     except Exception as e:  # noqa: BLE001  # recorded, never swallowed
