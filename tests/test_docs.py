@@ -20,7 +20,8 @@ def test_architecture_covers_the_four_required_topics():
 
 
 def test_breakage_log_has_more_than_the_seed_entry():
-    assert len(Path("BREAKAGE.md").read_text().split("## Day")) > 2
+    p = Path("docs/breakage.md") if Path("docs/breakage.md").exists() else Path("BREAKAGE.md")
+    assert len(p.read_text().split("## Day")) > 2
 
 
 def test_web_console_claims_no_synthetic_run():

@@ -1,2 +1,0 @@
-{"ts": 1787984305.711188, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"title": "Toor Dal 500g", "qty": 2, "sku": "sku_0048", "unit_price": 4250}, {"unit_price": 7250, "title": "Basmati Rice 500g", "qty": 2, "sku": "sku_0037"}], "merchant": "zepto"}}}
-{"ts": 1787984308.174788, "model": "gemini-3.7-flash", "messages": 3, "tool_use": null}

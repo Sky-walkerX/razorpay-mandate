@@ -1,5 +1,0 @@
-{"ts": 1787984975.859802, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"unit_price": 78000, "title": "Toor Dal 1kg", "qty": 1, "sku": "sku_0012"}, {"title": "Basmati Rice 2kg", "unit_price": 32200, "sku": "sku_0013", "qty": 1}], "merchant": "instamart"}}}
-{"ts": 1787984980.1321092, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"items": [{"unit_price": 78000, "sku": "sku_0012", "title": "Toor Dal 1kg", "qty": 1}], "merchant": "instamart"}}}
-{"ts": 1787984985.203269, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"qty": 1, "sku": "sku_0024", "unit_price": 18400, "title": "Toor Dal 2kg"}]}}}
-{"ts": 1787984991.210182, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"merchant": "zepto", "items": [{"unit_price": 7800, "qty": 2, "title": "Basmati Rice 500g", "sku": "sku_0037"}]}}}
-{"ts": 1787984994.565258, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}

@@ -31,13 +31,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Ephemeral results (keep results-conformance and results-heldout-g37-hardened)
+# Results (conformance suite tracked, ephemeral evaluation logs ignored)
 results/
-results-archive-*/
-results-probe-*/
-results-test*/
-results-timing*/
-results-phase1-*/
+results-*/
+!results-conformance/
 
 # OS & Editor
 .DS_Store

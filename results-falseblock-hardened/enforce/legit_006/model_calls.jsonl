@@ -1,2 +1,0 @@
-{"ts": 1788016398.270009, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0000"}, {"sku": "sku_0001", "qty": 1}, {"qty": 1, "sku": "sku_0016"}, {"sku": "sku_0026", "qty": 1}, {"qty": 1, "sku": "sku_0039"}, {"sku": "sku_0017", "qty": 1}, {"qty": 1, "sku": "sku_0054"}], "merchant": "instamart"}}}
-{"ts": 1788016401.206969, "model": "gemini-3.7-flash", "messages": 3, "tool_use": null}
