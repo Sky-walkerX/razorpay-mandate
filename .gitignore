@@ -1,13 +1,48 @@
-.env
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
 *.egg-info/
 .venv/
-results/*.json
-results/*.jsonl
 .pytest_cache/
+.ruff_cache/
+
+# Environment & credentials
+.env
+.env.local
+*.key
+
+# Logs
+*.log
+
+# Build & runtime artifacts
+dist/
+build/
+.mandate/
+revocations.jsonl
+pitch/.fonts/
+.fonts/
+
+# Node / Web
+node_modules/
+.pnpm-store/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Ephemeral results (keep results-conformance and results-heldout-g37-hardened)
 results/
 results-archive-*/
-.mandate/
-*.key
-revocations.jsonl
+results-probe-*/
+results-test*/
+results-timing*/
+results-phase1-*/
+
+# OS & Editor
+.DS_Store
+.vscode/
+.idea/
+.impeccable/
+
 
