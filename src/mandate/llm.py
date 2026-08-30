@@ -423,6 +423,20 @@ class OllamaProvider:
         return data.get("message", {}).get("content", "").strip()
 
 
+def _answered_only(parts, kept, is_call, dump):
+    """The model's own parts, minus the calls the agent is not going to answer.
+
+    Gemini can emit several function_call parts in one turn. The agent loop
+    answers exactly one, and both Gemini surfaces require the replayed turn to
+    carry one function response per function call, so echoing the unanswered
+    ones back gets the NEXT request rejected: Vertex with 400 INVALID_ARGUMENT,
+    Interactions with 400 invalid_request. Everything that is not a call still
+    round-trips verbatim, because Gemini 3 signs its thought step and a history
+    that drops the signature is rejected too.
+    """
+    return [dump(p) for i, p in enumerate(parts) if i == kept or not is_call(p)]
+
+
 class GeminiProvider:
     """Gemini 3 via the Interactions API, which is the recommended path for this family."""
 
@@ -525,13 +539,16 @@ class GeminiProvider:
 
     def next_tool_call(self, system, history, tools):
         r = self._create(system, history, tools)
-        raw = [s.model_dump() for s in r.steps]
-        for step in r.steps:
+        steps = list(r.steps)
+        for i, step in enumerate(steps):
             if getattr(step, "type", None) == "function_call":
                 args = step.arguments
                 if isinstance(args, str):
                     args = json.loads(args or "{}")
-                return step.name, dict(args or {}), step.id, raw
+                return step.name, dict(args or {}), step.id, _answered_only(
+                    steps, i,
+                    lambda x: getattr(x, "type", None) == "function_call",
+                    lambda x: x.model_dump())
         return None
 
     def next_text(self, system, history):
@@ -641,14 +658,15 @@ class VertexGeminiProvider:
     def next_tool_call(self, system, history, tools):
         r = self._call(system, history, tools)
         parts = list(self._parts(r))
-        raw = [p.model_dump(exclude_none=True) for p in parts]
         for i, part in enumerate(parts):
             fc = getattr(part, "function_call", None)
             if fc is not None:
                 # Vertex leaves function_call.id unset, but the ledger needs a
                 # stable handle to tie the result back to the call.
                 call_id = getattr(fc, "id", None) or f"call_{i}"
-                return fc.name, dict(fc.args or {}), call_id, raw
+                return fc.name, dict(fc.args or {}), call_id, _answered_only(
+                    parts, i, lambda x: getattr(x, "function_call", None) is not None,
+                    lambda x: x.model_dump(exclude_none=True))
         return None
 
     def next_text(self, system, history):

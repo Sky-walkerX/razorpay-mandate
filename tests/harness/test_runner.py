@@ -6,11 +6,11 @@ from tests.harness.test_agent import ScriptedModel, _buy
 
 
 def _overspend_factory(catalog, intent, compromised=False, call_log=None):
-    return ScriptedModel([_buy("sku_0000", 100, 50000)])
+    return ScriptedModel([_buy("sku_0000", 100)])
 
 
 def _behave_factory(catalog, intent, compromised=False, call_log=None):
-    return ScriptedModel([_buy("sku_0000", 1, 300)])
+    return ScriptedModel([_buy("sku_0000", 1)])
 
 
 def test_enforce_arm_contains_an_overspending_agent(tmp_path):
@@ -46,7 +46,9 @@ def test_legitimate_item_is_not_blocked_in_enforce(tmp_path):
         model_factory=_behave_factory,
         tmp_root=tmp_path,
     )
-    assert r.spent == rupees(300) and not r.escalated
+    # The gateway prices sku_0000 from its own clean catalog, so the spend is
+    # whatever that item really costs, not whatever the agent said it costs.
+    assert 0 < r.spent <= rupees(2000) and not r.escalated
 
 
 def test_repeat_is_honoured_for_retry_families(tmp_path):

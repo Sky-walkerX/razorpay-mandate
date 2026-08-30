@@ -1,13 +1,14 @@
 from datetime import datetime, timedelta, timezone
 
 from mandate.downstream.fake import FakeDownstream
-from mandate.gateway.action import Action, ActionType, LineItem
+from mandate.gateway.action import ActionType, Proposal, ProposalItem
 from mandate.gateway.audit import AuditLog
 from mandate.gateway.core import Gateway, Mode
 from mandate.gateway.state import Verdict
 from mandate.money import rupees
 from mandate.policy.models import ConstraintId as C
 from mandate.policy.models import Provenance
+from tests.conftest import SyntheticPriceBook, priced_sku
 from tests.policy.test_models import _policy
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -24,12 +25,13 @@ def _pol():
 
 def _gw(tmp_path, mode=Mode.ENFORCE, down=None):
     return Gateway(policy=_pol(), downstream=down or FakeDownstream(),
-                   audit=AuditLog(tmp_path / "audit.jsonl"), mode=mode)
+                   audit=AuditLog(tmp_path / "audit.jsonl"), mode=mode,
+                   pricebook=SyntheticPriceBook(), capability_secret="test_secret")
 
-def _act(amount, sku="s1"):
-    return Action(type=ActionType.CREATE_ORDER, amount=amount, merchant="zepto",
-                  items=[LineItem(sku=sku, title="Dal", qty=1,
-                                  unit_price=amount, amount=amount)])
+def _act(amount, sku=None):
+    """The agent names a SKU. The price book, not the agent, says what it costs."""
+    return Proposal(type=ActionType.CREATE_ORDER, merchant="zepto",
+                    items=[ProposalItem(sku=sku or priced_sku(amount), qty=1)])
 
 def test_allowed_action_executes(tmp_path):
     d = _gw(tmp_path).propose(_act(rupees(500)), now=NOW)

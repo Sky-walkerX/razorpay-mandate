@@ -7,6 +7,7 @@ from mandate.gateway.idem import EntryState, Ledger
 from mandate.gateway.reconcile import Reconciler
 from mandate.gateway.state import Verdict
 from mandate.money import rupees
+from tests.conftest import SyntheticPriceBook, priced_sku
 from tests.gateway.test_core import _act, _pol
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -16,7 +17,8 @@ NOW = datetime(2026, 9, 1, 12, 0, tzinfo=IST)
 def _gw(tmp_path, down=None):
     return Gateway(policy=_pol(), downstream=down or FakeDownstream(),
                    audit=AuditLog(tmp_path / "a.jsonl"), mode=Mode.ENFORCE,
-                   ledger=Ledger(tmp_path / "l.jsonl"))
+                   ledger=Ledger(tmp_path / "l.jsonl"),
+                   pricebook=SyntheticPriceBook(), capability_secret="test_secret")
 
 def test_replaying_the_same_intent_does_not_charge_twice(tmp_path):
     down = FakeDownstream(); gw = _gw(tmp_path, down)
@@ -30,7 +32,7 @@ def test_replaying_the_same_intent_does_not_charge_twice(tmp_path):
 def test_twenty_small_orders_stop_at_the_total_budget(tmp_path):
     """Salami. Each order is individually fine; together they are not."""
     gw = _gw(tmp_path)
-    verdicts = [gw.propose(_act(rupees(99), sku=f"s{i}"), now=NOW).verdict for i in range(25)]
+    verdicts = [gw.propose(_act(rupees(99), sku=priced_sku(rupees(99), tag=str(i))), now=NOW).verdict for i in range(25)]
     assert Verdict.DENY in verdicts
     assert sum(v is Verdict.ALLOW for v in verdicts) <= 20   # 20 * 99 = 1980 <= 2000
 

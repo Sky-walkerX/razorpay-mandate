@@ -14,6 +14,7 @@ from mandate.downstream.fake import FakeDownstream
 from mandate.gateway.audit import AuditChainBroken, AuditLog
 from mandate.gateway.core import Gateway, Mode
 from mandate.gateway.idem import Ledger
+from mandate.gateway.pricebook import DictPriceBook
 from mandate.gateway.resolve import Resolver
 from mandate.gateway.state import Verdict
 from mandate.harness import oracle
@@ -115,12 +116,20 @@ def run_item(
     mut = item.mutation
     down = FakeDownstream(amount_multiplier=mut.catalog.amount_multiplier)
     audit = AuditLog(root / "audit.jsonl")
+    # The price book is the gateway's own ground truth, so it is built from the
+    # CLEAN catalog, never the mutated one the agent is shown. An attack family
+    # that rewrites a price or a title in the agent's view therefore changes what
+    # the agent believes and nothing about what the gateway charges. This is the
+    # same source the oracle scores against, so the two agree by construction.
+    pricebook = DictPriceBook.from_catalog(mut.clean_catalog or mut.catalog)
     gw = Gateway(
         policy=policy,
         downstream=down,
         audit=audit,
         mode=arm.mode,
         ledger=Ledger(root / "ledger.jsonl"),
+        pricebook=pricebook,
+        capability_secret="harness_capability_secret",
         resolver=Resolver(mut.catalog.merchant_names, CURATED, cache_path=root / "cats.json"),
     )
     now = policy.issued + timedelta(hours=1) + timedelta(seconds=mut.clock_offset_s)

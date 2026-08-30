@@ -58,12 +58,6 @@ class AuditLog:
         existing = self.records()
         seq = len(existing) + 1
         prev = existing[-1].record_hash if existing else GENESIS
-        body = {"seq": seq, "ts": ts.isoformat(), "mandate_id": mandate_id,
-                "policy_hash": policy_hash, "idem_key": idem_key,
-                "action": action.model_dump(mode="json"), "verdict": str(verdict),
-                "clauses": [c.model_dump(mode="json") for c in clauses],
-                "downstream": downstream, "prev_hash": prev}
-        rec = AuditRecord(**body, record_hash=_hash_body(body))
         rec_model = AuditRecord(
             seq=seq,
             ts=ts,

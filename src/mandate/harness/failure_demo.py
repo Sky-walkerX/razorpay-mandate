@@ -15,10 +15,11 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from mandate.downstream.fake import DownstreamTimeout, FakeDownstream
-from mandate.gateway.action import Action, ActionType, LineItem
+from mandate.gateway.action import ActionType, Proposal, ProposalItem
 from mandate.gateway.audit import AuditChainBroken, AuditLog
 from mandate.gateway.core import Gateway, Mode
 from mandate.gateway.idem import EntryState, Ledger
+from mandate.gateway.pricebook import DictPriceBook, PriceBookItem
 from mandate.gateway.reconcile import Reconciler
 from mandate.money import Paise
 from mandate.policy.models import Policy
@@ -44,23 +45,30 @@ class FailureDemoResult(BaseModel):
     naive_charged: Paise = Paise(0)
 
 
-def _action(policy: Policy) -> Action:
+#: The gateway's own ground truth for this demo. The agent names SKUs; these are
+#: what they cost. Rs 80.00 + Rs 79.00 = Rs 159.00.
+DEMO_PRICEBOOK = DictPriceBook({
+    "sku_0012": PriceBookItem(sku="sku_0012", title="Toor Dal 1kg",
+                              unit_price=Paise(8000), category="grocery", merchant="zepto"),
+    "sku_0014": PriceBookItem(sku="sku_0014", title="Amul Milk 1kg",
+                              unit_price=Paise(7900), category="grocery", merchant="zepto"),
+})
+
+
+def _action(policy: Policy) -> Proposal:
     """One ordinary basket, well inside every limit. The attack here is not the basket."""
-    items = [
-        LineItem(sku="sku_0012", title="Toor Dal 1kg", qty=1,
-                 unit_price=Paise(8000), amount=Paise(8000)),
-        LineItem(sku="sku_0014", title="Amul Milk 1kg", qty=1,
-                 unit_price=Paise(7900), amount=Paise(7900)),
-    ]
-    return Action(type=ActionType.CREATE_ORDER, amount=Paise(15900),
-                  merchant="zepto", items=items)
+    return Proposal(type=ActionType.CREATE_ORDER, merchant="zepto", items=[
+        ProposalItem(sku="sku_0012", qty=1),
+        ProposalItem(sku="sku_0014", qty=1),
+    ])
 
 
 def _naive_retry(policy: Policy, now: datetime) -> tuple[int, Paise]:
     """The same two calls with no ledger: what a retry costs when nothing dedupes it."""
     down = FakeDownstream()
     gw = Gateway(policy=policy, downstream=down, audit=AuditLog(Path("/dev/null")),
-                 mode=Mode.ENFORCE, ledger=None)
+                 mode=Mode.ENFORCE, ledger=None, pricebook=DEMO_PRICEBOOK,
+                 capability_secret="demo_capability_secret")
     action = _action(policy)
     down.fail_next("timeout")
     try:
@@ -80,7 +88,8 @@ def run_failure_demo(policy: Policy, root: Path, now: datetime | None = None) ->
     ledger = Ledger(root / "ledger.jsonl")
     audit = AuditLog(root / "audit.jsonl")
     gw = Gateway(policy=policy, downstream=down, audit=audit,
-                 mode=Mode.ENFORCE, ledger=ledger)
+                 mode=Mode.ENFORCE, ledger=ledger, pricebook=DEMO_PRICEBOOK,
+                 capability_secret="demo_capability_secret")
     action = _action(policy)
     res = FailureDemoResult()
 

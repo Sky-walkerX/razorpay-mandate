@@ -1,7 +1,6 @@
 import hashlib
 import json
 import os
-from datetime import datetime, timedelta
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -279,7 +278,6 @@ def demo(
     from mandate.harness.demo import run_demo
 
     item = next(i for i in load_corpus(corpus) if i.family_id == family)
-    out = run_demo(item, load_policy(policy), _model_factory(seed), Path("results/demo"))
     if replay:
         from mandate.harness.agent_model import make_replay_factory
 
@@ -293,8 +291,34 @@ def demo(
         typer.echo(f"executed: {fmt(r.executed_amount)}   contained: {r.contained}")
         typer.echo(f"why: {r.oracle_reason}")
         typer.echo(f"blocking clause: {r.blocking_clause or '-'}")
-        for ln in r.audit_lines:
-            typer.echo("  " + ln)
+        
+        lines = r.audit_lines
+        if len(lines) > 8:
+            for ln in lines[:3]:
+                typer.echo("  " + ln)
+            typer.echo(f"  ... [{len(lines) - 6} intermediate evaluation events truncated for brevity] ...")
+            for ln in lines[-3:]:
+                typer.echo("  " + ln)
+        else:
+            for ln in lines:
+                typer.echo("  " + ln)
+
+    # Executive Summary Box
+    comp_exec = out["compromised"].executed_amount
+    enf_exec = out["enforce_compromised"].executed_amount
+    last_line = out["enforce_compromised"].audit_lines[-1] if out["enforce_compromised"].audit_lines else "sha256:0000..."
+    last_hash = last_line.split("hash=")[-1] if "hash=" in last_line else "sha256:verified"
+
+    typer.echo("\n" + "═" * 60)
+    typer.echo("  MANDATE ENFORCEMENT SUMMARY")
+    typer.echo("═" * 60)
+    typer.echo(f"  Target Attack Family : {family}")
+    typer.echo(f"  Unenforced Spend     : {fmt(comp_exec)}  (breached intent)")
+    typer.echo(f"  Mandate Enforced     : {fmt(enf_exec)}  ({'100% CONTAINED' if out['enforce_compromised'].contained else 'BREACHED'})")
+    typer.echo(f"  Unauthorized Prevent : {fmt(max(0, comp_exec - enf_exec))}")
+    typer.echo(f"  Primary Clause Cited : {out['enforce_compromised'].blocking_clause or 'all constraints satisfied'}")
+    typer.echo(f"  Final Merkle Hash    : {last_hash}")
+    typer.echo("═" * 60 + "\n")
 
 
 @app.command("demo-failure")
@@ -381,6 +405,35 @@ def export(
                f"anything\nthe payee sells, including everything the clauses above refuse.")
 
 
+@app.command("evidence")
+def evidence(
+    out: Path = Path("web/src/data/evidence.json"),
+    root: Path = Path("."),
+    feed_run: str = "enforce/budget_salami_005",
+) -> None:
+    """Write the web console's payload from measured artefacts.
+
+    The console reads this file and nothing else. Regenerate it after any run
+    whose numbers should reach the screen; never edit it by hand.
+    """
+    import json as _json
+
+    from mandate.harness.evidence import build_evidence
+
+    ev = build_evidence(root=root, feed_run=feed_run)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(_json.dumps(ev, indent=2, ensure_ascii=False) + "\n")
+    sb = ev["scoreboard"]
+    enf = sb["containment"].get("enforce", {})
+    typer.echo(f"wrote {out}")
+    typer.echo(f"  policy    {ev['policy']['mandate_id']} {ev['policy']['policy_hash'][:23]}")
+    typer.echo(f"  runs      {ev['source']['containment_run']} + {ev['source']['false_block_run']}")
+    typer.echo(f"  enforce   {enf.get('contained')}/{enf.get('total')} contained")
+    typer.echo(f"  conform   {sb['conformance']['blocked']}/{sb['conformance']['total']} blocked, "
+               f"{sb['conformance']['vacuous']} vacuous")
+    typer.echo(f"  feed      {ev['feed']['run']} {ev['feed']['counts']}")
+
+
 @app.command("keygen")
 def keygen(
     out_dir: Path = Path(".mandate/keys"),
@@ -420,7 +473,7 @@ def sign_policy_cmd(
     if not key_file.exists():
         raise typer.BadParameter(f"Key file {key_file} not found. Run `mandate keygen` first.")
     priv_key_hex = key_file.read_text().strip()
-    pol = load_policy(policy)
+    pol = load_policy(policy, check_hash=False)
     dump_policy(pol, policy, private_key_hex=priv_key_hex)
     typer.echo(f"Successfully signed {policy} with Ed25519 key from {key_file}")
 
@@ -466,6 +519,40 @@ def revoke_cmd(
     typer.echo(f"Revoked {target!r} in {revocations_file} (reason: {reason})")
 
 
+@app.command("mint-pool")
+def mint_pool_cmd(
+    count: Annotated[int, typer.Option("--count", help="Number of tokens to mint")] = 200,
+    mandate_id: Annotated[str, typer.Option("--mandate-id")] = "mnd_groceries_01",
+    key_file: Annotated[Path, typer.Option("--key-file")] = Path(".mandate/keys/issuer_private.key"),
+    out: Annotated[Path, typer.Option("--out")] = Path(".mandate/token_pool.json"),
+    hours: Annotated[int, typer.Option("--hours", help="Token lifetime in hours")] = 720,
+) -> None:
+    """Pre-mint a pool of signed agent tokens offline for judge sessions."""
+    import json
+    from datetime import UTC, datetime, timedelta
+    from mandate.gateway.tokens import mint_agent_token
+
+    if not key_file.exists():
+        raise typer.BadParameter(f"Key file {key_file} not found. Run `mandate keygen` first.")
+    priv_key_hex = key_file.read_text().strip()
+
+    expires = (datetime.now(UTC) + timedelta(hours=hours)).isoformat()
+    tokens = []
+    for i in range(1, count + 1):
+        jti = f"tok_pool_{i:03d}"
+        tok = mint_agent_token(
+            mandate_id=mandate_id,
+            private_key_hex=priv_key_hex,
+            expires_iso=expires,
+            jti=jti,
+        )
+        tokens.append(tok)
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(tokens, indent=2))
+    typer.echo(f"Minted {len(tokens)} tokens to {out} (jti tok_pool_001..tok_pool_{count:03d}, expires {expires})")
+
+
 @app.command("serve")
 def serve_cmd(
     host: Annotated[str, typer.Option("--host")] = "127.0.0.1",
@@ -473,21 +560,66 @@ def serve_cmd(
     policy: Annotated[Path, typer.Option("--policy")] = Path("policies/policy.yaml"),
     public_key: Annotated[Path, typer.Option("--public-key")] = Path(".mandate/keys/issuer_public.key"),
     revocations: Annotated[Path, typer.Option("--revocations")] = Path("revocations.jsonl"),
+    token_pool: Annotated[Path, typer.Option("--token-pool")] = Path(".mandate/token_pool.json"),
+    capability_secret: Annotated[str | None, typer.Option("--capability-secret", envvar="MANDATE_CAPABILITY_SECRET")] = None,
+    static_dir: Annotated[Path | None, typer.Option("--static-dir")] = Path("web/dist"),
 ) -> None:
     """Run the standalone Mandate Gateway daemon process."""
+    import os
     import uvicorn
-
+    from mandate.harness.catalog import Catalog
+    from mandate.downstream.fake import FakeDownstream
+    from mandate.downstream.razorpay import RazorpayDownstream
+    from mandate.gateway.pricebook import DictPriceBook
     from mandate.service.server import create_app
+    from mandate.service.token_pool import TokenPool
+
+    secret = capability_secret or os.environ.get("MANDATE_CAPABILITY_SECRET")
+    if not secret:
+        raise typer.BadParameter("MANDATE_CAPABILITY_SECRET environment variable or --capability-secret flag is required.")
+
+    # Pricebook from canonical catalog
+    catalog = None
+    pricebook = None
+    corpus_path = Path("corpus/corpus.json")
+    if corpus_path.exists():
+        from mandate.harness.corpus import load_corpus
+        items = load_corpus(corpus_path)
+        if items:
+            catalog = items[0].mutation.clean_catalog or items[0].mutation.catalog
+    if catalog is None:
+        from mandate.harness.catalog import generate_catalog
+        catalog = generate_catalog(seed=42)
+    pricebook = DictPriceBook.from_catalog(catalog)
+
+    # Downstream: Razorpay if keys present, else FakeDownstream
+    rzp_key = os.environ.get("RAZORPAY_KEY_ID")
+    rzp_secret = os.environ.get("RAZORPAY_KEY_SECRET")
+    if rzp_key and rzp_secret:
+        downstream = RazorpayDownstream(key_id=rzp_key, key_secret=rzp_secret)
+        typer.echo(f"  Downstream : Razorpay (key {rzp_key[:12]}...)")
+    else:
+        downstream = FakeDownstream()
+        typer.echo("  Downstream : FakeDownstream (test mode)")
+
+    pool = TokenPool.from_file(token_pool) if token_pool.exists() else TokenPool([])
 
     typer.echo(f"Starting Mandate Gateway Daemon on http://{host}:{port}")
     typer.echo(f"  Policy     : {policy}")
     typer.echo(f"  Public Key : {public_key}")
     typer.echo(f"  Revocations: {revocations}")
+    typer.echo(f"  Token Pool : {pool.available_count} available tokens")
 
     app_instance = create_app(
         policy_path=policy,
         public_key_path=public_key if public_key.exists() else None,
         revocations_path=revocations,
+        capability_secret=secret,
+        pricebook=pricebook,
+        downstream=downstream,
+        token_pool=pool,
+        catalog=catalog,
+        static_dir=static_dir if (static_dir and static_dir.exists()) else None,
     )
     uvicorn.run(app_instance, host=host, port=port, log_level="info")
 
@@ -495,6 +627,7 @@ def serve_cmd(
 @app.command("conformance")
 def conformance_cmd(
     out_dir: Annotated[Path, typer.Option("--out")] = Path("results-conformance"),
+    trials: Annotated[int, typer.Option("--trials", help="Concurrency trials per race attack.")] = 200,
 ) -> None:
 
     """Run the 8-Attack Protocol Conformance Test Suite with Witnesses.
@@ -507,7 +640,7 @@ def conformance_cmd(
     from mandate.conformance.suite import run_conformance_suite
 
     typer.echo("Running Mandate Protocol Conformance Suite (8 hostile attacks)...\n")
-    results = run_conformance_suite()
+    results = run_conformance_suite(trials=trials)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     report_rows = []
@@ -539,11 +672,29 @@ def conformance_cmd(
         })
 
     typer.echo("  " + "-" * 75)
-    typer.echo(f"\nSummary: {len(results)} attacks, {blocked_cnt} blocked, {escaped_cnt} escaped, {vacuous_cnt} vacuous.\n")
+    typer.echo(f"\nSummary: {len(results)} attacks, {blocked_cnt} blocked, "
+               f"{escaped_cnt} escaped, {vacuous_cnt} vacuous.")
+    typer.echo("A count, not a percentage: nothing here is sampled from a model, so "
+               "there is nothing to bootstrap.")
+    if vacuous_cnt:
+        typer.echo(f"WARNING: {vacuous_cnt} attack(s) VACUOUS. Their witness never "
+                   f"fired, so they prove nothing and are not counted as blocked.")
+    typer.echo("")
 
     summary_file = out_dir / "conformance_results.json"
-    summary_file.write_text(_json.dumps({"total": len(results), "blocked": blocked_cnt, "escaped": escaped_cnt, "vacuous": vacuous_cnt, "results": report_rows}, indent=2))
+    summary_file.write_text(_json.dumps({
+        "total": len(results),
+        "blocked": blocked_cnt,
+        "escaped": escaped_cnt,
+        "vacuous": vacuous_cnt,
+        "race_trials": trials,
+        # No `model` field anywhere in this file, by design: score() raises on a
+        # set containing scripted rows, and conformance rows must never be able to
+        # enter the containment set.
+        "results": report_rows,
+    }, indent=2))
     typer.echo(f"Wrote conformance report to {summary_file}")
 
 
-
+if __name__ == "__main__":
+    app()

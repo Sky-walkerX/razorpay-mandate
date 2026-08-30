@@ -1,6 +1,11 @@
 import pytest
 
-from mandate.llm import AnthropicProvider, GeminiProvider, provider_for
+from mandate.llm import (
+    AnthropicProvider,
+    GeminiProvider,
+    VertexGeminiProvider,
+    provider_for,
+)
 
 TOOLS = [{
     "name": "create_order",
@@ -524,3 +529,84 @@ def test_gemini_does_not_sleep_on_a_non_quota_error():
         p.next_tool_call("s", [{"role": "user", "text": "x"}], TOOLS)
 
     assert sleeps == []
+
+
+# --- parallel tool calls -----------------------------------------------------
+# Gemini may emit several function_call parts in one turn. The agent loop answers
+# exactly one, so echoing all of them back puts the next request out of balance
+# and Vertex rejects it with 400 INVALID_ARGUMENT, "Please ensure that the number
+# of function response parts is equal to the number of function call parts".
+# Measured 29 Aug: this killed price.unit_confusion#005 in both compromised arms
+# of the hardened held-out sweep, deterministically, at temperature 0.
+
+
+class _FakeVertexModels:
+    def __init__(self, parts):
+        self.parts, self.calls = parts, []
+
+    def generate_content(self, **body):
+        self.calls.append(body)
+        cand = type("_C", (), {"content": type("_X", (), {"parts": self.parts})()})()
+        return type("_R", (), {"candidates": [cand], "text": None})()
+
+
+class _FakeVertex:
+    """Stands in for a google.genai Client pointed at Vertex."""
+
+    def __init__(self, parts):
+        self.models = _FakeVertexModels(parts)
+
+    @property
+    def calls(self):
+        return self.models.calls
+
+
+def _vertex_parts():
+    from google.genai import types
+    return [
+        types.Part(text="comparing merchants"),
+        types.Part.from_function_call(name="create_order", args={"merchant": "zepto"}),
+        types.Part.from_function_call(name="create_order", args={"merchant": "blinkit"}),
+    ]
+
+
+def test_vertex_keeps_only_the_function_call_it_answered():
+    c = _FakeVertex(_vertex_parts())
+    got = VertexGeminiProvider(client=c).next_tool_call(
+        "s", [{"role": "user", "text": "buy dal"}], TOOLS)
+    assert got is not None
+    _, args, _, raw = got
+    assert args == {"merchant": "zepto"}, "the first call is the one answered"
+    assert sum(1 for p in raw if p.get("function_call")) == 1
+    assert any(p.get("text") for p in raw), "non-call parts must still round-trip"
+
+
+def test_vertex_replays_one_function_call_per_function_response():
+    """The invariant Vertex actually enforces, checked on the wire."""
+    c = _FakeVertex(_vertex_parts())
+    p = VertexGeminiProvider(client=c)
+    _, _, call_id, raw = p.next_tool_call("s", [{"role": "user", "text": "buy dal"}], TOOLS)
+    p.next_tool_call("s", [
+        {"role": "user", "text": "buy dal"},
+        {"role": "assistant_raw", "steps": raw},
+        {"role": "tool_result", "text": "OK", "call_id": call_id, "name": "create_order"},
+    ], TOOLS)
+    sent = c.calls[1]["contents"]
+    calls = sum(1 for m in sent for part in m.parts if part.function_call is not None)
+    responses = sum(1 for m in sent for part in m.parts if part.function_response is not None)
+    assert calls == responses == 1
+
+
+def test_gemini_keeps_only_the_function_call_it_answered():
+    c = _FakeGemini([
+        _Step("thought", signature="SIG"),
+        _fc(id="c1", arguments={"merchant": "zepto"}),
+        _fc(id="c2", arguments={"merchant": "blinkit"}),
+    ])
+    got = GeminiProvider(client=c).next_tool_call(
+        "s", [{"role": "user", "text": "x"}], TOOLS)
+    assert got is not None
+    _, _, call_id, raw = got
+    assert call_id == "c1"
+    assert [s["type"] for s in raw] == ["thought", "function_call"]
+    assert raw[1]["id"] == "c1"

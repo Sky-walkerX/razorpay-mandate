@@ -11,7 +11,6 @@ class PolicyHashMismatch(Exception):
     """The file was edited after signing."""
 
 
-def dump(p: Policy, path: Path) -> None:
 class PolicySignatureInvalid(Exception):
     """The Ed25519 digital signature is invalid."""
 
@@ -26,18 +25,13 @@ def dump(p: Policy, path: Path, private_key_hex: str | None = None) -> None:
     path.write_text(yaml.safe_dump(body, sort_keys=True, allow_unicode=True))
 
 
-def load(path: Path) -> Policy:
-def load(path: Path, public_key_hex: str | None = None) -> Policy:
+def load(path: Path, public_key_hex: str | None = None, check_hash: bool = True) -> Policy:
     body = yaml.safe_load(path.read_text())
-    stored = body.pop("policy_hash", None)
     stored_hash = body.pop("policy_hash", None)
     stored_sig = body.pop("signature", None)
     p = Policy(**body)
-    actual = policy_hash(p)
-    if stored != actual:
-        raise PolicyHashMismatch(f"stored {stored} but content hashes to {actual}")
     actual_hash = policy_hash(p)
-    if stored_hash is not None and stored_hash != actual_hash:
+    if check_hash and stored_hash is not None and stored_hash != actual_hash:
         raise PolicyHashMismatch(f"stored {stored_hash} but content hashes to {actual_hash}")
     if public_key_hex is not None:
         if not stored_sig:

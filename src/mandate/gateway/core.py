@@ -1,7 +1,8 @@
 """propose() orchestration. The only place the pure evaluator meets the outside world."""
 import hashlib
 import hmac
-from datetime import datetime
+import threading
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel
@@ -18,10 +19,21 @@ from mandate.gateway.audit import AuditLog
 from mandate.gateway.idem import EntryState
 from mandate.gateway.lattice import combine, evaluate_all, first_blocking
 from mandate.gateway.pricebook import PriceBook
-from mandate.gateway.state import AccumulatedState, EvalContext, Verdict
+from mandate.gateway.revocation import RevocationList
+from mandate.gateway.state import AccumulatedState, ClauseResult, EvalContext, Verdict
+from mandate.gateway.tokens import TokenError, verify_agent_token
 from mandate.money import Paise
 from mandate.policy.canonical import policy_hash
+from mandate.policy.crypto import SignatureInvalid
 from mandate.policy.models import Policy
+
+
+class PriceBookMissing(Exception):
+    """The gateway was asked to resolve a proposal with no price book to resolve it from."""
+
+
+class TokenRejected(Exception):
+    """A presented agent token failed verification, expiry, binding or revocation."""
 
 
 class Mode(StrEnum):
@@ -65,9 +77,6 @@ def verify_capture_capability(
     return hmac.compare_digest(capability, expected)
 
 
-import threading
-
-
 class Gateway:
     def __init__(
         self,
@@ -78,8 +87,12 @@ class Gateway:
         resolver=None,
         ledger=None,
         pricebook: PriceBook | None = None,
-        capability_secret: str = "mandate_gateway_default_secret",
+        capability_secret: str | None = None,
+        issuer_public_key: str | None = None,
+        revocations: RevocationList | None = None,
     ) -> None:
+        if not capability_secret:
+            raise ValueError("capability_secret is required and cannot be empty")
         self.policy = policy
         self.downstream = downstream
         self.audit = audit
@@ -88,8 +101,14 @@ class Gateway:
         self.ledger = ledger
         self.pricebook = pricebook
         self.capability_secret = capability_secret
+        # The gateway holds the issuer's PUBLIC key only. It can verify a token
+        # and it cannot mint one, which is what makes escalate.self impossible
+        # rather than merely unimplemented.
+        self.issuer_public_key = issuer_public_key
+        self.revocations = revocations
         self._hash = policy_hash(policy)
         self._eval_lock = threading.Lock()
+        self._spent_jtis: set[str] = set()
 
     def _state(self) -> AccumulatedState:
         if self.ledger is not None:
@@ -97,74 +116,43 @@ class Gateway:
         return AccumulatedState()
 
     def _resolve_to_action(self, prop: Proposal | Action) -> ResolvedAction:
-        """Resolve untrusted wire proposal into authoritative ResolvedAction."""
-        if isinstance(prop, Proposal):
-            items: list[ResolvedLineItem] = []
-            for it in prop.items:
-                if self.pricebook is not None:
-                    pb = self.pricebook.lookup(it.sku)
-                    amount = Paise(it.qty * int(pb.unit_price))
-                    items.append(
-                        ResolvedLineItem(
-                            sku=pb.sku,
-                            title=pb.title,
-                            qty=it.qty,
-                            unit_price=pb.unit_price,
-                            amount=amount,
-                            category=pb.category,
-                        )
-                    )
-                else:
-                    items.append(
-                        ResolvedLineItem(
-                            sku=it.sku,
-                            title=it.sku,
-                            qty=it.qty,
-                            unit_price=Paise(1000),
-                            amount=Paise(it.qty * 1000),
-                            category="grocery",
-                        )
-                    )
-            total = Paise(sum(int(i.amount) for i in items))
-            return ResolvedAction(
-                type=prop.type,
-                amount=total,
-                merchant=prop.merchant,
-                items=items,
-                attempt=prop.attempt,
-                downstream_ref=prop.downstream_ref,
-                capability=prop.capability,
+        """Resolve an untrusted wire proposal into an authoritative ResolvedAction.
+
+        Every price, title, category and total comes from the price book. There is
+        no branch that reads one from the agent: a gateway with no price book, or a
+        SKU the price book does not carry, raises rather than falling back to what
+        the agent claimed. Fail closed is the only safe direction here, because the
+        fallback would be exactly the vulnerability this class exists to remove.
+        """
+        if self.pricebook is None:
+            raise PriceBookMissing(
+                "gateway has no price book; it cannot resolve a proposal without "
+                "reading agent-supplied prices, so it refuses"
             )
 
-        # If already Action, re-verify prices if pricebook is present
-        if self.pricebook is not None and prop.items:
-            re_items: list[ResolvedLineItem] = []
-            for it in prop.items:
-                if self.pricebook.has_sku(it.sku):
-                    pb = self.pricebook.lookup(it.sku)
-                    re_items.append(
-                        ResolvedLineItem(
-                            sku=pb.sku,
-                            title=pb.title,
-                            qty=it.qty,
-                            unit_price=pb.unit_price,
-                            amount=Paise(it.qty * int(pb.unit_price)),
-                            category=pb.category,
-                        )
-                    )
-                else:
-                    re_items.append(it)
-            total = Paise(sum(int(i.amount) for i in re_items))
-            return ResolvedAction(
-                type=prop.type,
-                amount=total,
-                merchant=prop.merchant,
-                items=re_items,
-                attempt=prop.attempt,
-                downstream_ref=prop.downstream_ref,
-                capability=prop.capability,
+        items: list[ResolvedLineItem] = []
+        for it in prop.items:
+            pb = self.pricebook.lookup(it.sku)   # KeyError on an unknown SKU
+            items.append(
+                ResolvedLineItem(
+                    sku=pb.sku,
+                    title=pb.title,
+                    qty=it.qty,
+                    unit_price=pb.unit_price,
+                    amount=Paise(it.qty * int(pb.unit_price)),
+                    category=pb.category,
+                )
             )
-        return prop
+        total = Paise(sum(int(i.amount) for i in items))
+        return ResolvedAction(
+            type=prop.type,
+            amount=total,
+            merchant=prop.merchant,
+            items=items,
+            attempt=prop.attempt,
+            downstream_ref=prop.downstream_ref,
+            capability=getattr(prop, "capability", None),
+        )
 
     def _resolve(self, action: ResolvedAction) -> tuple[str | None, dict[str, str | None]]:
         if self.resolver is None:
@@ -174,8 +162,53 @@ class Gateway:
             {i.sku: self.resolver.category(i.sku, i.title) for i in action.items},
         )
 
-    def propose(self, proposal: Proposal | Action, now: datetime) -> Decision:
+    def _verify_token(self, token: str | None, now: datetime) -> str | None:
+        """Request path step 1. Returns the jti, or raises TokenRejected.
+
+        A gateway configured with an issuer public key requires a token on every
+        call. A gateway configured without one is running in the in-process trust
+        domain (the harness) and skips the check, which is why the service refuses
+        to start without a key.
+        """
+        if self.issuer_public_key is None:
+            return None
+        if not token:
+            raise TokenRejected("no agent token presented")
+        try:
+            claims = verify_agent_token(token, self.issuer_public_key, now=now)
+        except (SignatureInvalid, TokenError) as e:
+            raise TokenRejected(str(e)) from e
+        if claims.mandate_id != self.policy.mandate_id:
+            raise TokenRejected(
+                f"token is bound to {claims.mandate_id}, this gateway serves "
+                f"{self.policy.mandate_id}"
+            )
+        if self.revocations is not None and (
+            self.revocations.is_revoked(claims.jti)
+            or self.revocations.is_revoked(claims.mandate_id)
+        ):
+            raise TokenRejected(f"jti {claims.jti} is revoked")
+        return claims.jti
+
+    def propose(
+        self,
+        proposal: Proposal | Action,
+        now: datetime,
+        token: str | None = None,
+    ) -> Decision:
         with self._eval_lock:
+            # 1. Token before anything else. An unauthenticated caller learns
+            #    nothing about the price book or the policy.
+            try:
+                self._verify_token(token, now)
+            except TokenRejected as e:
+                return Decision(
+                    verdict=Verdict.DENY,
+                    clause_id="authentication",
+                    message=str(e),
+                )
+
+            # 2. Resolve references into facts.
             try:
                 action = self._resolve_to_action(proposal)
             except KeyError as e:
@@ -183,6 +216,12 @@ class Gateway:
                     verdict=Verdict.DENY,
                     clause_id="pricebook",
                     message=f"unknown SKU: {e}",
+                )
+            except PriceBookMissing as e:
+                return Decision(
+                    verdict=Verdict.DENY,
+                    clause_id="pricebook",
+                    message=str(e),
                 )
 
             idem = canonical_intent(action, self.policy.mandate_id)
@@ -241,17 +280,32 @@ class Gateway:
                     notes={"mandate_id": self.policy.mandate_id},
                     skus=[i.sku for i in action.items],
                 )
-                executed = True
-                if downstream_body and "id" in downstream_body:
-                    cap = mint_capture_capability(
-                        idem,
-                        int(action.amount),
-                        downstream_body["id"],
-                        self.capability_secret,
+                downstream_amt = downstream_body.get("amount") if downstream_body else None
+                if downstream_amt is not None and int(downstream_amt) != int(action.amount):
+                    final = Verdict.UNKNOWN
+                    executed = False
+                    div_clause = ClauseResult(
+                        id="rail.divergence",
+                        result=Verdict.UNKNOWN,
+                        observed=int(downstream_amt),
+                        limit=int(action.amount),
+                        detail=f"downstream rail amount ₹{int(downstream_amt)/100:.2f} diverges from authorized amount ₹{int(action.amount)/100:.2f}",
                     )
-                    downstream_body["capability"] = cap
-                if self.ledger is not None:
-                    self.ledger.mark_committed(idem, downstream_body)
+                    clauses.append(div_clause)
+                    if self.ledger is not None:
+                        self.ledger.mark_failed(idem, f"rail divergence: downstream={downstream_amt}, authorized={action.amount}")
+                else:
+                    executed = True
+                    if downstream_body and "id" in downstream_body:
+                        cap = mint_capture_capability(
+                            idem,
+                            int(action.amount),
+                            downstream_body["id"],
+                            self.capability_secret,
+                        )
+                        downstream_body["capability"] = cap
+                    if self.ledger is not None:
+                        self.ledger.mark_committed(idem, downstream_body)
             except DownstreamTimeout:
                 final = Verdict.UNKNOWN
             except DownstreamError as e:
@@ -269,18 +323,78 @@ class Gateway:
             clauses=clauses,
             downstream=downstream_body,
         )
+        blocking = first_blocking(clauses)
+        clause_id = (
+            str(blocking.id)
+            if blocking
+            else (None if final is Verdict.ALLOW else "downstream")
+        )
+        msg = _explain(blocking) if blocking else str(final)
+        if any(c.id == "rail.divergence" for c in clauses):
+            clause_id = "rail.divergence"
+            div_c = next(c for c in clauses if c.id == "rail.divergence")
+            msg = div_c.detail
+
         return Decision(
             verdict=final,
-            clause_id=(
-                str(blocking.id)
-                if blocking
-                else (None if final is Verdict.ALLOW else "downstream")
-            ),
-            message=_explain(blocking) if blocking else str(final),
+            clause_id=clause_id,
+            message=msg,
             idem_key=idem,
             downstream=downstream_body,
             executed=executed,
             capability=cap,
         )
 
+    def capture_payment(
+        self,
+        order_id: str,
+        amount: int,
+        capability: str,
+        idem_key: str,
+        token: str | None = None,
+        now: datetime | None = None,
+    ) -> Decision:
+        """Capture against an authorised order. The capability is the authorisation.
 
+        The HMAC binds (idem_key, authorised_amount, order_id), so a capture for
+        any other amount cannot present a valid capability. This is the fix for
+        price.flip#004, where a legal Rs 881 order settled at Rs 8,810: the gateway
+        used to validate the action it was shown and never reconcile what settled.
+        """
+        now = now or datetime.now(UTC)
+        try:
+            self._verify_token(token, now)
+        except TokenRejected as e:
+            return Decision(verdict=Verdict.DENY, clause_id="authentication", message=str(e))
+
+        if not verify_capture_capability(
+            capability, idem_key, int(amount), order_id, self.capability_secret
+        ):
+            return Decision(
+                verdict=Verdict.DENY,
+                clause_id="capture.binding",
+                idem_key=idem_key,
+                message=(
+                    f"capture capability does not authorise {amount} paise on "
+                    f"{order_id}; the authorised amount is the only one it signs"
+                ),
+            )
+
+        with self._eval_lock:
+            if capability in self._spent_jtis:
+                return Decision(
+                    verdict=Verdict.DENY,
+                    clause_id="capture.replay",
+                    idem_key=idem_key,
+                    message="this capture capability has already been spent",
+                )
+            self._spent_jtis.add(capability)
+
+        body = self.downstream.capture_payment(order_id, Paise(int(amount)))
+        return Decision(
+            verdict=Verdict.ALLOW,
+            idem_key=idem_key,
+            downstream=body if isinstance(body, dict) else {"result": body},
+            executed=True,
+            message="captured at the authorised amount",
+        )

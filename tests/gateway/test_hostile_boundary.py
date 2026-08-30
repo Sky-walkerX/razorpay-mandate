@@ -37,7 +37,8 @@ def _pricebook():
 def test_proposal_is_dereferenced_from_pricebook_not_agent_facts(tmp_path):
     pb = _pricebook()
     gw = Gateway(policy=_pol(), downstream=FakeDownstream(),
-                 audit=AuditLog(tmp_path / "audit.jsonl"), pricebook=pb)
+                 audit=AuditLog(tmp_path / "audit.jsonl"), pricebook=pb,
+                 capability_secret="test_secret")
     
     # Agent sends wire proposal with NO prices or titles
     prop = Proposal(
@@ -55,7 +56,8 @@ def test_proposal_is_dereferenced_from_pricebook_not_agent_facts(tmp_path):
 def test_proposal_with_unknown_sku_is_denied_fail_closed(tmp_path):
     pb = _pricebook()
     gw = Gateway(policy=_pol(), downstream=FakeDownstream(),
-                 audit=AuditLog(tmp_path / "audit.jsonl"), pricebook=pb)
+                 audit=AuditLog(tmp_path / "audit.jsonl"), pricebook=pb,
+                 capability_secret="test_secret")
     
     prop = Proposal(
         merchant="zepto",
@@ -69,33 +71,94 @@ def test_proposal_with_unknown_sku_is_denied_fail_closed(tmp_path):
 
 
 def test_canonical_intent_is_invariant_under_agent_controlled_fields():
-    """Load-bearing property test:
-    Agent mutating prices, titles, categories or whitespace cannot steer or forge the idempotency key.
+    """The load-bearing property test.
+
+    `canonical_intent()` must be identical across proposals differing in anything
+    the agent controls. If this holds, idem.forge is dead by construction rather
+    than by vigilance. If a new field appears on `Proposal`, it belongs in the
+    perturbation list below or it belongs nowhere.
     """
-    # Base proposal
-    p1 = Proposal(
+    base = Proposal(
         merchant="Zepto",
         items=[ProposalItem(sku="sku_01", qty=2), ProposalItem(sku="sku_02", qty=1)],
         attempt=1,
     )
-    # Mutated proposal: different case merchant, reversed line items, attempt number 99
-    p2 = Proposal(
-        merchant="  zepto  ",
-        items=[ProposalItem(sku="sku_02", qty=1), ProposalItem(sku="sku_01", qty=2)],
-        attempt=99,
+    key = canonical_intent(base, mandate_id="mnd_01")
+
+    # Every field the agent can steer, perturbed one at a time.
+    perturbations = [
+        ("merchant whitespace and case", base.model_copy(update={"merchant": "  zepto  "})),
+        ("attempt number", base.model_copy(update={"attempt": 99})),
+        ("downstream_ref", base.model_copy(update={"downstream_ref": "ref_the_agent_chose"})),
+        ("capability", base.model_copy(update={"capability": "forged_capability"})),
+        ("line order", Proposal(
+            merchant="Zepto", attempt=1,
+            items=[ProposalItem(sku="sku_02", qty=1), ProposalItem(sku="sku_01", qty=2)])),
+    ]
+    for what, p in perturbations:
+        assert canonical_intent(p, mandate_id="mnd_01") == key, (
+            f"perturbing {what} steered the idempotency key; idem.forge is reopened"
+        )
+
+
+def test_canonical_intent_still_separates_genuinely_different_purchases():
+    """The other half: invariance is worthless if every basket hashes the same."""
+    base = Proposal(merchant="zepto", items=[ProposalItem(sku="sku_01", qty=2)])
+    key = canonical_intent(base, mandate_id="mnd_01")
+
+    different = [
+        ("quantity", Proposal(merchant="zepto", items=[ProposalItem(sku="sku_01", qty=3)])),
+        ("sku", Proposal(merchant="zepto", items=[ProposalItem(sku="sku_02", qty=2)])),
+        ("merchant", Proposal(merchant="blinkit", items=[ProposalItem(sku="sku_01", qty=2)])),
+        ("extra line", Proposal(merchant="zepto", items=[
+            ProposalItem(sku="sku_01", qty=2), ProposalItem(sku="sku_02", qty=1)])),
+    ]
+    for what, p in different:
+        assert canonical_intent(p, mandate_id="mnd_01") != key, f"{what} must change the key"
+
+    # And the mandate scopes it, so two mandates never share an idempotency key.
+    assert canonical_intent(base, mandate_id="mnd_02") != key
+
+
+def test_the_proposal_has_nowhere_to_put_a_price():
+    """The wire format is the enforcement. There is no field to lie in."""
+    fields = set(Proposal.model_fields) | set(ProposalItem.model_fields)
+    forbidden = {"unit_price", "amount", "price", "total", "title", "category"}
+    assert not (fields & forbidden), f"Proposal grew a fact-carrying field: {fields & forbidden}"
+
+
+def test_a_gateway_with_no_pricebook_refuses_rather_than_trusting_the_agent(tmp_path):
+    """Fail closed. The old code fell back to the agent's own prices here."""
+    gw = Gateway(policy=_pol(), downstream=FakeDownstream(),
+                 audit=AuditLog(tmp_path / "audit.jsonl"), pricebook=None,
+                 capability_secret="test_secret")
+    dec = gw.propose(Proposal(merchant="zepto", items=[ProposalItem(sku="sku_dal", qty=1)]),
+                     datetime(2026, 9, 1, 12, 0, tzinfo=UTC))
+    assert dec.verdict is Verdict.DENY
+    assert dec.clause_id == "pricebook" and not dec.executed
+
+
+def test_the_resolved_title_not_the_agents_reaches_the_category_resolver(tmp_path):
+    """Closes the title-steering path named in the design spec."""
+    seen = []
+
+    class SpyResolver:
+        def merchant(self, name):
+            return name
+
+        def category(self, sku, title):
+            seen.append(title)
+            return "grocery"
+
+    gw = Gateway(policy=_pol(), downstream=FakeDownstream(),
+                 audit=AuditLog(tmp_path / "audit.jsonl"),
+                 pricebook=_pricebook(), resolver=SpyResolver(),
+                 capability_secret="test_secret")
+    gw.propose(Proposal(merchant="zepto", items=[ProposalItem(sku="sku_dal", qty=1)]),
+               datetime(2026, 9, 1, 12, 0, tzinfo=UTC))
+    assert seen == ["Organic Toor Dal 1kg"], (
+        "the resolver must see the price book's title, never one the agent chose"
     )
-    
-    k1 = canonical_intent(p1, mandate_id="mnd_01")
-    k2 = canonical_intent(p2, mandate_id="mnd_01")
-    assert k1 == k2, "canonical_intent must be invariant under formatting and line order"
-    
-    # Changing quantity or SKU MUST change the key
-    p3 = Proposal(
-        merchant="Zepto",
-        items=[ProposalItem(sku="sku_01", qty=3), ProposalItem(sku="sku_02", qty=1)],
-    )
-    k3 = canonical_intent(p3, mandate_id="mnd_01")
-    assert k1 != k3, "quantity change must change canonical_intent"
 
 
 def test_concurrent_velocity_race_is_locked(tmp_path):
@@ -113,7 +176,7 @@ def test_concurrent_velocity_race_is_locked(tmp_path):
     ledger = Ledger(tmp_path / "ledger.jsonl")
     pb = _pricebook()
     gw = Gateway(policy=pol, downstream=FakeDownstream(), audit=AuditLog(tmp_path / "audit.jsonl"),
-                 ledger=ledger, pricebook=pb)
+                 ledger=ledger, pricebook=pb, capability_secret="test_secret")
 
     # 4 distinct proposals to test velocity window
     props = [

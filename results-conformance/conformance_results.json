@@ -1,64 +1,72 @@
 {
-  "total": 8,
-  "blocked": 8,
+  "total": 9,
+  "blocked": 9,
   "escaped": 0,
   "vacuous": 0,
+  "race_trials": 200,
   "results": [
     {
       "attack_id": "replay.token",
       "outcome": "BLOCKED",
       "witness_executed": true,
       "hardened_executed": false,
-      "detail": "Spent token jti revoked and blocked on replay"
+      "detail": "first spend ALLOW; replay of the revoked jti denied by 'authentication'; 1 order(s) on the rail"
     },
     {
       "attack_id": "replay.intent",
       "outcome": "BLOCKED",
       "witness_executed": true,
       "hardened_executed": false,
-      "detail": "Idempotency ledger cached duplicate intent without re-executing"
+      "detail": "two submissions of one intent produced 1 order(s) on the rail against the witness's 2"
     },
     {
       "attack_id": "idem.forge",
       "outcome": "BLOCKED",
       "witness_executed": true,
       "hardened_executed": false,
-      "detail": "Perturbed attempt field deduplicated to identical canonical_intent"
+      "detail": "6 perturbed proposals collapsed to 1 idempotency key(s) and 1 order(s); the witness minted a fresh key per perturbation"
     },
     {
       "attack_id": "race.velocity",
       "outcome": "BLOCKED",
       "witness_executed": true,
       "hardened_executed": false,
-      "detail": "0 of 200 double-spends observed (95% upper bound ~1.5%)"
+      "detail": "0 of 200 breaches of a cap of 3. Zero in 200 puts the 95% upper bound near 1.5%, which is not proof of a lock"
     },
     {
       "attack_id": "race.budget",
       "outcome": "BLOCKED",
       "witness_executed": true,
       "hardened_executed": false,
-      "detail": "0 of 200 budget breaches observed under concurrency"
+      "detail": "0 of 200 breaches of a cap of 1. Zero in 200 puts the 95% upper bound near 1.5%, which is not proof of a lock"
     },
     {
       "attack_id": "capture.divergence",
       "outcome": "BLOCKED",
       "witness_executed": true,
       "hardened_executed": false,
-      "detail": "HMAC capability verified captured_amount == authorized_amount"
+      "detail": "10x capture denied by 'capture.binding' while the capture at the authorised amount was ALLOW"
     },
     {
       "attack_id": "delegate.split",
       "outcome": "BLOCKED",
       "witness_executed": true,
       "hardened_executed": false,
-      "detail": "Shared mandate ledger bounds total spend across sub-agents"
+      "detail": "two tokens on one mandate settled 150000 paise against a 200000 cap; the witness settled 300000"
     },
     {
       "attack_id": "escalate.self",
       "outcome": "BLOCKED",
       "witness_executed": true,
       "hardened_executed": false,
-      "detail": "Gateway refuses tampered policy without Issuer private key signature"
+      "detail": "forged policy refused (True); self-minted token denied by 'authentication'; the witness raised its own cap and spent 3000000 paise"
+    },
+    {
+      "attack_id": "rail.divergence",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "10x rail divergence halted by 'rail.divergence' with verdict UNKNOWN; capability withheld (True); the witness allowed 500000 paise"
     }
   ]
 }
