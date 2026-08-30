@@ -1,31 +1,49 @@
-import { Link } from 'react-router-dom';
-import Console from '../components/console/Console';
-import { MANDATE } from '../data/policy';
+import { DashboardSidebar } from '@/components/dashboard/DashboardSidebar';
+import { DashboardTopbar } from '@/components/dashboard/DashboardTopbar';
+import { KpiTiles } from '@/components/dashboard/KpiTiles';
+import { SpendChart } from '@/components/dashboard/SpendChart';
+import { ConstraintChecks } from '@/components/dashboard/ConstraintChecks';
+import { RefusalsByConstraint } from '@/components/dashboard/RefusalsByConstraint';
+import { ContainmentGauge } from '@/components/dashboard/ContainmentGauge';
+import { AskMandateCard } from '@/components/dashboard/AskMandateCard';
+import { DecisionsTable } from '@/components/dashboard/DecisionsTable';
 
 /**
- * The console on its own route, for the demo. Same component the landing page
- * embeds — the claim and the screen cannot drift apart.
+ * The operator console, on the shadcn + Tailwind v2 stack — the "Ledger"
+ * direction. Every figure here reads from the same replayed run
+ * (`data/policy.ts`, `data/decisions.ts`) the legacy `/` console and the
+ * gateway simulator on `/v2` already read, so nothing shown here can drift
+ * from what those screens claim.
+ *
+ * Decisions/Policy contract/Audit chain stay on the sidebar as a visual map of
+ * what this console will hold — only Overview is wired up so far.
  */
 export default function Dashboard() {
   return (
-    <main className="dash-page">
-      <div className="wrap dash-wrap">
-        <div className="dash-head">
-          <Link className="back" to="/">
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M13 8H3M7 4 3 8l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            Mandate
-          </Link>
-          <h1>Your agent&rsquo;s spending</h1>
-          <p>
-            Mandate <span className="mono">{MANDATE.id}</span>, signed {MANDATE.signedOn}.
-            Every order your agent proposes is checked against the limits you approved,
-            before any money moves.
-          </p>
+    <div data-v2 className="flex min-h-screen bg-sheet font-sans text-ink">
+      <DashboardSidebar />
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <DashboardTopbar />
+
+        <div className="flex flex-col gap-4.5 px-7 py-6">
+          <KpiTiles />
+
+          <div className="grid grid-cols-[1.66fr_1fr] gap-3.5">
+            <div className="flex min-w-0 flex-col gap-3.5">
+              <SpendChart />
+              <ConstraintChecks />
+            </div>
+            <div className="flex min-w-0 flex-col gap-3.5">
+              <RefusalsByConstraint />
+              <ContainmentGauge />
+              <AskMandateCard />
+            </div>
+          </div>
+
+          <DecisionsTable />
         </div>
-        <Console homeLink />
       </div>
-    </main>
+    </div>
   );
 }

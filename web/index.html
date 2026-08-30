@@ -5,6 +5,12 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Turn what you meant into a signed set of limits, and check every order your AI agent tries to place against them in plain code. Built for the Razorpay AI Buildathon 2026, Track 01." />
+    <!-- Geist is linked here rather than @import-ed from design.css: that sheet is
+         pulled into a cascade layer, and an @import inside @layer is invalid and
+         silently dropped. A link also starts the fetch without waiting on CSS parse. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" />
     <title>Mandate — the limit your agent cannot argue with</title>
   </head>
   <body>

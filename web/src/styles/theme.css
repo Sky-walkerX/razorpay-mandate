@@ -1,0 +1,159 @@
+/* ---------------------------------------------------------------------------
+   Mandate design tokens, in the shadcn/Tailwind v4 model.
+
+   This is `design.css`'s palette, not a new one. Ground stays white bond, type
+   stays Geist with Geist Mono on every amount, key and hash. Indigo remains
+   chrome only — navigation, links, the primary action — and never carries
+   meaning. Meaning is carried by three inks that always appear with a shape and
+   a word beside them, never by hue alone: `pass` under a limit, `refer` when
+   something needs a human, `halt` when a part stops an order.
+
+   Seller hues are identity, never state. A merchant is allowed to be yellow;
+   a verdict is not.
+
+   Preflight is deliberately omitted. The `/` route still renders through
+   `design.css`, and Tailwind's base reset would overwrite it. When the v2 route
+   is cut over and `design.css` is deleted, replace the three imports below with
+   the single `@import "tailwindcss";` and the reset comes back with it.
+--------------------------------------------------------------------------- */
+
+/* Layer order is the whole trick here.
+ *
+ * `design.css` is plain, unlayered CSS, and unlayered rules beat layered ones
+ * no matter what order they load in. Left alone, its `a { color: inherit }` and
+ * `p { margin: 0 }` silently defeat every Tailwind utility — black text on the
+ * black primary button, and margins that refuse to apply. Pulling it into an
+ * explicit `legacy` layer below `utilities` puts both sheets on the same
+ * footing and lets order decide, so v1 keeps its styling and v2 can override.
+ */
+@layer legacy, theme, base, components, utilities;
+@import './design.css' layer(legacy);
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+@theme {
+  /* Surfaces, from the back of the page forward. */
+  --color-bond: #ffffff;
+  --color-sheet: #fafaf9;
+  --color-sunk: #f4f4f2;
+  --color-raise: #fcfcfb;
+
+  /* Hairlines. Three weights, because one is never enough in a dense table. */
+  --color-rule: #e4e3df;
+  --color-rule-soft: #efeeeb;
+  --color-hair: #f5f4f1;
+
+  /* Ink, darkest to lightest. */
+  --color-ink: #0a0a0b;
+  --color-ink-2: #4e4e55;
+  --color-ink-3: #8c8c93;
+  --color-ink-4: #b6b6bc;
+
+  /* Chrome / Brand Accent. Exact Razorpay Blue (#2f5eff) sampled from button. */
+  --color-indigo: #2f5eff;          /* Exact Razorpay Blue */
+  --color-indigo-soft: #edf2fe;     /* Soft Royal Blue Tint */
+  --color-navy: #012652;            /* Razorpay Prussian Navy */
+  --color-navy-soft: #083268;       /* Razorpay Navy Hover */
+  --color-razorpay-blue: #2f5eff;
+  --color-razorpay-navy: #012652;
+
+  /* The three meaning inks, each with a soft ground and a hairline. */
+  --color-halt: #b42318;
+  --color-halt-soft: #fdf1ef;
+  --color-halt-line: #f0cfc9;
+  --color-pass: #0e7c56;
+  --color-pass-soft: #edf7f2;
+  --color-pass-line: #c5e4d6;
+  --color-refer: #8a5a05;
+  --color-refer-soft: #fbf4e7;
+  --color-refer-line: #eddcbb;
+
+  /* Seller identity. Hue names a merchant and never a state. */
+  --color-blinkit: #f8cd46;
+  --color-blinkit-ink: #101010;
+  --color-zepto: #7c3aed;
+  --color-instamart: #fc8019;
+
+  --font-sans: Geist, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-panel: 14px;
+
+  --shadow-sheet: 0 1px 2px rgb(10 10 11 / 0.04), 0 10px 28px -14px rgb(10 10 11 / 0.12);
+  --shadow-lift: 0 1px 3px rgb(10 10 11 / 0.05), 0 24px 52px -22px rgb(10 10 11 / 0.2);
+
+  /* Springs, generated rather than guessed. Money never overshoots: a bar that
+     springs past its value shows a number the order did not reach, so anything
+     carrying an amount uses `--ease-settle`, which has zero bounce. The faint
+     overshoot in `--ease-snap` is reserved for chrome that carries no value. */
+  --ease-settle: linear(
+    0, 0.0507, 0.1614, 0.2915, 0.4192, 0.5342, 0.6326, 0.714, 0.7796, 0.8317,
+    0.8723, 0.9038, 0.9279, 0.9462, 0.96, 0.9704, 0.9781, 0.9839, 0.9882,
+    0.9913, 0.9937, 0.9954, 0.9966, 0.9975, 0.9982, 0.9987, 1
+  );
+  --ease-snap: linear(
+    0, 0.1005, 0.3019, 0.5112, 0.687, 0.8175, 0.9055, 0.9599, 0.9903, 1.005,
+    1.0104, 1.0109, 1.0092, 1.0068, 1.0046, 1.0029, 1.0016, 1.0008, 1.0003, 1
+  );
+}
+
+/* shadcn's component contract, pointed at the tokens above so a shadcn
+   component dropped into this project inherits Mandate rather than slate. */
+@theme inline {
+  --color-background: var(--color-bond);
+  --color-foreground: var(--color-ink);
+  --color-card: var(--color-bond);
+  --color-card-foreground: var(--color-ink);
+  --color-popover: var(--color-bond);
+  --color-popover-foreground: var(--color-ink);
+  --color-primary: #2f5eff;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--color-sheet);
+  --color-secondary-foreground: var(--color-ink);
+  --color-muted: var(--color-sheet);
+  --color-muted-foreground: var(--color-ink-3);
+  --color-accent: var(--color-sunk);
+  --color-accent-foreground: var(--color-ink);
+  --color-destructive: var(--color-halt);
+  --color-destructive-foreground: var(--color-bond);
+  --color-border: var(--color-rule);
+  --color-input: var(--color-rule);
+  --color-ring: var(--color-indigo);
+}
+
+/* The parts of preflight the v2 tree actually relies on, scoped so they cannot
+   reach the shipped page. Lists lose their markers because every list here is a
+   row of constraints, not prose. */
+@layer base {
+  [data-v2] ul,
+  [data-v2] ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  [data-v2] blockquote,
+  [data-v2] figure,
+  [data-v2] dl,
+  [data-v2] dd {
+    margin: 0;
+  }
+  [data-v2] button {
+    font-family: inherit;
+    cursor: pointer;
+  }
+  [data-v2] svg {
+    display: block;
+  }
+  [data-v2] {
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background: var(--color-bond);
+    letter-spacing: -0.011em;
+    -webkit-font-smoothing: antialiased;
+  }
+  [data-v2] :focus-visible {
+    outline: 2px solid var(--color-indigo);
+    outline-offset: 2px;
+    border-radius: 5px;
+  }
+}

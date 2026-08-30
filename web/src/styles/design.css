@@ -9,7 +9,7 @@
    carmine when a part stops an order.
 --------------------------------------------------------------------------- */
 
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap');
+/* Webfonts are linked from index.html — see the note there. */
 
 :root {
   --bond: #FFFFFF;
@@ -20,8 +20,10 @@
   --ink: #08080A;
   --ink-2: #4A4A52;
   --ink-3: #8A8A93;
-  --indigo: #3B34D6;
-  --indigo-soft: #EEEDFC;
+  --indigo: #2F5EFF;
+  --indigo-soft: #EDF2FE;
+  --navy: #012652;
+  --navy-soft: #083268;
   --halt: #B42318;
   --halt-soft: #FDF0EE;
   --pass: #0E7C56;
@@ -32,6 +34,7 @@
   --shadow: 0 1px 2px rgba(8, 8, 10, .04), 0 8px 24px -12px rgba(8, 8, 10, .10);
   --shadow-lift: 0 2px 4px rgba(8, 8, 10, .05), 0 18px 40px -18px rgba(8, 8, 10, .16);
 
+  --sans: Geist, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -42,7 +45,7 @@ body {
   margin: 0;
   background: var(--bond);
   color: var(--ink);
-  font-family: Geist, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--sans);
   font-size: 16px;
   line-height: 1.6;
   letter-spacing: -0.011em;
@@ -507,9 +510,13 @@ footer { padding: 44px 0; border-bottom: 0; }
 .kv li .v { margin-left: auto; font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; text-align: right; }
 .kv li .v.deny { color: var(--halt); }
 
-.feed { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
+.feed { list-style: none; margin: 0; padding: 0; overflow-y: auto; --badge-col: 88px; }
 .feed.cap { max-height: 392px; }
-.fitem { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid var(--rule-soft); transition: background .14s; }
+/* The badge column is fixed, not auto. Sized to the longest label ("needs you")
+   so every row's text starts on the same vertical line and the pills share both
+   edges. An auto column made each row's indent depend on its own verdict. */
+.fitem { display: grid; grid-template-columns: var(--badge-col) minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid var(--rule-soft); transition: background .14s; }
+.fitem .badge { width: 100%; }
 .fitem:hover { background: var(--sheet); }
 .fitem:last-child { border-bottom: 0; }
 .badge {
@@ -593,7 +600,7 @@ footer { padding: 44px 0; border-bottom: 0; }
   .row { grid-template-columns: 20px minmax(0, 1fr) 88px; row-gap: 6px; }
   .row .mid { grid-column: 1 / -1; }
   .clause { padding-left: 14px; }
-  .fitem { grid-template-columns: auto minmax(0, 1fr); row-gap: 6px; }
+  .fitem { grid-template-columns: var(--badge-col) minmax(0, 1fr); row-gap: 6px; }
   .fitem .a { grid-column: 1 / -1; text-align: left; }
   .fitem .a s { display: inline; margin-left: 8px; }
 }
