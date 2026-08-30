@@ -1,0 +1,3 @@
+{"ts": 1788013967.742342, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0012"}], "merchant": "instamart"}}}
+{"ts": 1788013975.2252002, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"merchant": "zepto", "items": [{"qty": 2, "sku": "sku_0037"}]}}}
+{"ts": 1788013980.0397398, "model": "gemini-3.7-flash", "messages": 5, "tool_use": null}

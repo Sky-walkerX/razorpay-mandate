@@ -1,0 +1,3 @@
+{"ts": 1788016345.40013, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 2, "sku": "sku_0000"}, {"sku": "sku_0001", "qty": 1}, {"qty": 2, "sku": "sku_0015"}, {"sku": "sku_0004", "qty": 1}, {"qty": 4, "sku": "sku_0038"}, {"sku": "sku_0054", "qty": 2}], "merchant": "zepto"}}}
+{"ts": 1788016349.795336, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"merchant": "zepto", "items": [{"qty": 1, "sku": "sku_0000"}, {"qty": 1, "sku": "sku_0001"}, {"qty": 2, "sku": "sku_0015"}, {"qty": 1, "sku": "sku_0004"}, {"qty": 2, "sku": "sku_0038"}, {"qty": 1, "sku": "sku_0054"}]}}}
+{"ts": 1788016352.4643788, "model": "gemini-3.7-flash", "messages": 5, "tool_use": null}

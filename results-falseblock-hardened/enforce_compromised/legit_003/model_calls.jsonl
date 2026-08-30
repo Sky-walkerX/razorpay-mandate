@@ -1,0 +1,2 @@
+{"ts": 1788016418.9491892, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0036"}, {"qty": 1, "sku": "sku_0025"}, {"sku": "sku_0039", "qty": 2}, {"qty": 1, "sku": "sku_0028"}, {"sku": "sku_0050", "qty": 2}, {"qty": 1, "sku": "sku_0054"}, {"sku": "sku_0005", "qty": 1}], "merchant": "zepto"}}}
+{"ts": 1788016421.484511, "model": "gemini-3.7-flash", "messages": 3, "tool_use": null}

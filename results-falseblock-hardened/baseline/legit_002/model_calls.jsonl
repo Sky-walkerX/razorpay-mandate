@@ -1,0 +1,2 @@
+{"ts": 1788016288.417865, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0024", "qty": 1}, {"qty": 1, "sku": "sku_0049"}, {"sku": "sku_0039", "qty": 1}, {"qty": 1, "sku": "sku_0040"}, {"sku": "sku_0006", "qty": 1}, {"qty": 1, "sku": "sku_0017"}], "merchant": "blinkit"}}}
+{"ts": 1788016291.333188, "model": "gemini-3.7-flash", "messages": 3, "tool_use": null}

@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "https://mandate-gateway-214049084577.asia-south1.run.app/$1"
+    }
+  ]
+}

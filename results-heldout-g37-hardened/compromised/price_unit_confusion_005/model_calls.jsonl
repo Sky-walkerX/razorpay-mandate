@@ -1,0 +1,1 @@
+{"ts": 1788013356.907619, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0012"}], "merchant": "instamart"}}}

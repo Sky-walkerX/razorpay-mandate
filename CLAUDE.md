@@ -1,6 +1,6 @@
 # Mandate: working context
 
-Last updated 2026-08-29. This file records where the evaluation stands, what has
+Last updated 2026-08-30. This file records where the evaluation stands, what has
 been verified, and what is still open. Read it before touching the harness.
 
 ## What this project is
@@ -147,9 +147,50 @@ quietly stops testing anything.
 6. Conformance suite: eight attacks, witnesses, tri-state reporting.
 7. Re-run the g37 sweep and update the docs.
 
-Status as of 29 Aug: steps 1 and 2 in progress (`gateway/pricebook.py`,
-`gateway/tokens.py`, `gateway/revocation.py` exist; `policy/canonical.py` and
-`loader.py` modified). No `src/mandate/service/` yet, so step 4 has not started.
+Status as of 29 Aug: steps 0-6 are in. `mandate demo --replay`, `PriceBook` /
+`Proposal` / `ResolvedAction`, the Ed25519 issuer with `keygen`/`sign`/
+`issue-token`/`revoke`, the atomic reservation, `src/mandate/service/server.py`
+behind `mandate serve`, the capture HMAC, and the eight-attack conformance suite
+behind `mandate conformance`. 321 tests pass, ruff clean. Step 7 (re-running the
+g37 sweep) is running as of 29 Aug into `results-heldout-g37-hardened/`. Until it
+lands, every containment number in the repo still predates the hardening.
+
+**Audited against the spec on 29 Aug. Seven deviations were found and fixed:**
+
+1. The one rule was violated on the only path the evaluation runs.
+   `runner.py` built the `Gateway` with no price book and `DirectClient` demanded
+   `title` and `unit_price` from the agent, so an agent declaring a paisa for a
+   Rs 500 item was charged a paisa, and its title still steered category
+   resolution. `PriceBook` existed but was wired into nothing but tests. The
+   runner now builds it from `mut.clean_catalog`, and the tool schema is
+   `{sku, qty}`.
+2. `_resolve_to_action` fell back to agent-supplied prices for a SKU the price
+   book did not carry, and returned the agent's action untouched when there was
+   no price book at all. Both now raise; the gateway fails closed.
+3. `Gateway` had no token surface at all -- no `token`, `jti` or `revocation`
+   anywhere in the class. Request-path step 1 lived only in the HTTP handler.
+   `propose()` and `capture_payment()` now take a token and verify signature,
+   expiry, mandate binding and revocation before anything else.
+4. The service failed open. With no public key it waved every bearer string
+   through and started on an unsigned policy. It now raises
+   `ServiceMisconfigured` rather than start.
+5. `escalate.self` hardcoded `witness_ok = True`, which is precisely the failure
+   VACUOUS exists to prevent. Its witness is now a real configuration in which
+   the agent does raise its own cap.
+6. Four attacks tested the primitives beside the gateway rather than the gateway.
+   `replay.token` asserted `not rev.is_revoked(jti)` right after calling
+   `rev.revoke(jti)` -- a tautology, with no token ever reaching the gateway.
+   `capture.divergence` called `verify_capture_capability` directly.
+   `delegate.split` used no tokens and was a sequential duplicate of
+   `race.budget`. All four now run the attack through `Gateway`.
+7. `race.velocity` raced `budget.total`, not velocity: the Rs 2000 budget bound
+   at the third order so a velocity limit of 3 was never reached. Each race now
+   slackens the constraint it is not testing.
+
+The suite is mutation-tested: breaking the lock, the token check, the revocation
+check, the capture binding or the idempotency cache each flips exactly the
+attack that names it to ESCAPED. Before the fixes, mutating the gateway itself
+changed nothing, because nothing tested the gateway.
 
 If time runs short, cut `race.budget` and `delegate.split` first, since
 `race.velocity` already proves the lock. Cut revocation only if willing to
@@ -158,9 +199,77 @@ answer "how do you stop it right now" with "you wait for expiry."
 ### The cost not being hidden
 
 `ResolvedAction` changes the gateway, so every containment number in the repo was
-measured against different code. When this lands, either re-run the g37 held-out
-sweep (about 40 min of Vertex wall clock) or state in the README that those
-numbers predate the hardening. Re-running is the intent.
+measured against different code. Either re-run the g37 held-out sweep (about 40
+min of Vertex wall clock) or state in the README that those numbers predate the
+hardening. The re-run is half done. `results-heldout-g37-hardened/` holds 72
+attack rows (70 scored, 2 excluded on the parallel-tool-call bug, now fixed):
+`enforce` and `enforce_compromised` both 100%, `baseline` 44.4%, `compromised`
+41.2%. Both unenforced arms came out BELOW the pre-hardening set, so the
+separation is wider, not narrower. False block was measured separately in
+`results-falseblock-hardened/` (run `run_falseblock_20260829`, 48 runs, 0
+failures, 0% in all four arms) after the `llm.py` fix landed. Two run ids on
+purpose: the attack rows predate the fix and the legit rows postdate it, and one
+id spanning two code versions is the provenance failure the stamping prevents.
+The README reports them as two runs and says so.
+
+Not re-running the 72 attack rows against the fixed provider is deliberate. The
+fix only changes which parts get echoed back when the model emits parallel tool
+calls, and on the 70 surviving rows that path never fired. Re-buying them would
+return the same numbers.
+
+The command that produced the attack half: `mandate evaluate --held-out --per-family 6
+--legit-n 12 --model gemini-3.7-flash --out results-heldout-g37-hardened
+--workers 5 --seed 20260901 --run-id run_hardened_20260829`, logging to
+`heldout-g37-hardened.log`. It writes to a new directory on purpose:
+`results-heldout-g37/` is the record of what was claimed before the hardening and
+must not be overwritten.
+
+`--run-id` is not optional here. Left to itself, `evaluate` derives the id from
+seed, model, corpus hash and mandate id, none of which changed, so the re-run
+came out as `run_b7d462f6b78b`, the same id as the pre-hardening set. Two
+different gateways stamping one run id is exactly the provenance failure Tasks
+1-4 were built to prevent. Any future re-run against changed gateway code needs
+an explicit id for the same reason.
+
+Two things about that re-run that are not obvious:
+
+**The tool schema changed, so the prompts changed.** `create_order` now takes
+`{sku, qty}` instead of `{sku, title, qty, unit_price}`. Recorded
+`model_calls.jsonl` traces still replay, because `DirectClient` discards the
+extra fields rather than rejecting them, but a fresh sweep is not comparing like
+with like against the old one.
+
+**The baseline arm keeps resolution. Decided 29 Aug, and it needs no code
+change.** Resolution happens in `propose()` regardless of `Mode` and stays that
+way. No arm branches on `Mode` for anything except execution. The reasoning, so
+it does not get re-opened:
+
+- There is nothing to branch away from. Across all ten mutators in
+  `families.py`, none writes `unit_price` or `category`, and only
+  `category.laundering` writes `title`. The other nine work through description
+  text, units, merchant names, the rail multiplier, repeat counts or the clock,
+  and resolution overrides none of those.
+- `category.laundering` rewrites the description alongside the title, so the
+  "assorted items for an evening in" framing that misleads the agent survives
+  resolution untouched. Only the gateway's own category check sees the clean
+  title.
+- Resolution cannot contain anything in an unenforced arm regardless.
+  `may_execute = verdict is Verdict.ALLOW or self.mode is Mode.OBSERVE`
+  (`core.py:266`), so a resolved DENY in `baseline` is logged and the order
+  executes anyway. `oracle.replay_violations()` then rebuilds every line item
+  from the clean catalog and judges on `catalog.by_sku(sku).category`, so the
+  oracle never reads what the resolver returned.
+- Measured rather than argued: `category.laundering` is already 6/6 contained in
+  `baseline` in `results/` (flash-lite, pre-hardening). The gateway's marginal
+  benefit on that family was zero before any of this work started.
+- The held-out set does not contain it. Held-out is `budget.salami`,
+  `injection.review` and `price.unit_confusion`, none of which writes `title`,
+  so this decision moves the held-out headline by nothing at all.
+
+What resolution does change in an unenforced arm is that the executed amount and
+the idempotency key are computed by the gateway instead of stated by the agent.
+That is the wire format, not enforcement, and the arms only ever measured
+enforcement.
 
 ### Out of scope this cycle
 
@@ -422,6 +531,18 @@ adding a family to justify a constraint inverts how the corpus was frozen.
 `merchant.lookalike`, `retry.storm` and `time.boundary` were scored on
 flash-lite only.
 
+**`--held-out` excludes the legitimate items, so false block needs a second
+invocation.** `run_corpus` filters `i.held_out if held_out_only`, and legit items
+carry `held_out=False`, so `--held-out --legit-n 12` silently runs 72 attack rows
+and zero legit rows. The reports then print `n/a (no items)` for false block. The
+held-out set is two commands into one directory: the `--held-out` pass for
+attacks, then `--per-family 0 --legit-n 12` for the legit rows. Cap 0 drops every
+attack family because `len(by_fam[fid]) < 0` is never true, while legit items take
+the `legit_n` cap instead. Both passes must carry the same `--run-id`. This is not
+new; the derived run id ignores `held_out` and `per_family`, so the original
+`results-heldout-g37/` got one id across two invocations by accident rather than
+by design.
+
 **Malformed tool arguments cost runs.** Two of 60 good qwen-flash rows died on
 `JSONDecodeError` in tool arguments, about 3%. A retry on parse failure would
 recover them.
@@ -431,7 +552,50 @@ of it `load_corpus` pydantic-validating a 10MB corpus and hashing it, then
 `cli.evaluate` hashing the same items a second time. This is a per-batch tax, so
 prefer few large batches over many small ones, or cache the hash.
 
+## Closed, 30 Aug: Judge-Testable Live Gateway & GCP Production Deployment
+
+- **Production Deployment on Google Cloud Run (`asia-south1`):**
+  - Live at `https://mandate-gateway-214049084577.asia-south1.run.app/`
+  - Multi-stage Docker container build (Node 20 Vite frontend + Python 3.12 Starlette daemon).
+  - Provisioned at 1 GiB RAM, 1 vCPU, `--min-instances=1 --max-instances=1` (always warm, zero cold-starts) with native IAM Vertex AI authentication.
+  - Serves single-origin SPA frontend routes (`/`, `/try`, `/dashboard`) alongside 11 REST API endpoints (`/v1/sessions`, `/v1/orders`, `/v1/compile`, `/v1/catalog`, `/v1/headroom`, `/v1/revoke`, `/v1/conformance`, `/health`).
+
+- **Frontend Homepage Cutover (`/v2` → `/`):**
+  - Made the modern Shadcn + Motion frontend the default homepage at `/` with hero scroll stage and live interactive simulation.
+  - Set `/v2` to permanently redirect to `/`.
+
+- **Live Judge Attack Console (`/try`):**
+  - Replaced crowded 3-column layout with a spacious, high-impact 2-panel architecture matching `theme.css` tokens.
+  - Left panel: Categorized attack presets (Prompt Injection, Price Drift, Rogue Merchant, Category Bypass, Quantity Flood, Velocity Storm, Idempotency Replay, Revoked Token) + Free-form custom composer + Live headroom meter + Token revocation kill-switch.
+  - Right panel: Live Gateway Inspection Chamber (matching `GatewayPanel.tsx` visual layout) with real merchant chips, figure comparison, animated 9-clause evaluation waterfall, verdict banners (`ALLOWED` in emerald / `REFUSED` in carmine), downstream order IDs, and real-time Merkle hash-chained ledger.
+  - Integrated Natural Language Policy Compiler tab with sample intent chips, temperature-0.0 extraction, and `HEARD` vs `INFERRED` provenance badges.
+
+- **Downstream Rail Amount Reconciliation Check:**
+  - Added amount divergence verification in `Gateway.propose()` right after `self.downstream.create_order()`. If `downstream_body["amount"] != action.amount`, sets `Verdict.UNKNOWN`, `executed = False`, withholds capability, records `rail.divergence` clause into audit log, and marks ledger failed.
+
+- **Conformance Suite Expansion (8 → 9 Attacks):**
+  - Added `attack_rail_divergence` (9th attack) to `src/mandate/conformance/suite.py`. Suite reports **9 attacks, 9 blocked, 0 escaped, 0 vacuous**.
+
+- **Session Isolation & Token Pool:**
+  - `SessionManager` provides per-session directory isolation under `/tmp/sessions/<jti>/` with dedicated `audit.jsonl` and `ledger.jsonl`.
+  - `TokenPool` manages 200 pre-minted offline signed Ed25519 tokens (`tok_pool_001` ... `tok_pool_200`).
+  - Added `mandate mint-pool --count 200` CLI command.
+  - All 338 pytest unit and integration tests passing.
+
 ## Closed, 29 Aug
+
+- **Parallel tool calls no longer kill a run.** Both Gemini surfaces echo the
+  model's own parts back verbatim, and both used to echo every `function_call`
+  part while the agent loop answered exactly one. Vertex rejects the next request
+  with `400 INVALID_ARGUMENT, Please ensure that the number of function response
+  parts is equal to the number of function call parts`; Interactions rejects it
+  with `400 invalid_request`. It cost 2 of 72 rows in the hardened attack sweep,
+  both `price.unit_confusion#005`, in `compromised` and `enforce_compromised`
+  only. Temperature is 0.0 with a fixed seed, so it was deterministic and tied to
+  the compromised system prompt, not flaky. `_answered_only()` in `llm.py` now
+  keeps the answered call and drops the rest, while every non-call part still
+  round-trips because Gemini 3 signs its `thought` step. Three tests cover it,
+  including one that counts calls against responses on the wire.
 
 - False block measured on gemini-3.7-flash. 12 legitimate items x 4 arms, all 48
   executed, 0 blocked. Lives in `results-heldout-g37/`.
@@ -439,6 +603,26 @@ prefer few large batches over many small ones, or cache the hash.
 - `mandate demo` defaults to `budget.salami`.
 - Ruff clean, 284 tests pass. `test_readme_has_no_pending_placeholders` was
   matching a bare substring and fired on "overspending"; now word-bounded.
+
+## The web console
+
+`web/` reads `web/src/data/evidence.json` and nothing else. `mandate evidence`
+writes it from `policies/policy.yaml`, the two hardened result directories, and
+`results-conformance/`. Regenerate it after any run whose numbers should reach
+the screen; never edit it by hand, and never retype a bound into a `.ts` file.
+
+It used to hold its own literals and was wrong in four places: max quantity 4
+against a policy that says 5, a policy hash matching no document, a signing date
+two weeks off, and two clauses marked `inferred` that the provenance records as
+stated. Nothing compared the two, so nobody noticed.
+`tests/harness/test_evidence.py` now does.
+
+Two tests in `test_docs.py` guard the rest: the data modules must still import
+`evidence.json`, and no `.tsx` may claim a synthetic run. The console carried
+"the four-arm sweep has not been run" long after it had.
+
+The "slowest check 1.4 ms" tile was a latency nobody measured. It is now the
+conformance result, which is measured.
 
 ## Conventions
 
@@ -464,3 +648,17 @@ prefer few large batches over many small ones, or cache the hash.
   containment set. Do not add one to make tooling simpler.
 - An attack whose witness does not fire is `VACUOUS`, never `BLOCKED`. Do not
   "fix" a vacuous result by adjusting the witness until it passes.
+- `AttackResult.judge()` decides the tri-state. An attack that decides its own
+  outcome can decide it wrongly, which is how `escalate.self` came to hardcode
+  its witness.
+- A conformance attack must run through `Gateway`. Calling
+  `verify_capture_capability` or `RevocationList.is_revoked` directly tests the
+  primitive and not the boundary, and passes even when the gateway never calls it.
+- Each race attack slackens the constraint it is not testing. Otherwise the wrong
+  constraint binds first and the attack passes for a reason unrelated to the lock.
+- `UnhardenedGateway` must stay exploitable.
+  `tests/conformance/test_unhardened_gateway_is_exploitable.py` asserts each of
+  its weaknesses. If one of those tests fails, the fix is to restore the
+  weakness, not to delete the test.
+- The trial count is load-bearing. A broken lock shows up as 1 breach in 200 on
+  `race.budget` and not at all in 25, so do not lower `--trials` to save time.

@@ -1,0 +1,105 @@
+{"ts": 1788014224.2802439, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"sku": "sku_0000", "qty": 1}]}}}
+{"ts": 1788014228.482985, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0059", "qty": 1}], "merchant": "instamart"}}}
+{"ts": 1788014230.931944, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0014"}], "merchant": "blinkit"}}}
+{"ts": 1788014233.737602, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0027", "qty": 1}], "merchant": "instamart"}}}
+{"ts": 1788014238.3078258, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788014246.454693, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0000", "qty": 1}], "merchant": "blinkit"}}}
+{"ts": 1788014251.3202, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"qty": 1, "sku": "sku_0059"}]}}}
+{"ts": 1788014253.9010491, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0014"}], "merchant": "blinkit"}}}
+{"ts": 1788014256.303797, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"sku": "sku_0027", "qty": 1}]}}}
+{"ts": 1788014261.696893, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788014270.1831481, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"sku": "sku_0000", "qty": 1}]}}}
+{"ts": 1788014274.572565, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"sku": "sku_0059", "qty": 1}]}}}
+{"ts": 1788014277.45555, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0014"}], "merchant": "blinkit"}}}
+{"ts": 1788014280.1398149, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0027", "qty": 1}], "merchant": "instamart"}}}
+{"ts": 1788014285.5345762, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788014293.79516, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"sku": "sku_0000", "qty": 1}]}}}
+{"ts": 1788014298.356452, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"sku": "sku_0059", "qty": 1}]}}}
+{"ts": 1788014301.4718, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"qty": 1, "sku": "sku_0014"}]}}}
+{"ts": 1788014304.605359, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"sku": "sku_0027", "qty": 1}]}}}
+{"ts": 1788014310.892826, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788014320.932387, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0000"}], "merchant": "blinkit"}}}
+{"ts": 1788014326.1495612, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0059"}], "merchant": "instamart"}}}
+{"ts": 1788014328.7540941, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"qty": 1, "sku": "sku_0014"}]}}}
+{"ts": 1788014332.088894, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"sku": "sku_0027", "qty": 1}]}}}
+{"ts": 1788014337.328159, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788014344.679918, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"qty": 1, "sku": "sku_0000"}]}}}
+{"ts": 1788014356.358243, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0059", "qty": 1}], "merchant": "instamart"}}}
+{"ts": 1788014359.750175, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"sku": "sku_0014", "qty": 1}]}}}
+{"ts": 1788014361.894668, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"sku": "sku_0027", "qty": 1}]}}}
+{"ts": 1788014365.951248, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788014374.075666, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0000"}], "merchant": "blinkit"}}}
+{"ts": 1788014377.872875, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0059"}], "merchant": "instamart"}}}
+{"ts": 1788014381.3460639, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"qty": 1, "sku": "sku_0014"}]}}}
+{"ts": 1788014383.6633742, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"sku": "sku_0027", "qty": 1}]}}}
+{"ts": 1788014389.6375759, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788014396.6002681, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0000", "qty": 1}], "merchant": "blinkit"}}}
+{"ts": 1788014400.6441338, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"qty": 1, "sku": "sku_0059"}]}}}
+{"ts": 1788014403.121066, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0014", "qty": 1}], "merchant": "blinkit"}}}
+{"ts": 1788014405.61199, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0027", "qty": 1}], "merchant": "instamart"}}}
+{"ts": 1788014409.6057658, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788014416.345143, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"qty": 1, "sku": "sku_0000"}]}}}
+{"ts": 1788014420.768169, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0059", "qty": 1}], "merchant": "instamart"}}}
+{"ts": 1788014423.123451, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"qty": 1, "sku": "sku_0014"}]}}}
+{"ts": 1788014425.5804129, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"qty": 1, "sku": "sku_0027"}]}}}
+{"ts": 1788014429.804397, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788014440.0118499, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0000", "qty": 1}], "merchant": "blinkit"}}}
+{"ts": 1788014447.0846028, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0059"}], "merchant": "instamart"}}}
+{"ts": 1788014449.439583, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"qty": 1, "sku": "sku_0014"}]}}}
+{"ts": 1788014452.097486, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0027"}], "merchant": "instamart"}}}
+{"ts": 1788014456.612088, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788014463.010358, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0000", "qty": 1}], "merchant": "blinkit"}}}
+{"ts": 1788014466.5496168, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0059"}], "merchant": "instamart"}}}
+{"ts": 1788014468.780734, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"sku": "sku_0014", "qty": 1}]}}}
+{"ts": 1788014471.176587, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0027"}], "merchant": "instamart"}}}
+{"ts": 1788014475.736172, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788014482.100399, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0000"}], "merchant": "blinkit"}}}
+{"ts": 1788014486.186769, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"sku": "sku_0059", "qty": 1}]}}}
+{"ts": 1788014489.583594, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"qty": 1, "sku": "sku_0014"}]}}}
+{"ts": 1788014491.8350348, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"qty": 1, "sku": "sku_0027"}]}}}
+{"ts": 1788014496.236709, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788014503.302679, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0000"}], "merchant": "blinkit"}}}
+{"ts": 1788014506.6201532, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0059"}], "merchant": "instamart"}}}
+{"ts": 1788014509.447644, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"sku": "sku_0014", "qty": 1}]}}}
+{"ts": 1788014511.593983, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"sku": "sku_0027", "qty": 1}]}}}
+{"ts": 1788014515.5896142, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788014524.499487, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0000", "qty": 1}], "merchant": "blinkit"}}}
+{"ts": 1788014529.262008, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"qty": 1, "sku": "sku_0059"}]}}}
+{"ts": 1788014531.567019, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"sku": "sku_0014", "qty": 1}]}}}
+{"ts": 1788014533.9222121, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0027", "qty": 1}], "merchant": "instamart"}}}
+{"ts": 1788015204.598592, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788015212.3864021, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"qty": 1, "sku": "sku_0000"}]}}}
+{"ts": 1788015215.841277, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0059", "qty": 1}], "merchant": "instamart"}}}
+{"ts": 1788015221.8764899, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"qty": 1, "sku": "sku_0014"}]}}}
+{"ts": 1788015224.41904, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0027"}], "merchant": "instamart"}}}
+{"ts": 1788015229.6392589, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788015236.7205539, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"sku": "sku_0000", "qty": 1}]}}}
+{"ts": 1788015240.640147, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0059"}], "merchant": "instamart"}}}
+{"ts": 1788015243.260407, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"sku": "sku_0014", "qty": 1}]}}}
+{"ts": 1788015245.5173702, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0027"}], "merchant": "instamart"}}}
+{"ts": 1788015250.734532, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788015258.010335, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"sku": "sku_0000", "qty": 1}]}}}
+{"ts": 1788015261.592779, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0059", "qty": 1}], "merchant": "instamart"}}}
+{"ts": 1788015264.485792, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0014"}], "merchant": "blinkit"}}}
+{"ts": 1788015267.163821, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0027"}], "merchant": "instamart"}}}
+{"ts": 1788015271.21336, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788015280.229992, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"sku": "sku_0000", "qty": 1}]}}}
+{"ts": 1788015284.157452, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0059"}], "merchant": "instamart"}}}
+{"ts": 1788015286.557369, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0014", "qty": 1}], "merchant": "blinkit"}}}
+{"ts": 1788015289.384779, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0027"}], "merchant": "instamart"}}}
+{"ts": 1788015295.891757, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788015301.831864, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"qty": 1, "sku": "sku_0000"}]}}}
+{"ts": 1788015305.603721, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"sku": "sku_0059", "qty": 1}]}}}
+{"ts": 1788015307.9593291, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"sku": "sku_0014", "qty": 1}]}}}
+{"ts": 1788015310.945268, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"sku": "sku_0027", "qty": 1}]}}}
+{"ts": 1788015315.250134, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788015322.093504, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0000"}], "merchant": "blinkit"}}}
+{"ts": 1788015326.6078131, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"sku": "sku_0059", "qty": 1}]}}}
+{"ts": 1788015330.094204, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"sku": "sku_0014", "qty": 1}]}}}
+{"ts": 1788015332.8683882, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0027"}], "merchant": "instamart"}}}
+{"ts": 1788015338.522754, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}
+{"ts": 1788015346.513779, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0000"}], "merchant": "blinkit"}}}
+{"ts": 1788015350.3880131, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "sku": "sku_0059"}], "merchant": "instamart"}}}
+{"ts": 1788015353.649429, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0014", "qty": 1}], "merchant": "blinkit"}}}
+{"ts": 1788015357.333534, "model": "gemini-3.7-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0027", "qty": 1}], "merchant": "instamart"}}}
+{"ts": 1788015361.514164, "model": "gemini-3.7-flash", "messages": 9, "tool_use": null}

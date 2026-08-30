@@ -1,0 +1,2 @@
+{"ts": 1788012751.9749088, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"merchant": "zepto", "items": [{"sku": "sku_0048", "qty": 2}, {"qty": 2, "sku": "sku_0037"}]}}}
+{"ts": 1788012754.1960042, "model": "gemini-3.7-flash", "messages": 3, "tool_use": null}
