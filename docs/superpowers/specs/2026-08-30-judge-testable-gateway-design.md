@@ -289,6 +289,39 @@ JSON, and the toggle switches between them with the producing command printed
 underneath. Flipping "break the lock" turns `race.velocity` red. Labelled as a
 recorded run, because it is one.
 
+## The capability secret
+
+Found while writing this spec, and it blocks the deploy.
+
+```
+core.py:90     capability_secret: str = "mandate_gateway_default_secret"
+server.py:47   capability_secret: str = "mandate_gateway_service_secret_2026"
+```
+
+That secret keys the HMAC in `mint_capture_capability()` over
+`(idem_key, amount, order_id)`. It is the control that blocks
+`capture.divergence`. With the key in the source, anyone who reads the repo can
+mint a valid capability for any amount, so the BLOCKED result holds only against
+an attacker who did not read the code.
+
+`serve_cmd` passes no `capability_secret`, so the Cloud Run gateway would deploy
+under the constant in `server.py:47` at a public URL. The rail divergence check
+above depends on refusing to mint a capability being a real control, which it is
+not while the key is forgeable.
+
+The fix follows the precedent already in `create_app`, which refuses to start
+without the issuer public key:
+
+- `create_app` takes no default for `capability_secret` and raises
+  `ServiceMisconfigured` when it is missing, the same way it does for the
+  public key.
+- `serve_cmd` reads `MANDATE_CAPABILITY_SECRET` from the environment.
+- Cloud Run supplies it from Secret Manager alongside the Razorpay keys.
+- `Gateway.__init__` drops its default too. Eleven constructions across six test
+  files rely on it today and move to a fixture.
+
+This lands in build order step 1, before anything is exposed.
+
 ## Deployment
 
 One multi-stage Dockerfile. A Node stage builds the Vite bundle; a Python stage
@@ -299,6 +332,8 @@ pinned to it.
 
 - `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` from Secret Manager.
   `RazorpayDownstream` already refuses any key not starting with `rzp_test_`.
+- `MANDATE_CAPABILITY_SECRET` from Secret Manager. The service refuses to start
+  without it. See the capability secret section above.
 - A service account with Vertex access for the compile call.
 - `GEMINI_VERTEX_LOCATION=global`. Regional endpoints 404 on this model.
 - `MANDATE_LLM_PROVIDER=vertex` set explicitly. Unset, `provider_for` finds
@@ -318,14 +353,19 @@ A single always-warm small instance runs for months on the available credit.
   inspected.
 - Rail divergence: a unit test on `propose()` plus the `rail.divergence`
   conformance attack with a witness that executes.
+- `create_app` raises `ServiceMisconfigured` with no capability secret, the same
+  way it already does with no issuer public key.
+- No capability secret appears as a literal default anywhere in `src/`. Asserted
+  by a test, so the constant cannot come back.
 - `StaticFiles` serves `index.html` at `/` and does not shadow `/v1/*`.
 - The compile endpoint falls back to the signed policy on provider error, and
   the response says which path answered.
 
 ## Build order
 
-1. Wire the price book and the Razorpay downstream into `serve_cmd`. Without
-   this nothing else can be tested end to end.
+1. Wire the price book and the Razorpay downstream into `serve_cmd`, and make
+   the capability secret required. Without the first nothing can be tested end
+   to end; without the second nothing should be exposed.
 2. Sessions: the `dict[jti, Session]` map, per-session directories, eviction,
    `POST /v1/sessions`, and session resolution in the two existing write handlers.
 3. The token pool: mint 200, commit the file, load at boot, hand out and retire.
