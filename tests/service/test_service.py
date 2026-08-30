@@ -1,6 +1,7 @@
 """Tests for the standalone gateway service daemon over HTTP."""
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from starlette.testclient import TestClient
 
 from mandate.gateway.pricebook import DictPriceBook, PriceBookItem
@@ -86,3 +87,77 @@ def test_gateway_service_authenticated_order_and_capture(tmp_path):
     )
     assert good_capture.status_code == 200
     assert good_capture.json()["status"] == "captured"
+
+
+def _signed_env(tmp_path):
+    priv_hex, pub_hex = generate_keypair()
+    pol = _policy()
+    pol_path = tmp_path / "policy.yaml"
+    dump_policy(pol, pol_path, private_key_hex=priv_hex)
+    pub_path = tmp_path / "issuer_public.key"
+    pub_path.write_text(pub_hex + "\n")
+    return priv_hex, pub_hex, pol, pol_path, pub_path
+
+
+def _app(tmp_path, pol_path, pub_path=None, **kw):
+    kw.setdefault("capability_secret", "test_secret_42")
+    return create_app(
+        policy_path=pol_path,
+        public_key_path=pub_path,
+        revocations_path=tmp_path / "revocations.jsonl",
+        audit_path=tmp_path / "audit.jsonl",
+        ledger_path=tmp_path / "ledger.jsonl",
+        **kw,
+    )
+
+
+def test_the_service_refuses_to_start_without_the_issuer_public_key(tmp_path):
+    """A gateway that can verify nothing is not a gateway.
+
+    It used to start anyway and wave every bearer string through, which made the
+    process boundary a convention again.
+    """
+    from mandate.service.server import ServiceMisconfigured
+
+    _priv, _pub, _pol, pol_path, _pub_path = _signed_env(tmp_path)
+    with pytest.raises(ServiceMisconfigured):
+        _app(tmp_path, pol_path, pub_path=None)
+
+
+def test_the_service_refuses_to_start_on_an_unsigned_policy(tmp_path):
+    from mandate.policy.loader import PolicySignatureInvalid
+
+    _priv, _pub, pol, _pol_path, pub_path = _signed_env(tmp_path)
+    unsigned = tmp_path / "unsigned.yaml"
+    dump_policy(pol, unsigned)          # no private key: no signature
+    with pytest.raises(PolicySignatureInvalid):
+        _app(tmp_path, unsigned, pub_path)
+
+
+def test_the_service_refuses_to_start_on_a_policy_signed_by_another_key(tmp_path):
+    from mandate.policy.loader import PolicySignatureInvalid
+
+    _priv, _pub, pol, _pol_path, pub_path = _signed_env(tmp_path)
+    attacker_priv, _attacker_pub = generate_keypair()
+    forged = tmp_path / "forged.yaml"
+    dump_policy(pol, forged, private_key_hex=attacker_priv)
+    with pytest.raises(PolicySignatureInvalid):
+        _app(tmp_path, forged, pub_path)
+
+
+def test_a_forged_bearer_token_is_rejected(tmp_path):
+    _priv, _pub, _pol, pol_path, pub_path = _signed_env(tmp_path)
+    client = TestClient(_app(tmp_path, pol_path, pub_path))
+    r = client.post("/v1/orders",
+                    json={"merchant": "zepto", "items": [{"sku": "sku_tea", "qty": 1}]},
+                    headers={"Authorization": "Bearer totally-made-up-token"})
+    assert r.status_code == 403
+    assert r.json()["error"] == "invalid_token_signature"
+
+
+def test_a_request_with_no_authorization_header_is_rejected(tmp_path):
+    _priv, _pub, _pol, pol_path, pub_path = _signed_env(tmp_path)
+    client = TestClient(_app(tmp_path, pol_path, pub_path))
+    r = client.post("/v1/orders",
+                    json={"merchant": "zepto", "items": [{"sku": "sku_tea", "qty": 1}]})
+    assert r.status_code == 401
