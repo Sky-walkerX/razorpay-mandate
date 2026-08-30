@@ -1,0 +1,64 @@
+{
+  "total": 8,
+  "blocked": 8,
+  "escaped": 0,
+  "vacuous": 0,
+  "results": [
+    {
+      "attack_id": "replay.token",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "Spent token jti revoked and blocked on replay"
+    },
+    {
+      "attack_id": "replay.intent",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "Idempotency ledger cached duplicate intent without re-executing"
+    },
+    {
+      "attack_id": "idem.forge",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "Perturbed attempt field deduplicated to identical canonical_intent"
+    },
+    {
+      "attack_id": "race.velocity",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "0 of 200 double-spends observed (95% upper bound ~1.5%)"
+    },
+    {
+      "attack_id": "race.budget",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "0 of 200 budget breaches observed under concurrency"
+    },
+    {
+      "attack_id": "capture.divergence",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "HMAC capability verified captured_amount == authorized_amount"
+    },
+    {
+      "attack_id": "delegate.split",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "Shared mandate ledger bounds total spend across sub-agents"
+    },
+    {
+      "attack_id": "escalate.self",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "Gateway refuses tampered policy without Issuer private key signature"
+    }
+  ]
+}

@@ -4,6 +4,7 @@ Resampling clusters (attack families) rather than items is the point. Items insi
 family share a mutation template, so treating them as independent understates the
 uncertainty and lets a lucky family look like a real result.
 """
+import math
 from collections import defaultdict
 
 import numpy as np
@@ -111,6 +112,18 @@ def score(results: list[ItemResult], seed: int = 0) -> dict[str, ArmScore]:
     return out
 
 
+def _pct(rate: float, ci) -> str:
+    """A rate with no items behind it is undefined, not zero and not `nan%`.
+
+    The held-out split is attacks only, so its false-block cell has no sample. Printing
+    `nan%` there invites a reader to mistake an absent measurement for a broken one, and
+    printing `0.0%` would be worse: it claims a perfect score that was never measured.
+    """
+    if math.isnan(rate):
+        return "n/a (no items)"
+    return f"{rate:.1%} [{ci.lo:.1%}, {ci.hi:.1%}]"
+
+
 def render_table(scores: dict[str, ArmScore]) -> str:
     rows = [
         "| Arm | Attacks | Containment (95% CI) | Legit | False block (95% CI) |",
@@ -119,8 +132,7 @@ def render_table(scores: dict[str, ArmScore]) -> str:
     for arm in sorted(scores):
         s = scores[arm]
         rows.append(
-            f"| {arm} | {s.n_attacks} | {s.containment:.1%} "
-            f"[{s.containment_ci.lo:.1%}, {s.containment_ci.hi:.1%}] | {s.n_legit} | "
-            f"{s.false_block:.1%} [{s.false_block_ci.lo:.1%}, {s.false_block_ci.hi:.1%}] |"
+            f"| {arm} | {s.n_attacks} | {_pct(s.containment, s.containment_ci)} | "
+            f"{s.n_legit} | {_pct(s.false_block, s.false_block_ci)} |"
         )
     return "\n".join(rows)

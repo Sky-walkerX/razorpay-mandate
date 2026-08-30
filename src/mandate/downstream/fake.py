@@ -59,8 +59,13 @@ class FakeDownstream:
         self._maybe_fail_after_write()
         return p
 
+    @property
+    def orders(self) -> dict[str, dict]:
+        return dict(self._orders)
+
     def fetch_order(self, order_id: str) -> dict:
         return self._orders[order_id]
 
     def find_orders_by_receipt(self, receipt: str) -> list[dict]:
         return [o for o in self._orders.values() if o["receipt"] == receipt]
+

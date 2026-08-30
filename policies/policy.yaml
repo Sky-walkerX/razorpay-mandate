@@ -38,6 +38,7 @@ provenance:
   - quantity.max_per_item
   - velocity
   - time.window
+signature: ed25519:0fb04bd4be7250f51c74f1e4434a6987c0d965a32e2e71a74fd0341bcfd235279b82024c42093c5ecb492c33633f8813bacfa9c61335ba96e4c0c21088748a0e
 source_text: Order groceries for the week from Zepto, Blinkit or Instamart. Stay under
   Rs 2000 in total and Rs 1000 per order. No single item over Rs 500, and no more
   than 5 of any one item. Nothing alcoholic. At most 3 orders.

@@ -55,7 +55,7 @@ def test_gemini_sends_system_instruction_as_a_top_level_field():
         "BE A SHOPPER", [{"role": "user", "text": "buy dal"}], TOOLS)
     body = c.calls[0]
     assert body["system_instruction"] == "BE A SHOPPER"
-    assert body["model"] == "gemini-3.7-flash"
+    assert body["model"] == "gemini-3.6-flash"
 
 
 def test_gemini_never_stores_state_server_side():
@@ -417,3 +417,110 @@ def test_provider_for_picks_dashscope(monkeypatch):
     p = provider_for()
     assert isinstance(p, DashScopeProvider)
     assert p.model == "qwen3.8-flash"
+
+
+QUOTA_MSG = (
+    "Error code: 429 - {'error': {'message': 'You exceeded your current quota, "
+    "please check your plan and billing details. * Quota exceeded for metric: "
+    "generativelanguage.googleapis.com/generate_content_free_tier_requests, "
+    "limit: 20, model: gemini-3.6-flash\\nPlease retry in 37.428340482s.', "
+    "'code': 'too_many_requests'}}"
+)
+
+
+class _FlakyGemini:
+    """Raises the queued exceptions, then answers. One entry consumed per call."""
+
+    def __init__(self, script, steps=None):
+        self.calls = []
+        self._script = list(script)
+        self._steps = steps if steps is not None else [_fc()]
+        self.interactions = self
+
+    def create(self, **body):
+        self.calls.append(body)
+        if self._script:
+            exc = self._script.pop(0)
+            if exc is not None:
+                raise exc
+        return _Interaction(self._steps)
+
+
+def _quota_provider(scripts, sleeps, **kw):
+    """One flaky client per key, sharing a recording sleep."""
+    clients = {}
+
+    def factory(api_key):
+        clients[api_key] = _FlakyGemini(scripts[api_key])
+        return clients[api_key]
+
+    p = GeminiProvider(api_keys=list(scripts), client_factory=factory,
+                       sleep=sleeps.append, **kw)
+    return p, clients
+
+
+def test_gemini_reads_the_delay_the_api_asks_for():
+    from mandate.llm import _retry_after
+
+    assert _retry_after(QUOTA_MSG) == pytest.approx(37.428340482)
+    assert _retry_after("429 RESOURCE_EXHAUSTED 'retryDelay': '12s'") == 12.0
+    assert _retry_after("400 invalid_request") is None
+
+
+def test_gemini_rotates_to_the_next_key_before_it_sleeps():
+    """A second key with quota left is free. Sleeping first would waste 37s."""
+    sleeps = []
+    p, clients = _quota_provider(
+        {"k1": [RuntimeError(QUOTA_MSG)], "k2": []}, sleeps)
+
+    name, _, _, _ = p.next_tool_call("s", [{"role": "user", "text": "x"}], TOOLS)
+
+    assert name == "create_order"
+    assert sleeps == []
+    assert len(clients["k1"].calls) == 1 and len(clients["k2"].calls) == 1
+
+
+def test_gemini_sleeps_the_asked_delay_once_every_key_is_out():
+    """The 37s in the error body is a per-minute window. Waiting it out clears it."""
+    sleeps = []
+    p, clients = _quota_provider(
+        {"k1": [RuntimeError(QUOTA_MSG)], "k2": [RuntimeError(QUOTA_MSG)]}, sleeps)
+
+    name, _, _, _ = p.next_tool_call("s", [{"role": "user", "text": "x"}], TOOLS)
+
+    assert name == "create_order"
+    assert sleeps == [pytest.approx(37.428340482)]
+    assert len(clients["k1"].calls) == 2      # tried again after the wait
+
+
+def test_gemini_gives_up_after_the_retry_budget():
+    """A daily cap never clears. The run must die rather than sleep forever."""
+    sleeps = []
+    always = [RuntimeError(QUOTA_MSG)] * 50
+    p, _ = _quota_provider({"k1": list(always), "k2": list(always)}, sleeps,
+                           quota_rounds=3)
+
+    with pytest.raises(RuntimeError, match="quota"):
+        p.next_tool_call("s", [{"role": "user", "text": "x"}], TOOLS)
+
+    assert len(sleeps) == 2                   # slept between rounds, not after the last
+
+
+def test_gemini_caps_an_absurd_retry_delay():
+    sleeps = []
+    p, _ = _quota_provider(
+        {"k1": [RuntimeError("429 quota. Please retry in 8600s.")]},
+        sleeps, quota_rounds=2)
+    p.next_tool_call("s", [{"role": "user", "text": "x"}], TOOLS)
+
+    assert sleeps == [60.0]
+
+
+def test_gemini_does_not_sleep_on_a_non_quota_error():
+    sleeps = []
+    p, _ = _quota_provider({"k1": [RuntimeError("400 invalid_request")]}, sleeps)
+
+    with pytest.raises(RuntimeError, match="invalid_request"):
+        p.next_tool_call("s", [{"role": "user", "text": "x"}], TOOLS)
+
+    assert sleeps == []

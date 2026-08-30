@@ -1,0 +1,4 @@
+{"ts": 1787984352.732667, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0012", "unit_price": 78000, "title": "Toor Dal 1kg", "qty": 1}, {"title": "Basmati Rice 2kg", "unit_price": 32200, "sku": "sku_0013", "qty": 1}], "merchant": "instamart"}}}
+{"ts": 1787984359.6682, "model": "gemini-3.7-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"unit_price": 78000, "title": "Toor Dal 1kg", "qty": 1, "sku": "sku_0012"}]}}}
+{"ts": 1787984367.021339, "model": "gemini-3.7-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"sku": "sku_0024", "title": "Toor Dal 2kg", "qty": 1, "unit_price": 18400}]}}}
+{"ts": 1787984376.975004, "model": "gemini-3.7-flash", "messages": 7, "tool_use": null}

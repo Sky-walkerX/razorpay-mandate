@@ -30,3 +30,17 @@ def canonical_yaml(p: Policy) -> str:
 
 def policy_hash(p: Policy) -> str:
     return "sha256:" + hashlib.sha256(canonical_yaml(p).encode("utf-8")).hexdigest()
+
+
+def sign_policy(p: Policy, private_key_hex: str) -> str:
+    """Sign the canonical YAML representation of a policy with Ed25519."""
+    from mandate.policy.crypto import sign_bytes
+    return sign_bytes(canonical_yaml(p).encode("utf-8"), private_key_hex)
+
+
+def verify_policy(p: Policy, signature_hex: str, public_key_hex: str) -> bool:
+    """Verify the Ed25519 signature over the canonical YAML representation."""
+    from mandate.policy.crypto import verify_bytes
+    sig = signature_hex.removeprefix("ed25519:")
+    return verify_bytes(canonical_yaml(p).encode("utf-8"), sig, public_key_hex)
+

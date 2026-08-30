@@ -64,9 +64,26 @@ class AuditLog:
                 "clauses": [c.model_dump(mode="json") for c in clauses],
                 "downstream": downstream, "prev_hash": prev}
         rec = AuditRecord(**body, record_hash=_hash_body(body))
+        rec_model = AuditRecord(
+            seq=seq,
+            ts=ts,
+            mandate_id=mandate_id,
+            policy_hash=policy_hash,
+            idem_key=idem_key,
+            action=action,
+            verdict=verdict,
+            clauses=clauses,
+            downstream=downstream,
+            prev_hash=prev,
+            record_hash="",
+        )
+        body = rec_model.model_dump(mode="json", exclude={"record_hash"})
+        h = _hash_body(body)
+        rec = rec_model.model_copy(update={"record_hash": h})
         with self.path.open("a") as fh:
             fh.write(rec.model_dump_json() + "\n")
         return rec
+
 
     def verify_chain(self) -> None:
         prev = GENESIS

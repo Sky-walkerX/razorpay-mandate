@@ -7,3 +7,7 @@ results/*.jsonl
 .pytest_cache/
 results/
 results-archive-*/
+.mandate/
+*.key
+revocations.jsonl
+

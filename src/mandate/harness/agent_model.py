@@ -144,3 +144,79 @@ class AgentModel:
         self._last_call = None
         self._log({"messages": len(self.history), "tool_use": None})
         return None
+
+
+class ReplayModel:
+    """Replays recorded tool calls from a model_calls.jsonl trace.
+
+    Enables sub-second, deterministic, zero-network replays for stage demos
+    and offline regression tests.
+    """
+
+    def __init__(self, trace_path: Path | str) -> None:
+        self.trace_path = Path(trace_path)
+        self.calls: list[tuple[str, dict] | None] = []
+        self.model = "replay"
+        if self.trace_path.exists():
+            for line in self.trace_path.read_text().splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    body = json.loads(line)
+                    if "model" in body:
+                        self.model = f"{body['model']} (replay)"
+                    tu = body.get("tool_use")
+                    if tu and isinstance(tu, dict):
+                        self.calls.append((tu.get("name", "create_order"), dict(tu.get("input", {}))))
+                    else:
+                        self.calls.append(None)
+                except json.JSONDecodeError:
+                    continue
+        self._idx = 0
+
+    def next_call(self, trace=None) -> tuple[str, dict] | None:
+        if self._idx < len(self.calls):
+            res = self.calls[self._idx]
+            self._idx += 1
+            return res
+        return None
+
+
+def find_trace_file(
+    item_id: str,
+    arm_name: str,
+    candidate_dirs: list[Path] | None = None,
+) -> Path | None:
+    """Find a recorded model_calls.jsonl trace for an item and arm."""
+    if candidate_dirs is None:
+        candidate_dirs = [
+            Path("results-heldout-g37"),
+            Path("results"),
+            Path("results-accept-g37"),
+            Path("results-div"),
+            Path("results-lite"),
+        ]
+    escaped = item_id.replace("#", "_").replace(".", "_")
+    for d in candidate_dirs:
+        p = d / arm_name / escaped / "model_calls.jsonl"
+        if p.exists() and p.stat().st_size > 0:
+            return p
+    return None
+
+
+def make_replay_factory(candidate_dirs: list[Path] | None = None):
+    """Returns a model_factory compatible with runner.py that uses ReplayModel."""
+    def factory(catalog, intent, compromised=False, call_log=None):
+        if call_log is not None:
+            p = Path(call_log)
+            arm_name = p.parent.parent.name
+            item_dir = p.parent.name
+            trace = find_trace_file(item_dir, arm_name, candidate_dirs)
+            if trace is not None:
+                return ReplayModel(trace)
+        raise FileNotFoundError(
+            f"No recorded model_calls.jsonl found for {call_log} in candidate directories."
+        )
+
+    return factory
+

@@ -3,6 +3,7 @@
 Containment is measured at the money boundary: what the downstream actually recorded.
 The agent's own account of what it did is not evidence.
 """
+import json
 from datetime import timedelta, timezone
 from pathlib import Path
 
@@ -79,7 +80,23 @@ def _budget_of(policy: Policy) -> int:
     return int(policy.constraints.get(C.BUDGET_TOTAL, {}).get("max", 0))
 
 
-DEFAULT_MODEL = "qwen-flash"
+DEFAULT_MODEL = "gemini-3.6-flash"
+
+
+def _result_path(out_dir: Path, arm: Arm, item: CorpusItem) -> Path:
+    return Path(out_dir) / arm.name / item.id.replace("#", "_").replace(".", "_") / "result.json"
+
+
+def _stamped_run_id(path: Path) -> str | None:
+    """The run_id a result on disk carries, or None if it is unreadable.
+
+    A truncated or corrupt result must re-run rather than abort the sweep, so this
+    swallows the parse error and reports "not mine".
+    """
+    try:
+        return json.loads(path.read_text()).get("run_id")
+    except (OSError, ValueError, AttributeError):
+        return None
 
 
 def run_item(
@@ -191,6 +208,7 @@ def run_corpus(
     exclude_held_out: bool = True,
     held_out_only: bool = False,
     per_family: int | None = None,
+    legit_n: int | None = None,
     max_items: int | None = None,
     start_idx: int = 0,
     model: str = DEFAULT_MODEL,
@@ -198,6 +216,7 @@ def run_corpus(
     corpus_hash: str = "",
     policy_id: str = "",
     workers: int = 1,
+    resume: bool = True,
 ) -> list[ItemResult]:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -209,9 +228,12 @@ def run_corpus(
     if per_family is not None:
         from collections import defaultdict
 
+        # Legitimate items carry the false-block rate, which needs a wider sample
+        # than any single attack family, so it gets its own cap.
         by_fam = defaultdict(list)
         for it in chosen:
-            if len(by_fam[it.family_id]) < per_family:
+            cap = legit_n if (legit_n is not None and not it.is_attack) else per_family
+            if len(by_fam[it.family_id]) < cap:
                 by_fam[it.family_id].append(it)
         chosen = [it for fam_items in by_fam.values() for it in fam_items]
 
@@ -221,6 +243,22 @@ def run_corpus(
         chosen = chosen[:max_items]
 
     jobs = [(arm, it) for arm in arms for it in chosen]
+    if resume:
+        # A sweep costs real money per call and this harness has hung mid-run before,
+        # so a restart must not re-buy rows it already owns. Only a result stamped with
+        # this exact run_id counts: run_id derives from seed, model, corpus hash and
+        # policy, so a different model or an edited corpus can never silently reuse
+        # stale rows.
+        done = {
+            (arm.name, it.id)
+            for arm, it in jobs
+            if _result_path(out_dir, arm, it).exists()
+            and _stamped_run_id(_result_path(out_dir, arm, it)) == run_id
+        }
+        if done:
+            jobs = [(arm, it) for arm, it in jobs if (arm.name, it.id) not in done]
+            print(f"resuming run {run_id}: {len(done)} results already on disk, "
+                  f"{len(jobs)} to run", flush=True)
     total = len(jobs)
     results = []
 

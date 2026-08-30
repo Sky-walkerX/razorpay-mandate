@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import typer
@@ -117,14 +118,19 @@ def _model_factory(seed: int):
     from mandate.harness.agent_model import AgentModel
     from mandate.llm import provider_for
 
+    providers: dict[tuple, object] = {}
+
     def factory(catalog, intent, compromised, call_log, model: str | None = None):
-        kw = {"seed": seed}
-        if model:
-            kw["model"] = model
+        key = (seed, model)
+        if key not in providers:
+            kw = {"seed": seed}
+            if model:
+                kw["model"] = model
+            providers[key] = provider_for(**kw)
         return AgentModel(
             catalog,
             intent,
-            provider=provider_for(**kw),
+            provider=providers[key],
             compromised=compromised,
             call_log=call_log,
         )
@@ -154,10 +160,13 @@ def evaluate(
     held_out: bool = False,
     allow_scripted: bool = False,
     per_family: int | None = None,
+    legit_n: int | None = None,
     max_items: int | None = None,
     start_idx: int = 0,
     model: str = DEFAULT_MODEL,
-    workers: int = 8,
+    workers: int = 5,
+    resume: bool = True,
+    run_id: str | None = None,
 ) -> None:
     """Run the corpus over every arm and write results, scores and a results table."""
     load_dotenv()
@@ -185,9 +194,10 @@ def evaluate(
     from mandate.harness.corpus import corpus_hash as _corpus_hash
 
     chash = _corpus_hash(items)
-    run_id = "run_" + hashlib.sha256(
-        f"{seed}:{model}:{chash}:{pol.mandate_id}:{arms}".encode()
-    ).hexdigest()[:12]
+    if run_id is None:
+        run_id = "run_" + hashlib.sha256(
+            f"{seed}:{model}:{chash}:{pol.mandate_id}:all".encode()
+        ).hexdigest()[:12]
     typer.echo(f"run {run_id} | model {model} | corpus {chash[:19]}")
 
     results = run_corpus(
@@ -199,6 +209,7 @@ def evaluate(
         exclude_held_out=not held_out,
         held_out_only=held_out,
         per_family=per_family,
+        legit_n=legit_n,
         max_items=max_items,
         start_idx=start_idx,
         model=model,
@@ -206,6 +217,7 @@ def evaluate(
         corpus_hash=chash,
         policy_id=pol.mandate_id,
         workers=workers,
+        resume=resume,
     )
 
     if scripted:
@@ -251,16 +263,30 @@ def aggregate(
 @app.command()
 def demo(
     seed: int = 20260901,
-    family: str = "injection.description",
+    family: str = "budget.salami",
+    replay: bool = typer.Option(False, "--replay", help="Replay recorded model calls rather than calling Vertex AI."),
     corpus: Path = Path("corpus/corpus.json"),
     policy: Path = Path("policies/policy.yaml"),
 ) -> None:
-    """Run one attack through both arms and print the side-by-side."""
+    """Run one attack through both arms and print the side-by-side.
+
+    Defaults to `budget.salami`, the family the measurement says the model does
+    not resist on its own: 0% containment unenforced, 100% enforced. Prompt
+    injection is the attack everyone expects and it is not where a frontier
+    model leaks money. Use `--family injection.description` for that one.
+    """
     load_dotenv()
     from mandate.harness.demo import run_demo
 
     item = next(i for i in load_corpus(corpus) if i.family_id == family)
     out = run_demo(item, load_policy(policy), _model_factory(seed), Path("results/demo"))
+    if replay:
+        from mandate.harness.agent_model import make_replay_factory
+
+        factory = make_replay_factory()
+    else:
+        factory = _model_factory(seed)
+    out = run_demo(item, load_policy(policy), factory, Path("results/demo"))
     for arm in ("compromised", "enforce_compromised"):
         r = out[arm]
         typer.echo(f"\n=== {arm.upper()} ===")
@@ -269,3 +295,255 @@ def demo(
         typer.echo(f"blocking clause: {r.blocking_clause or '-'}")
         for ln in r.audit_lines:
             typer.echo("  " + ln)
+
+
+@app.command("demo-failure")
+def demo_failure(
+    policy: Path = Path("policies/policy.yaml"),
+    out: Path = Path("results/demo-failure"),
+) -> None:
+    """One failure handled gracefully: a lost response, then a retry, then reconciliation.
+
+    Needs no model and no network. The behaviour is deterministic gateway code.
+    """
+    from mandate.harness.failure_demo import run_failure_demo
+
+    pol = load_policy(policy)
+    r = run_failure_demo(pol, out)
+
+    typer.echo("\n=== THE MECHANICAL FAILURE ===")
+    typer.echo("create_order reaches the rail. The rail writes the order. The response\n"
+               "never comes back. The agent knows only that it got no answer.\n")
+    for s in r.steps:
+        typer.echo(f"  {s.n}. {s.what}")
+        typer.echo(f"     verdict={s.verdict}  clause={s.clause}  executed={s.executed}")
+        typer.echo(f"     {s.detail}")
+    typer.echo("\n=== OUTCOME ===")
+    typer.echo(f"  orders downstream : {r.orders_downstream}")
+    typer.echo(f"  charged           : {fmt(r.charged)}")
+    typer.echo(f"  budget consumed   : {fmt(r.budget_consumed)}")
+    typer.echo(f"  audit chain       : {'intact' if r.chain_intact else 'BROKEN'} "
+               f"({r.audit_records} records)")
+    typer.echo("\n=== THE SAME TWO CALLS WITH NO LEDGER ===")
+    typer.echo(f"  orders downstream : {r.naive_orders}")
+    typer.echo(f"  charged           : {fmt(r.naive_charged)}")
+    typer.echo(f"\nOne intent. {fmt(r.charged)} with the ledger, "
+               f"{fmt(r.naive_charged)} without.")
+
+
+@app.command("export")
+def export(
+    fmt_: str = typer.Option("diff", "--format",
+                             help="diff | ap2 | reserve-pay"),
+    policy: Path = Path("policies/policy.yaml"),
+) -> None:
+    """Project the signed policy onto AP2 and UPI Reserve Pay, and show what is lost."""
+    import json as _json
+
+    from mandate.policy.canonical import policy_hash
+    from mandate.policy.rails import (
+        diff,
+        money_at_risk,
+        to_ap2_intent_mandate,
+        to_ap2_payment_constraints,
+        to_reserve_pay,
+    )
+
+    pol = load_policy(policy)
+    if fmt_ == "ap2":
+        typer.echo(_json.dumps({
+            "intent_mandate": to_ap2_intent_mandate(pol),
+            "payment_mandate_constraints": to_ap2_payment_constraints(pol),
+        }, indent=2))
+        return
+    if fmt_ in ("reserve-pay", "reserve_pay"):
+        typer.echo(_json.dumps(to_reserve_pay(pol), indent=2))
+        return
+    if fmt_ != "diff":
+        raise typer.BadParameter("--format must be diff, ap2 or reserve-pay")
+
+    d = diff(pol, policy_hash(pol))
+    typer.echo(f"\npolicy {d.mandate_id}  {d.policy_hash[:23]}")
+    typer.echo(f'"{pol.source_text}"\n')
+    typer.echo(f"  {'clause':26}{'stated':>8}{'AP2':>8}{'ReservePay':>13}")
+    typer.echo("  " + "-" * 55)
+    for f in d.fates:
+        typer.echo(f"  {f.clause:26}{'yes' if f.stated_by_user else 'inferred':>8}"
+                   f"{f.ap2:>8}{f.reserve_pay:>13}")
+    typer.echo("  " + "-" * 55)
+    typer.echo(f"  {'held':26}{d.total_clauses:>8}{d.ap2_held:>8}{d.reserve_pay_held:>13}")
+    typer.echo(f"  {'lost':26}{0:>8}{d.ap2_lost:>8}{d.reserve_pay_lost:>13}")
+    typer.echo("\nwhat neither rail can hold:")
+    for f in d.fates:
+        if f.ap2 != "ap2" and f.reserve_pay != "rail":
+            typer.echo(f"  {f.clause:26}{f.ap2_note}")
+    typer.echo(f"\nUnder a Reserve Pay block alone, {fmt(money_at_risk(pol))} is spendable on "
+               f"anything\nthe payee sells, including everything the clauses above refuse.")
+
+
+@app.command("keygen")
+def keygen(
+    out_dir: Path = Path(".mandate/keys"),
+) -> None:
+    """Generate an Ed25519 asymmetric keypair for the offline policy issuer."""
+    import os
+
+    from mandate.policy.crypto import generate_keypair
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    priv_hex, pub_hex = generate_keypair()
+
+    priv_path = out_dir / "issuer_private.key"
+    pub_path = out_dir / "issuer_public.key"
+
+    priv_path.write_text(priv_hex + "\n")
+    os.chmod(priv_path, 0o600)
+    pub_path.write_text(pub_hex + "\n")
+
+    typer.echo("Generated Ed25519 issuer keypair:")
+    typer.echo(f"  private key (keep secret): {priv_path} (mode 0600)")
+    typer.echo(f"  public key  (distribute) : {pub_path}")
+    typer.echo(f"  public key hex           : {pub_hex}")
+
+
+from typing import Annotated
+
+
+@app.command("sign")
+def sign_policy_cmd(
+    policy: Annotated[Path, typer.Argument()] = Path("policies/policy.yaml"),
+    key_file: Annotated[Path, typer.Option("--key-file")] = Path(".mandate/keys/issuer_private.key"),
+) -> None:
+    """Sign a policy.yaml file with the issuer Ed25519 private key."""
+    from mandate.policy.loader import dump as dump_policy
+
+    if not key_file.exists():
+        raise typer.BadParameter(f"Key file {key_file} not found. Run `mandate keygen` first.")
+    priv_key_hex = key_file.read_text().strip()
+    pol = load_policy(policy)
+    dump_policy(pol, policy, private_key_hex=priv_key_hex)
+    typer.echo(f"Successfully signed {policy} with Ed25519 key from {key_file}")
+
+
+@app.command("issue-token")
+def issue_token_cmd(
+    mandate_id: Annotated[str, typer.Argument()] = "mnd_groceries_01",
+    key_file: Annotated[Path, typer.Option("--key-file")] = Path(".mandate/keys/issuer_private.key"),
+    expires: Annotated[str | None, typer.Option("--expires")] = None,
+    jti: Annotated[str | None, typer.Option("--jti")] = None,
+) -> None:
+    """Mint a signed bearer token bound to a mandate_id."""
+    from datetime import datetime, timedelta
+
+    from mandate.gateway.tokens import mint_agent_token
+
+    if not key_file.exists():
+        raise typer.BadParameter(f"Key file {key_file} not found. Run `mandate keygen` first.")
+    priv_key_hex = key_file.read_text().strip()
+    if expires is None:
+        expires = (datetime.now(UTC) + timedelta(hours=24)).isoformat()
+
+    tok = mint_agent_token(
+        mandate_id=mandate_id,
+        private_key_hex=priv_key_hex,
+        expires_iso=expires,
+        jti=jti,
+    )
+    typer.echo(tok)
+
+
+@app.command("revoke")
+def revoke_cmd(
+    target: Annotated[str, typer.Argument(help="Token jti or mandate_id to revoke")],
+    reason: Annotated[str, typer.Option("--reason")] = "manual_revocation",
+    revocations_file: Annotated[Path, typer.Option("--file")] = Path("revocations.jsonl"),
+) -> None:
+    """Revoke an agent token jti or mandate_id."""
+    from mandate.gateway.revocation import RevocationList
+
+    rlist = RevocationList(revocations_file)
+    rlist.revoke(target, reason=reason)
+    typer.echo(f"Revoked {target!r} in {revocations_file} (reason: {reason})")
+
+
+@app.command("serve")
+def serve_cmd(
+    host: Annotated[str, typer.Option("--host")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port")] = 8000,
+    policy: Annotated[Path, typer.Option("--policy")] = Path("policies/policy.yaml"),
+    public_key: Annotated[Path, typer.Option("--public-key")] = Path(".mandate/keys/issuer_public.key"),
+    revocations: Annotated[Path, typer.Option("--revocations")] = Path("revocations.jsonl"),
+) -> None:
+    """Run the standalone Mandate Gateway daemon process."""
+    import uvicorn
+
+    from mandate.service.server import create_app
+
+    typer.echo(f"Starting Mandate Gateway Daemon on http://{host}:{port}")
+    typer.echo(f"  Policy     : {policy}")
+    typer.echo(f"  Public Key : {public_key}")
+    typer.echo(f"  Revocations: {revocations}")
+
+    app_instance = create_app(
+        policy_path=policy,
+        public_key_path=public_key if public_key.exists() else None,
+        revocations_path=revocations,
+    )
+    uvicorn.run(app_instance, host=host, port=port, log_level="info")
+
+
+@app.command("conformance")
+def conformance_cmd(
+    out_dir: Annotated[Path, typer.Option("--out")] = Path("results-conformance"),
+) -> None:
+
+    """Run the 8-Attack Protocol Conformance Test Suite with Witnesses.
+
+    Every attack runs against both an unhardened gateway (the witness) and the
+    hardened gateway. Reports exact counts (BLOCKED / ESCAPED / VACUOUS).
+    """
+    import json as _json
+
+    from mandate.conformance.suite import run_conformance_suite
+
+    typer.echo("Running Mandate Protocol Conformance Suite (8 hostile attacks)...\n")
+    results = run_conformance_suite()
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    report_rows = []
+
+    typer.echo(f"  {'Attack ID':24}{'Witness':>12}{'Hardened':>12}{'Outcome':>12}  Details")
+    typer.echo("  " + "-" * 75)
+
+    blocked_cnt, escaped_cnt, vacuous_cnt = 0, 0, 0
+
+    for r in results:
+        wit_str = "executed" if r.witness_executed else "failed"
+        hard_str = "executed" if r.hardened_executed else "denied"
+        out_str = r.outcome.value
+
+        if r.outcome.value == "BLOCKED":
+            blocked_cnt += 1
+        elif r.outcome.value == "ESCAPED":
+            escaped_cnt += 1
+        else:
+            vacuous_cnt += 1
+
+        typer.echo(f"  {r.attack_id:24}{wit_str:>12}{hard_str:>12}{out_str:>12}  {r.detail}")
+        report_rows.append({
+            "attack_id": r.attack_id,
+            "outcome": r.outcome.value,
+            "witness_executed": r.witness_executed,
+            "hardened_executed": r.hardened_executed,
+            "detail": r.detail,
+        })
+
+    typer.echo("  " + "-" * 75)
+    typer.echo(f"\nSummary: {len(results)} attacks, {blocked_cnt} blocked, {escaped_cnt} escaped, {vacuous_cnt} vacuous.\n")
+
+    summary_file = out_dir / "conformance_results.json"
+    summary_file.write_text(_json.dumps({"total": len(results), "blocked": blocked_cnt, "escaped": escaped_cnt, "vacuous": vacuous_cnt, "results": report_rows}, indent=2))
+    typer.echo(f"Wrote conformance report to {summary_file}")
+
+
+

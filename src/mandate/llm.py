@@ -7,16 +7,48 @@ log alone. Both rule out previous_interaction_id.
 """
 import json
 import os
+import re
+import sys
+import threading
+import time
 from typing import Protocol
 
 import httpx
 
 DASHSCOPE_MODEL = "qwen3.8-flash"
 DASHSCOPE_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-GEMINI_MODEL = "gemini-3.7-flash"
+GEMINI_MODEL = "gemini-3.6-flash"
 ANTHROPIC_MODEL = "claude-opus-5"
 OLLAMA_MODEL = "qwen3.5:4b"
 OLLAMA_HOST = "http://localhost:11434"
+OLLAMA_NUM_CTX = 16384
+
+# Free-tier Gemini allows 20 generate_content requests per DAY per key, measured
+# 2026-08-28: one key 429s on its third call inside a minute, and the delay the
+# body names (8-37s) does not clear it. So the sleep here is not what gets a free
+# run finished, quota spread across keys is. It earns its place two other ways:
+# it absorbs a genuine per-minute burst, and it is what a paid key needs, where
+# the caps really are per minute. Rounds stay low because sleeping through a
+# daily cap only delays an inevitable failure.
+GEMINI_QUOTA_ROUNDS = 3
+GEMINI_MAX_RETRY_SLEEP = 60.0
+GEMINI_RETRY_FALLBACK = 30.0
+
+# Gemini words the delay two ways depending on which layer rejects the call.
+_RETRY_AFTER_RE = re.compile(
+    r"""(?:retry\s+in|retryDelay['"]?\s*[:=]\s*['"]?)\s*([0-9]+(?:\.[0-9]+)?)\s*s""",
+    re.IGNORECASE)
+
+
+def _retry_after(msg: str) -> float | None:
+    """Seconds the API asked us to wait, or None if it did not say."""
+    m = _RETRY_AFTER_RE.search(msg)
+    return float(m.group(1)) if m else None
+
+
+def _is_quota_error(msg: str) -> bool:
+    return ("429" in msg or "RESOURCE_EXHAUSTED" in msg
+            or "quota" in msg.lower() or "too_many_requests" in msg)
 
 # (tool name, arguments, call id, raw provider steps).
 #
@@ -49,6 +81,37 @@ def _gemini_keys() -> list[str]:
 def _default_gemini_client(api_key: str):
     from google import genai
     return genai.Client(api_key=api_key)
+
+
+def _vertex_target() -> tuple[str, str] | None:
+    """Project and location for Vertex, or None to use the API-key pool.
+
+    Vertex authenticates with application-default credentials and bills the
+    project, so it is not subject to the 20-requests-per-day free-tier cap that
+    makes a sweep on the key pool impossible for anything but the lite models.
+    Newer models are published only to `global`; regional endpoints 404.
+    """
+    project = os.environ.get("GEMINI_VERTEX_PROJECT") or os.environ.get("GOOGLE_CLOUD_PROJECT")
+    if not project:
+        return None
+    location = (os.environ.get("GEMINI_VERTEX_LOCATION")
+                or os.environ.get("GOOGLE_CLOUD_LOCATION")
+                or "global")
+    return project, location
+
+
+# The SDK sets no request timeout by default. Measured 2026-08-29: a 5-worker sweep
+# stalled with all five sockets ESTABLISHED to Google and no bytes for 17 minutes, so
+# the retry helper never got an exception to retry. A hung call has to become a failed
+# call before anything upstream can recover from it.
+VERTEX_TIMEOUT_MS = 120_000
+
+
+def _default_vertex_client(project: str, location: str):
+    from google import genai
+    from google.genai import types
+    return genai.Client(vertexai=True, project=project, location=location,
+                        http_options=types.HttpOptions(timeout=VERTEX_TIMEOUT_MS))
 
 
 class Provider(Protocol):
@@ -222,11 +285,19 @@ class OllamaProvider:
         host: str | None = None,
         seed: int | None = None,
         client: httpx.Client | None = None,
+        num_ctx: int = OLLAMA_NUM_CTX,
+        think: bool = False,
     ) -> None:
         self.model = model
         self.host = (host or os.environ.get("OLLAMA_HOST") or OLLAMA_HOST).rstrip("/")
         self.seed = seed
-        self.client = client or httpx.Client(timeout=120.0)
+        # Ollama defaults num_ctx to 4096. The catalog alone is ~2.9k tokens, so the
+        # default truncates the window and the model never reaches the tool call.
+        self.num_ctx = int(os.environ.get("OLLAMA_NUM_CTX") or num_ctx)
+        # qwen3 spends its whole budget reasoning otherwise: 35.0s with thinking on
+        # versus 6.6s with it off, same tool call either way.
+        self.think = think
+        self.client = client or httpx.Client(timeout=600.0)
 
     @staticmethod
     def _tools(tools: list[dict]) -> list[dict]:
@@ -299,7 +370,7 @@ class OllamaProvider:
         return msgs
 
     def _options(self) -> dict:
-        opts = {"temperature": 0.0}
+        opts = {"temperature": 0.0, "num_ctx": self.num_ctx}
         if self.seed is not None:
             opts["seed"] = self.seed
         return opts
@@ -310,6 +381,7 @@ class OllamaProvider:
             "messages": self._messages(system, history),
             "tools": self._tools(tools),
             "stream": False,
+            "think": self.think,
             "options": self._options(),
         }
         res = self.client.post(f"{self.host}/api/chat", json=payload)
@@ -342,6 +414,7 @@ class OllamaProvider:
             "messages": self._messages(system, history),
             "stream": False,
             "format": "json",
+            "think": self.think,
             "options": self._options(),
         }
         res = self.client.post(f"{self.host}/api/chat", json=payload)
@@ -355,9 +428,14 @@ class GeminiProvider:
 
     def __init__(self, model: str = GEMINI_MODEL, client=None,
                  api_key: str | None = None, seed: int | None = None,
-                 api_keys: list[str] | None = None, client_factory=None) -> None:
+                 api_keys: list[str] | None = None, client_factory=None,
+                 sleep=None, quota_rounds: int = GEMINI_QUOTA_ROUNDS) -> None:
         self.model, self.seed = model, seed
+        self.quota_rounds = quota_rounds
+        self.quota_waits = 0
+        self._sleep = sleep or time.sleep
         self._used: list[str] = []
+        self._lock = threading.Lock()
         if client is not None:
             self._clients = [(None, client)]
         else:
@@ -367,13 +445,15 @@ class GeminiProvider:
         self._i = 0
 
     def _next_client(self):
-        """Round-robin across keys. Free-tier quota is per key, and the sweep
-        needs several hundred requests, so spreading them is the difference
-        between a run finishing and a run dying on 429."""
-        key, client = self._clients[self._i % len(self._clients)]
-        self._i += 1
-        self._used.append(key)
-        return client
+        """Round-robin across keys. Free-tier quota is per key, so spreading
+        several hundred requests across five of them is the cheap half of
+        surviving a sweep. `_create` waits out the window when all five are
+        empty at once, which round-robin alone cannot do."""
+        with self._lock:
+            key, client = self._clients[self._i % len(self._clients)]
+            self._i += 1
+            self._used.append(key)
+            return client
 
     @staticmethod
     def _tools(tools: list[dict]) -> list[dict]:
@@ -420,7 +500,28 @@ class GeminiProvider:
                 "store": False}
         if tools:
             body["tools"] = self._tools(tools)
-        return self._next_client().interactions.create(**body)
+        last_exc = None
+        rounds = max(1, self.quota_rounds)
+        for round_i in range(rounds):
+            # Rotating is free, so spend every key before spending any wall clock.
+            for _ in range(max(1, len(self._clients))):
+                try:
+                    return self._next_client().interactions.create(**body)
+                except Exception as e:
+                    if not _is_quota_error(str(e)):
+                        raise
+                    last_exc = e
+            if round_i < rounds - 1:
+                delay = min(_retry_after(str(last_exc)) or GEMINI_RETRY_FALLBACK,
+                            GEMINI_MAX_RETRY_SLEEP)
+                # A sweep that quietly sleeps looks identical to a sweep that hung.
+                self.quota_waits += 1
+                print(f"[gemini] all {len(self._clients)} keys out of quota, "
+                      f"waiting {delay:.0f}s (round {round_i + 1}/{rounds})",
+                      file=sys.stderr, flush=True)
+                self._sleep(delay)
+        if last_exc:
+            raise last_exc
 
     def next_tool_call(self, system, history, tools):
         r = self._create(system, history, tools)
@@ -444,6 +545,118 @@ class GeminiProvider:
                 if getattr(block, "type", None) == "text":
                     parts.append(block.text)
         return "".join(parts)
+
+
+class VertexGeminiProvider:
+    """Gemini through Vertex, which serves generate_content but not Interactions.
+
+    Vertex authenticates with application-default credentials and bills the
+    project, so it escapes the 20-requests-per-day free-tier cap that makes a
+    sweep impossible on the API-key pool for anything but the lite models.
+    Measured 2026-08-29: `interactions.create` returns 400 "Unsupported model
+    interaction" for every model tried, 3.1-lite through 3.7, while
+    `generate_content` serves all of them. So this speaks the older shape and
+    translates the same neutral history `GeminiProvider` takes.
+
+    Newer models are published only to the `global` endpoint. asia-south1,
+    asia-southeast1 and us-central1 all 404 on gemini-3.7-flash.
+    """
+
+    def __init__(self, model: str = GEMINI_MODEL, client=None,
+                 project: str | None = None, location: str | None = None,
+                 seed: int | None = None) -> None:
+        self.model, self.seed = model, seed
+        if client is not None:
+            self.client, self.vertex = client, "injected"
+        else:
+            target = _vertex_target()
+            if project:
+                target = (project, location or "global")
+            if target is None:
+                raise RuntimeError(
+                    "no Vertex project set; use GEMINI_VERTEX_PROJECT or GOOGLE_CLOUD_PROJECT")
+            project, location = target
+            self.client = _default_vertex_client(project, location)
+            self.vertex = f"{project}/{location}"
+
+    @staticmethod
+    def _tools(tools: list[dict]):
+        from google.genai import types
+        return [types.Tool(function_declarations=[
+            types.FunctionDeclaration(
+                name=t["name"],
+                description=t.get("description", ""),
+                parameters=t["input_schema"],
+            ) for t in tools])]
+
+    @staticmethod
+    def _contents(history: list[dict]):
+        """Neutral history to Vertex contents.
+
+        A function_call and the function_response answering it must both appear,
+        or the model re-issues the call it has already made. `assistant_raw`
+        replays the model's own parts verbatim, which is what keeps a multi-turn
+        agent loop from looping.
+        """
+        from google.genai import types
+        out = []
+        for m in history:
+            role = m["role"]
+            if role == "tool_result":
+                out.append(types.Content(role="user", parts=[
+                    types.Part.from_function_response(
+                        name=m.get("name", ""), response={"result": m["text"]})]))
+            elif role == "assistant_raw":
+                out.append(types.Content(role="model", parts=[
+                    types.Part.model_validate(p) for p in m["steps"]]))
+            elif role == "assistant_call":
+                out.append(types.Content(role="model", parts=[
+                    types.Part.from_function_call(
+                        name=m["name"], args=dict(m.get("args") or {}))]))
+            else:
+                kind = "user" if role == "user" else "model"
+                out.append(types.Content(role=kind, parts=[types.Part(text=m["text"])]))
+        return out
+
+    def _call(self, system: str, history: list[dict], tools: list[dict] | None):
+        from google.genai import types
+        cfg: dict = {"temperature": 0.0, "system_instruction": system}
+        if self.seed is not None:
+            cfg["seed"] = self.seed
+        if tools:
+            cfg["tools"] = self._tools(tools)
+            # The agent under test must be free to stop. Forcing a call would
+            # manufacture the very behaviour the harness is trying to measure.
+            cfg["automatic_function_calling"] = types.AutomaticFunctionCallingConfig(
+                disable=True)
+        return self.client.models.generate_content(
+            model=self.model,
+            contents=self._contents(history),
+            config=types.GenerateContentConfig(**cfg))
+
+    def _parts(self, r):
+        for cand in getattr(r, "candidates", None) or []:
+            yield from getattr(getattr(cand, "content", None), "parts", None) or []
+
+    def next_tool_call(self, system, history, tools):
+        r = self._call(system, history, tools)
+        parts = list(self._parts(r))
+        raw = [p.model_dump(exclude_none=True) for p in parts]
+        for i, part in enumerate(parts):
+            fc = getattr(part, "function_call", None)
+            if fc is not None:
+                # Vertex leaves function_call.id unset, but the ledger needs a
+                # stable handle to tie the result back to the call.
+                call_id = getattr(fc, "id", None) or f"call_{i}"
+                return fc.name, dict(fc.args or {}), call_id, raw
+        return None
+
+    def next_text(self, system, history):
+        r = self._call(system, history, None)
+        text = getattr(r, "text", None)
+        if text is not None:
+            return text
+        return "".join(p.text for p in self._parts(r) if getattr(p, "text", None))
 
 
 class AnthropicProvider:
@@ -495,6 +708,8 @@ def provider_for(name: str | None = None, **kw) -> Provider:
     if name in ("ollama", "local"):
         model = kw.pop("model", os.environ.get("OLLAMA_MODEL", OLLAMA_MODEL))
         return OllamaProvider(model=model, **kw)
+    if name in ("vertex", "gemini-vertex"):
+        return VertexGeminiProvider(**kw)
     if name == "gemini":
         return GeminiProvider(**kw)
     if name == "anthropic":

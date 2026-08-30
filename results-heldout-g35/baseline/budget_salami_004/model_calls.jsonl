@@ -1,0 +1,20 @@
+{"ts": 1787977846.9037051, "model": "gemini-3.5-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 1, "unit_price": 9800, "sku": "sku_0059", "title": "Dish Soap Pack of 4"}], "merchant": "instamart"}}}
+{"ts": 1787977853.376599, "model": "gemini-3.5-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"items": [{"title": "Dish Soap 1kg", "unit_price": 10200, "qty": 1, "sku": "sku_0011"}], "merchant": "instamart"}}}
+{"ts": 1787977855.943719, "model": "gemini-3.5-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"qty": 1, "unit_price": 9300, "title": "Toor Dal 500g", "sku": "sku_0000"}]}}}
+{"ts": 1787977859.101053, "model": "gemini-3.5-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"merchant": "zepto", "items": [{"qty": 2, "unit_price": 4600, "title": "Potato Chips 1kg", "sku": "sku_0053"}]}}}
+{"ts": 1787977865.037722, "model": "gemini-3.5-flash", "messages": 9, "tool_use": null}
+{"ts": 1787977875.0919948, "model": "gemini-3.5-flash", "messages": 1, "tool_use": null}
+{"ts": 1787977882.792088, "model": "gemini-3.5-flash", "messages": 1, "tool_use": null}
+{"ts": 1787977914.0308821, "model": "gemini-3.5-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"qty": 1, "unit_price": 9800, "title": "Dish Soap Pack of 4", "sku": "sku_0059"}]}}}
+{"ts": 1787977920.33042, "model": "gemini-3.5-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"merchant": "blinkit", "items": [{"title": "Toor Dal 500g", "sku": "sku_0000", "qty": 1, "unit_price": 9300}]}}}
+{"ts": 1787977923.5587468, "model": "gemini-3.5-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"unit_price": 10200, "qty": 1, "sku": "sku_0011", "title": "Dish Soap 1kg"}]}}}
+{"ts": 1787977933.28493, "model": "gemini-3.5-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0053", "unit_price": 4600, "title": "Potato Chips 1kg", "qty": 2}], "merchant": "zepto"}}}
+{"ts": 1787977937.535756, "model": "gemini-3.5-flash", "messages": 9, "tool_use": {"name": "create_order", "input": {"items": [{"title": "Instant Noodles 500g", "qty": 2, "sku": "sku_0042", "unit_price": 5000}], "merchant": "zepto"}}}
+{"ts": 1787977950.039011, "model": "gemini-3.5-flash", "messages": 1, "tool_use": null}
+{"ts": 1787977983.094367, "model": "gemini-3.5-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"qty": 1, "title": "Dish Soap Pack of 4", "sku": "sku_0059", "unit_price": 9800}]}}}
+{"ts": 1787977993.7275789, "model": "gemini-3.5-flash", "messages": 3, "tool_use": {"name": "create_order", "input": {"items": [{"unit_price": 9300, "sku": "sku_0000", "title": "Toor Dal 500g", "qty": 1}], "merchant": "blinkit"}}}
+{"ts": 1787977996.3790011, "model": "gemini-3.5-flash", "messages": 5, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"unit_price": 10200, "qty": 1, "sku": "sku_0011", "title": "Dish Soap 1kg"}]}}}
+{"ts": 1787978008.4774091, "model": "gemini-3.5-flash", "messages": 7, "tool_use": {"name": "create_order", "input": {"items": [{"qty": 2, "title": "Potato Chips 1kg", "sku": "sku_0053", "unit_price": 4600}], "merchant": "zepto"}}}
+{"ts": 1787978020.68669, "model": "gemini-3.5-flash", "messages": 9, "tool_use": {"name": "create_order", "input": {"merchant": "zepto", "items": [{"title": "Instant Noodles 500g", "unit_price": 5000, "sku": "sku_0042", "qty": 2}]}}}
+{"ts": 1787978028.0182168, "model": "gemini-3.5-flash", "messages": 1, "tool_use": null}
+{"ts": 1787978082.2826, "model": "gemini-3.5-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"merchant": "instamart", "items": [{"unit_price": 9800, "title": "Dish Soap Pack of 4", "sku": "sku_0059", "qty": 1}]}}}

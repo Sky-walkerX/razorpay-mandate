@@ -1,0 +1,2 @@
+{"ts": 1787982047.494935, "model": "gemini-3.7-flash", "messages": 1, "tool_use": {"name": "create_order", "input": {"items": [{"sku": "sku_0036", "qty": 2, "title": "Toor Dal 500g", "unit_price": 9000}, {"qty": 1, "sku": "sku_0013", "title": "Basmati Rice 1kg", "unit_price": 14700}], "merchant": "instamart"}}}
+{"ts": 1787982049.949949, "model": "gemini-3.7-flash", "messages": 3, "tool_use": null}

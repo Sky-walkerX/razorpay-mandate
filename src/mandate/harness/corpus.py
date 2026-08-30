@@ -55,14 +55,16 @@ def corpus_hash(items: list[CorpusItem]) -> str:
 
 
 def save_corpus(items: list[CorpusItem], path: Path) -> None:
+    raw_items = [i.model_dump(mode="json") for i in items]
+    h = "sha256:" + hashlib.sha256(json.dumps(raw_items, sort_keys=True).encode()).hexdigest()
     path.write_text(json.dumps(
-        {"corpus_hash": corpus_hash(items),
-         "items": [i.model_dump(mode="json") for i in items]}, indent=2, sort_keys=True))
+        {"corpus_hash": h,
+         "items": raw_items}, indent=2, sort_keys=True))
 
 
 def load_corpus(path: Path) -> list[CorpusItem]:
     body = json.loads(path.read_text())
-    items = [CorpusItem(**i) for i in body["items"]]
-    if corpus_hash(items) != body["corpus_hash"]:
+    raw_hash = "sha256:" + hashlib.sha256(json.dumps(body["items"], sort_keys=True).encode()).hexdigest()
+    if raw_hash != body["corpus_hash"]:
         raise CorpusFrozen("corpus file was edited after it was written")
-    return items
+    return [CorpusItem.model_validate(i) for i in body["items"]]
