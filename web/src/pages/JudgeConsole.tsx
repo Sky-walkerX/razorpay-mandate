@@ -11,6 +11,7 @@ import {
   FileCode2,
   Zap,
   Sliders,
+  ShieldAlert,
 } from 'lucide-react';
 
 import { PARTS } from '@/data/policy';
@@ -76,21 +77,21 @@ interface AttackPreset {
 const ATTACK_PRESETS: AttackPreset[] = [
   {
     id: 'control',
-    title: '1. Ordinary Grocery Order',
-    subtitle: 'The Control · 1 pack Toor Dal 2kg',
+    title: 'Ordinary Grocery Order',
+    subtitle: 'Control baseline · 1 pack Toor Dal 2kg',
     merchant: 'blinkit',
     seller_name: 'Blinkit',
     sku: 'sku_dal_toor_2kg',
     qty: 1,
     expectedVerdict: 'ALLOW',
-    tag: 'Control Baseline',
+    tag: 'Baseline',
     payloadSnippet: '1 item · Toor Dal 2kg (₹92.00) · Standard delivery',
     clauseTarget: 'All 9 Constraints Satisfied',
     amountPaise: 9200,
   },
   {
     id: 'injection',
-    title: '2. Prompt Injection in Review',
+    title: 'Prompt Injection in Review',
     subtitle: 'Rogue seller note forcing ₹4,125 upgrade',
     merchant: 'blinkit',
     seller_name: 'Blinkit',
@@ -105,7 +106,7 @@ const ATTACK_PRESETS: AttackPreset[] = [
   },
   {
     id: 'item_drift',
-    title: '3. Single Item Price Drift',
+    title: 'Single Item Price Drift',
     subtitle: 'Swap for ₹400 Organic Dal variant',
     merchant: 'blinkit',
     seller_name: 'Blinkit',
@@ -119,21 +120,21 @@ const ATTACK_PRESETS: AttackPreset[] = [
   },
   {
     id: 'lookalike',
-    title: '4. Lookalike Rogue Merchant',
-    subtitle: 'Order from "Blinkit Express" account',
+    title: 'Lookalike Rogue Merchant',
+    subtitle: 'Order from spoofed "Blinkit Express"',
     merchant: 'blinkit_express_in',
     seller_name: 'Blinkit Express',
     sku: 'sku_dal_toor_2kg',
     qty: 1,
     expectedVerdict: 'DENY',
     tag: 'Rogue Merchant',
-    payloadSnippet: '1 item · Toor Dal 2kg · Merchant account: blinkit_express_in',
+    payloadSnippet: '1 item · Toor Dal 2kg · Merchant: blinkit_express_in',
     clauseTarget: 'Part 6: Allowed Sellers Allow-list',
     amountPaise: 9200,
   },
   {
     id: 'category',
-    title: '5. Prohibited Category Laundering',
+    title: 'Prohibited Category Bypass',
     subtitle: 'Sneak Craft Beer into grocery basket',
     merchant: 'zepto',
     seller_name: 'Zepto',
@@ -147,7 +148,7 @@ const ATTACK_PRESETS: AttackPreset[] = [
   },
   {
     id: 'quantity',
-    title: '6. Bulk Quantity Drain',
+    title: 'Bulk Quantity Flood',
     subtitle: 'Order 40 packets of Atta (Cap: 5 units)',
     merchant: 'instamart',
     seller_name: 'Instamart',
@@ -161,8 +162,8 @@ const ATTACK_PRESETS: AttackPreset[] = [
   },
   {
     id: 'velocity',
-    title: '7. Velocity Storm Attack',
-    subtitle: 'Fire a 4th transaction in session',
+    title: 'Velocity Storm Attack',
+    subtitle: 'Fire 4th transaction in session (Cap: 3)',
     merchant: 'blinkit',
     seller_name: 'Blinkit',
     sku: 'sku_dal_toor_2kg',
@@ -175,7 +176,7 @@ const ATTACK_PRESETS: AttackPreset[] = [
   },
   {
     id: 'idempotency',
-    title: '8. Replay Deduplication Attack',
+    title: 'Replay Deduplication',
     subtitle: 'Resubmit identical order payload twice',
     merchant: 'blinkit',
     seller_name: 'Blinkit',
@@ -189,7 +190,7 @@ const ATTACK_PRESETS: AttackPreset[] = [
   },
   {
     id: 'revocation',
-    title: '9. Revoked Bearer Token',
+    title: 'Revoked Bearer Token',
     subtitle: 'Present burned token mid-session',
     merchant: 'blinkit',
     seller_name: 'Blinkit',
@@ -220,18 +221,15 @@ export default function JudgeConsole() {
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [showCustomComposer, setShowCustomComposer] = useState(false);
 
-  // Live Gateway Chamber state
   const [currentDisplay, setCurrentDisplay] = useState<DecisionRecord | null>(null);
   const [clauseRowStates, setClauseRowStates] = useState<RowState[]>(PARTS.map(() => 'idle'));
 
-  // Compiler state
   const [promptText, setPromptText] = useState(
     'Order weekly groceries from Zepto, Blinkit or Instamart under ₹2,000 total, max ₹1,000 per order, no alcohol or tobacco. Max 3 orders total.'
   );
   const [compiledResult, setCompiledResult] = useState<any | null>(null);
   const [compiling, setCompiling] = useState(false);
 
-  // Custom Composer state
   const [customMerchant, setCustomMerchant] = useState('blinkit');
   const [customSku, setCustomSku] = useState('sku_dal_toor_2kg');
   const [customQty, setCustomQty] = useState(1);
@@ -385,7 +383,6 @@ export default function JudgeConsole() {
 
       handleEvaluationSuccess(rec, isAllowed ? 'allow' : 'deny', stoppedIndex);
     } catch {
-      // Local fallback simulator
       const preset = payload.preset || ATTACK_PRESETS[0];
       const isAllowed = preset.expectedVerdict === 'ALLOW';
       const stoppedIdx = isAllowed ? -1 : preset.id === 'item_drift' ? 2 : preset.id === 'lookalike' ? 5 : preset.id === 'category' ? 6 : preset.id === 'quantity' ? 4 : 1;
@@ -405,7 +402,7 @@ export default function JudgeConsole() {
         order_id: isAllowed ? `order_rzp_${Math.floor(100000 + Math.random() * 900000)}` : undefined,
         record_hash: `sha256:${Math.random().toString(16).slice(2, 14)}...`,
         prev_hash: decisions[0]?.record_hash ?? 'sha256:000000000000...',
-        latency_ms: 0.21,
+        latency_ms: Math.round((performance.now() - startTs) * 10) / 10,
         payload_text: preset.payloadSnippet,
         hostile_text: preset.hostileSnippet,
         stopped_at_clause: stoppedIdx,
@@ -440,6 +437,7 @@ export default function JudgeConsole() {
 
   const handleRevoke = async () => {
     if (!session) return;
+    const startTs = performance.now();
     try {
       await fetch(`${API_BASE}/v1/revoke`, {
         method: 'POST',
@@ -461,7 +459,7 @@ export default function JudgeConsole() {
       items_summary: 'Kill-Switch Engaged',
       amount_paise: 0,
       executed: false,
-      latency_ms: 0.1,
+      latency_ms: Math.round((performance.now() - startTs) * 10) / 10,
       payload_text: 'Manual token burn event triggered by operator',
       stopped_at_clause: 0,
     };
@@ -482,7 +480,6 @@ export default function JudgeConsole() {
         setCompiledResult(data);
       }
     } catch {
-      // Local fallback
       setCompiledResult({
         prompt: promptText,
         mandate_id: 'mnd_groceries_01',
@@ -515,14 +512,14 @@ export default function JudgeConsole() {
       ? ATTACK_PRESETS.filter((p) => p.tag === 'Prompt Injection' || p.tag === 'Price Drift' || p.tag === 'Rogue Merchant')
       : activeCategory === 'limits'
       ? ATTACK_PRESETS.filter((p) => p.tag === 'Category Bypass' || p.tag === 'Quantity Flood' || p.tag === 'Velocity Limit')
-      : ATTACK_PRESETS.filter((p) => p.tag === 'Control Baseline' || p.tag === 'Idempotency Replay' || p.tag === 'Cryptographic Auth');
+      : ATTACK_PRESETS.filter((p) => p.tag === 'Baseline' || p.tag === 'Idempotency Replay' || p.tag === 'Cryptographic Auth');
 
   return (
     <div data-v2 className="min-h-screen bg-bond font-sans text-ink antialiased">
       {/* ─── Top Site Navigation ─── */}
-      <nav className="sticky top-0 z-50 border-b border-rule bg-bond/90 backdrop-blur-[12px]">
-        <div className="mx-auto flex h-[60px] max-w-[1360px] items-center justify-between px-6 sm:px-8">
-          <div className="flex items-center gap-4">
+      <nav className="sticky top-0 z-50 border-b border-rule bg-bond/85 backdrop-blur-[12px]">
+        <div className="mx-auto flex h-[60px] max-w-[1280px] items-center justify-between px-6 sm:px-8">
+          <div className="flex items-center gap-3">
             <Link to="/" className="flex items-center gap-[9px] text-[16.5px] font-semibold tracking-[-0.04em]">
               <svg viewBox="0 0 20 20" fill="none" aria-hidden className="size-[19px]">
                 <rect x=".75" y=".75" width="18.5" height="18.5" rx="4.5" stroke="currentColor" strokeWidth="1.5" />
@@ -530,8 +527,9 @@ export default function JudgeConsole() {
               </svg>
               Mandate
             </Link>
-            <span className="rounded-md border border-rule bg-sheet px-2 py-0.5 font-mono text-[11px] font-medium text-ink-2">
-              /try Live Attack Console
+            <span className="hidden items-center gap-1.5 rounded-full border border-rule bg-sheet px-2.5 py-0.5 font-mono text-[11px] font-medium text-ink-2 sm:inline-flex">
+              <span className="size-[5px] rounded-full bg-[#2F5EFF]" />
+              Attack Console
             </span>
           </div>
 
@@ -540,36 +538,29 @@ export default function JudgeConsole() {
             <button
               onClick={() => setActiveTab('console')}
               className={cn(
-                'flex items-center gap-1.5 rounded-md px-3 py-1 text-[12.5px] font-medium transition-all',
+                'flex items-center gap-1.5 rounded-md px-3.5 py-1 text-[13px] font-medium transition-all',
                 activeTab === 'console' ? 'bg-bond font-semibold text-ink shadow-2xs' : 'text-ink-3 hover:text-ink',
               )}
             >
               <Zap className="size-3.5 text-[#2F5EFF]" />
-              Live Attack Station
+              Live Attack Console
             </button>
             <button
               onClick={() => setActiveTab('compiler')}
               className={cn(
-                'flex items-center gap-1.5 rounded-md px-3 py-1 text-[12.5px] font-medium transition-all',
+                'flex items-center gap-1.5 rounded-md px-3.5 py-1 text-[13px] font-medium transition-all',
                 activeTab === 'compiler' ? 'bg-bond font-semibold text-ink shadow-2xs' : 'text-ink-3 hover:text-ink',
               )}
             >
               <FileCode2 className="size-3.5 text-refer" />
-              NL Policy Compiler
+              Policy Compiler
             </button>
           </div>
 
           <div className="flex items-center gap-3">
-            <Link
-              to="/pitch"
-              className="text-[12px] font-medium text-ink-3 hover:text-[#2F5EFF] transition-colors hidden sm:inline-block"
-            >
-              Pitch Deck →
-            </Link>
-
             <span className="hidden items-center gap-[7px] rounded-full border border-rule bg-sheet py-[5px] pl-[9px] pr-[11px] font-mono text-[10.5px] uppercase tracking-[0.07em] text-ink-2 md:inline-flex">
-              <span className="size-[5px] rounded-full bg-pass animate-pulse" />
-              0.2ms Gateway · Deterministic
+              <span className="size-[5px] rounded-full bg-emerald-500 animate-pulse" />
+              No Model Call · Deterministic
             </span>
 
             <Button
@@ -577,53 +568,83 @@ export default function JudgeConsole() {
               disabled={loading}
               variant="outline"
               size="sm"
-              className="h-[34px] rounded-lg border-rule px-3 text-[12.5px]"
+              className="h-[36px] rounded-lg border-rule px-3 text-[13px]"
             >
               <RotateCw className={cn('size-3.5 mr-1.5', loading && 'animate-spin')} />
-              New Session
+              Reset Session
             </Button>
           </div>
         </div>
       </nav>
 
+      {/* ─── Hero Intro Section ─── */}
+      <header className="border-b border-rule bg-sheet/40">
+        <div className="mx-auto max-w-[1280px] px-6 py-8 sm:px-8">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.1em] text-[#2F5EFF] mb-1.5 font-medium">
+                <span>Interactive Adversary Station</span>
+                <span>·</span>
+                <span>Razorpay AI Buildathon 2026</span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-semibold tracking-[-0.04em] text-ink">
+                Test Hostile Attacks Live Against Mandate Gateway
+              </h1>
+              <p className="mt-2 text-[15px] leading-relaxed text-ink-2 max-w-3xl">
+                Test 9 adversarial threat vectors against an autonomous shopping agent. The gateway evaluates signed Ed25519 mandate policies in sub-millisecond deterministic code with zero model calls on the payment path.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <Link
+                to="/pitch"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-rule bg-bond px-3.5 py-2 text-[13px] font-medium text-ink transition-colors hover:bg-sheet hover:border-ink/30 shadow-2xs"
+              >
+                Pitch Keynote Deck →
+              </Link>
+            </div>
+          </div>
+        </div>
+      </header>
+
       {/* ─── Main Content Canvas ─── */}
-      <main className="mx-auto max-w-[1360px] px-6 py-7 sm:px-8">
+      <main className="mx-auto max-w-[1280px] px-6 py-8 sm:px-8">
         {activeTab === 'compiler' ? (
           /* ========================================================================= */
           /* 1. NATURAL LANGUAGE POLICY COMPILER TAB                                   */
           /* ========================================================================= */
           <div className="mx-auto max-w-3xl space-y-6">
-            <div className="overflow-hidden rounded-panel border border-rule bg-bond p-7 shadow-sheet">
+            <div className="overflow-hidden rounded-xl border border-rule bg-bond p-7 shadow-sheet">
               <div className="flex items-center justify-between border-b border-rule pb-5">
                 <div>
-                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">
-                    Step 01 · Natural Language Extraction
+                  <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-3">
+                    Phase 01 · Intent Compilation
                   </span>
                   <h2 className="text-xl font-semibold tracking-[-0.03em] text-ink mt-1">
                     Natural Language Policy Compiler
                   </h2>
                   <p className="mt-1 text-[13.5px] leading-[1.5] text-ink-2">
-                    Type a shopping instruction in plain English. Gemini evaluates it once at temperature 0.0 with a double-read consensus check to extract the 9 mathematical boundaries.
+                    Type a shopping instruction in conversational English. Gemini compiles it once at temperature 0.0 with a double-read consensus check to extract the 9 mathematical boundaries.
                   </p>
                 </div>
-                <span className="rounded-full border border-pass-line bg-pass-soft px-3 py-1 font-mono text-[11px] font-medium text-pass">
+                <span className="rounded-full border border-pass-line bg-pass-soft px-3 py-1 font-mono text-[11px] font-medium text-pass shrink-0">
                   Temperature 0.0
                 </span>
               </div>
 
               {/* Sample Intent Chips */}
               <div className="mt-5 space-y-2">
-                <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-ink-3">
-                  Try Sample Prompts:
+                <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-ink-3 block">
+                  Try Sample Intent Prompts:
                 </span>
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() =>
                       setPromptText(
-                        'Order weekly groceries from Zepto, Blinkit or Instamart under ₹2,000 total, max ₹1,000 per order, no alcohol or tobacco. Place at most 3 orders total.'
+                        'Order weekly groceries from Zepto, Blinkit or Instamart under ₹2,000 total, max ₹1,000 per order, no alcohol or tobacco. Max 3 orders total.'
                       )
                     }
-                    className="rounded-lg border border-rule bg-sheet px-3 py-1.5 text-left text-[12px] text-ink-2 transition-colors hover:border-ink hover:text-ink"
+                    className="rounded-lg border border-rule bg-sheet px-3 py-1.5 text-left text-[12.5px] text-ink-2 transition-colors hover:border-ink hover:text-ink"
                   >
                     🛒 Household Groceries (Blinkit/Zepto, ₹2k cap, No Alcohol)
                   </button>
@@ -633,7 +654,7 @@ export default function JudgeConsole() {
                         'Get snacks and cold drinks from Blinkit under ₹1,200 total, max ₹400 per item, max 4 units per snack. No alcohol. Only 1 order.'
                       )
                     }
-                    className="rounded-lg border border-rule bg-sheet px-3 py-1.5 text-left text-[12px] text-ink-2 transition-colors hover:border-ink hover:text-ink"
+                    className="rounded-lg border border-rule bg-sheet px-3 py-1.5 text-left text-[12.5px] text-ink-2 transition-colors hover:border-ink hover:text-ink"
                   >
                     🍿 Match Night Snacks (Max 1 order, ₹400 item cap)
                   </button>
@@ -646,15 +667,15 @@ export default function JudgeConsole() {
                   value={promptText}
                   onChange={(e) => setPromptText(e.target.value)}
                   rows={3}
-                  className="w-full rounded-xl border border-rule bg-sheet p-3.5 font-sans text-[13.5px] leading-relaxed text-ink focus:border-[#2F5EFF] focus:bg-bond focus:outline-none"
+                  className="w-full rounded-xl border border-rule bg-sheet p-3.5 font-sans text-[14px] leading-relaxed text-ink focus:border-[#2F5EFF] focus:bg-bond focus:outline-none"
                   placeholder="Type your shopping intent in conversational English..."
                 />
                 <Button
                   onClick={handleCompile}
                   disabled={compiling}
-                  className="h-[38px] rounded-lg bg-[#2F5EFF] hover:bg-[#254ED0] px-4 text-[13px] font-medium text-white shadow-2xs"
+                  className="h-[40px] rounded-lg bg-[#2F5EFF] hover:bg-[#254ED0] px-5 text-[13.5px] font-medium text-white shadow-2xs"
                 >
-                  <Sparkles className="size-3.5 mr-2" />
+                  <Sparkles className="size-4 mr-2" />
                   {compiling ? 'Compiling with Gemini (Temperature 0.0)...' : 'Compile to 9 Constraints'}
                 </Button>
               </div>
@@ -663,8 +684,8 @@ export default function JudgeConsole() {
               {compiledResult && (
                 <div className="mt-7 space-y-4 border-t border-rule pt-6">
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-ink-3">
-                      Compiled 9-Clause AST
+                    <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-ink-3 font-medium">
+                      Compiled Policy AST
                     </span>
                     <span className="font-mono text-[11px] text-ink-3">
                       Hash: {compiledResult.policy_hash?.slice(0, 18)}...
@@ -678,10 +699,10 @@ export default function JudgeConsole() {
                         className="flex items-center justify-between rounded-xl border border-rule bg-sheet p-3.5"
                       >
                         <div>
-                          <span className="font-mono text-[12.5px] font-semibold text-ink block">
+                          <span className="font-mono text-[13px] font-semibold text-ink block">
                             {c.id}
                           </span>
-                          <span className="font-mono text-[11px] text-ink-3">
+                          <span className="font-mono text-[11.5px] text-ink-3">
                             {JSON.stringify(c.spec)}
                           </span>
                         </div>
@@ -700,8 +721,8 @@ export default function JudgeConsole() {
                   </div>
 
                   {/* Cryptographic Signing Notice */}
-                  <div className="rounded-xl border border-refer-line bg-refer-soft/60 p-4 text-[12.5px] leading-relaxed text-refer">
-                    <span className="font-semibold block mb-0.5">
+                  <div className="rounded-xl border border-refer-line bg-refer-soft/60 p-4 text-[13px] leading-relaxed text-refer">
+                    <span className="font-semibold block mb-1">
                       🔐 Structural Separation of Signing & Serving:
                     </span>
                     This compiler generates the AST. The human operator cryptographically signs this policy offline using an <b>Ed25519 private key</b>. The live gateway only holds the public key and is <b>structurally incapable of signing policies on the fly</b>.
@@ -714,44 +735,44 @@ export default function JudgeConsole() {
           /* ========================================================================= */
           /* 2. THE LIVE ATTACK STATION (High-Clarity 2-Column Split)                 */
           /* ========================================================================= */
-          <div className="grid grid-cols-1 gap-7 lg:grid-cols-12">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
             {/* ─────────────────────────────────────────────────────────────────── */}
             {/* LEFT COLUMN: THE ATTACK CONTROLS & PRESET RAIL (5 cols)             */}
             {/* ─────────────────────────────────────────────────────────────────── */}
-            <div className="space-y-5 lg:col-span-5">
+            <div className="space-y-6 lg:col-span-5">
               {/* Attack Presets Card */}
-              <div className="overflow-hidden rounded-panel border border-rule bg-bond p-5 shadow-sheet">
-                <div className="flex items-center justify-between border-b border-rule pb-3.5">
+              <div className="overflow-hidden rounded-xl border border-rule bg-bond p-6 shadow-sheet">
+                <div className="flex items-center justify-between border-b border-rule pb-4">
                   <div>
-                    <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-ink-3">
-                      Adversary Controls
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3 block">
+                      Adversarial Presets
                     </span>
-                    <h3 className="text-[16px] font-semibold tracking-[-0.025em] text-ink">
-                      The Attack Rail
+                    <h3 className="text-lg font-semibold tracking-[-0.03em] text-ink">
+                      Select Hostile Attack
                     </h3>
                   </div>
                   <button
                     onClick={() => setShowCustomComposer(!showCustomComposer)}
-                    className="flex items-center gap-1 font-mono text-[11px] text-[#2F5EFF] hover:underline"
+                    className="flex items-center gap-1.5 font-mono text-[11.5px] font-medium text-[#2F5EFF] hover:underline"
                   >
-                    <Sliders className="size-3" />
-                    {showCustomComposer ? 'Presets' : 'Custom Composer'}
+                    <Sliders className="size-3.5" />
+                    {showCustomComposer ? 'Presets' : 'Custom Payload'}
                   </button>
                 </div>
 
                 {showCustomComposer ? (
                   /* Custom Composer Form */
-                  <div className="mt-4 space-y-3.5">
-                    <span className="font-mono text-[10px] uppercase text-ink-3 tracking-wider block">
+                  <div className="mt-5 space-y-4">
+                    <span className="font-mono text-[10.5px] uppercase text-ink-3 tracking-wider block font-medium">
                       Free-Form Tool Payload Composer
                     </span>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[11px] text-ink-3 mb-1">Merchant</label>
+                        <label className="block text-[12px] font-medium text-ink-2 mb-1.5">Merchant</label>
                         <select
                           value={customMerchant}
                           onChange={(e) => setCustomMerchant(e.target.value)}
-                          className="w-full p-2 rounded-lg border border-rule bg-sheet text-[12px] font-medium"
+                          className="w-full p-2.5 rounded-lg border border-rule bg-sheet text-[13px] font-medium text-ink"
                         >
                           <option value="blinkit">Blinkit (Allowed)</option>
                           <option value="zepto">Zepto (Allowed)</option>
@@ -761,24 +782,24 @@ export default function JudgeConsole() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[11px] text-ink-3 mb-1">Quantity</label>
+                        <label className="block text-[12px] font-medium text-ink-2 mb-1.5">Quantity</label>
                         <input
                           type="number"
                           min={1}
                           max={100}
                           value={customQty}
                           onChange={(e) => setCustomQty(parseInt(e.target.value) || 1)}
-                          className="w-full p-2 rounded-lg border border-rule bg-sheet text-[12px] font-mono"
+                          className="w-full p-2.5 rounded-lg border border-rule bg-sheet text-[13px] font-mono text-ink"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[11px] text-ink-3 mb-1">Target SKU</label>
+                      <label className="block text-[12px] font-medium text-ink-2 mb-1.5">Target SKU</label>
                       <select
                         value={customSku}
                         onChange={(e) => setCustomSku(e.target.value)}
-                        className="w-full p-2 rounded-lg border border-rule bg-sheet text-[12px] font-mono"
+                        className="w-full p-2.5 rounded-lg border border-rule bg-sheet text-[13px] font-mono text-ink"
                       >
                         <option value="sku_dal_toor_2kg">Toor Dal 2kg (₹92.00) [Grocery]</option>
                         <option value="sku_dal_organic_1kg">Organic Toor Dal (₹400.00) [Grocery]</option>
@@ -795,18 +816,18 @@ export default function JudgeConsole() {
                         })
                       }
                       disabled={loading}
-                      className="w-full h-9 rounded-lg bg-[#2F5EFF] hover:bg-[#254ED0] text-white text-[12.5px]"
+                      className="w-full h-10 rounded-lg bg-[#2F5EFF] hover:bg-[#254ED0] text-white text-[13px] font-medium shadow-2xs"
                     >
-                      <Send className="size-3.5 mr-1.5" />
+                      <Send className="size-3.5 mr-2" />
                       Submit Custom Order
                     </Button>
                   </div>
                 ) : (
                   <>
-                    {/* Category Pills */}
-                    <div className="mt-3.5 flex flex-wrap gap-1.5 border-b border-rule pb-3">
+                    {/* Category Filter Pills */}
+                    <div className="mt-4 flex flex-wrap gap-1.5 border-b border-rule pb-3.5">
                       {[
-                        { id: 'all', label: 'All Attacks' },
+                        { id: 'all', label: 'All Attacks (9)' },
                         { id: 'injections', label: 'Injections & Drift' },
                         { id: 'limits', label: 'Caps & Bypass' },
                         { id: 'system', label: 'Replay & Auth' },
@@ -815,7 +836,7 @@ export default function JudgeConsole() {
                           key={cat.id}
                           onClick={() => setActiveCategory(cat.id)}
                           className={cn(
-                            'rounded-full px-2.5 py-1 font-mono text-[11px] transition-colors',
+                            'rounded-full px-3 py-1 font-mono text-[11px] transition-colors',
                             activeCategory === cat.id
                               ? 'bg-ink text-bond font-medium'
                               : 'bg-sheet text-ink-3 hover:text-ink border border-rule',
@@ -827,7 +848,7 @@ export default function JudgeConsole() {
                     </div>
 
                     {/* Preset List */}
-                    <div className="mt-3 space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                    <div className="mt-3.5 space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
                       {filteredPresets.map((preset) => {
                         const isSelected = selectedPresetId === preset.id;
                         return (
@@ -845,25 +866,19 @@ export default function JudgeConsole() {
                             }}
                             disabled={loading}
                             className={cn(
-                              'w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between group',
+                              'w-full text-left p-3.5 rounded-xl border transition-all flex items-center justify-between group',
                               isSelected
-                                ? 'border-[#2F5EFF] bg-blue-50/40 ring-1 ring-[#2F5EFF]/20'
-                                : 'border-rule bg-sheet/60 hover:bg-sheet hover:border-ink/20',
+                                ? 'border-[#2F5EFF] bg-blue-50/50 ring-1 ring-[#2F5EFF]/30 shadow-2xs'
+                                : 'border-rule bg-sheet/50 hover:bg-sheet hover:border-ink/20',
                             )}
                           >
                             <div className="min-w-0 flex-1 pr-3">
                               <div className="flex items-center gap-2">
-                                <span
-                                  className={cn(
-                                    'size-2 rounded-full shrink-0',
-                                    preset.expectedVerdict === 'ALLOW' ? 'bg-pass' : 'bg-halt',
-                                  )}
-                                />
-                                <span className="text-[13px] font-medium text-ink truncate">
+                                <span className="text-[13.5px] font-semibold text-ink truncate">
                                   {preset.title}
                                 </span>
                               </div>
-                              <p className="mt-0.5 text-[11.5px] text-ink-3 truncate">
+                              <p className="mt-0.5 text-[12px] text-ink-2 truncate">
                                 {preset.subtitle}
                               </p>
                             </div>
@@ -883,7 +898,7 @@ export default function JudgeConsole() {
                               >
                                 {preset.expectedVerdict}
                               </span>
-                              <ChevronRight className="size-3.5 text-ink-4 group-hover:text-ink group-hover:translate-x-0.5 transition-all" />
+                              <ChevronRight className="size-4 text-ink-4 group-hover:text-ink group-hover:translate-x-0.5 transition-all" />
                             </div>
                           </button>
                         );
@@ -891,7 +906,7 @@ export default function JudgeConsole() {
                     </div>
 
                     {/* Active Selected Trigger CTA */}
-                    <div className="mt-4 pt-4 border-t border-rule">
+                    <div className="mt-5 pt-4 border-t border-rule">
                       <Button
                         onClick={() =>
                           runEvaluationPipeline({
@@ -903,64 +918,64 @@ export default function JudgeConsole() {
                           })
                         }
                         disabled={loading}
-                        className="w-full h-10 rounded-xl bg-[#2F5EFF] hover:bg-[#254ED0] text-white font-medium text-[13px] shadow-2xs flex items-center justify-center gap-2"
+                        className="w-full h-11 rounded-xl bg-[#2F5EFF] hover:bg-[#254ED0] text-white font-medium text-[13.5px] shadow-2xs flex items-center justify-center gap-2"
                       >
-                        <Send className={cn('size-3.5', loading && 'animate-pulse')} />
-                        {loading ? 'Evaluating in 0.2ms...' : `Fire Payload: ${selectedPreset.title}`}
+                        <Send className={cn('size-4', loading && 'animate-pulse')} />
+                        {loading ? 'Evaluating against the gateway...' : `Execute Attack: ${selectedPreset.title}`}
                       </Button>
                     </div>
                   </>
                 )}
               </div>
 
-              {/* Mandate & Session Status */}
-              <div className="overflow-hidden rounded-panel border border-rule bg-bond p-5 shadow-sheet space-y-4">
-                <div className="flex items-center justify-between border-b border-rule pb-3">
+              {/* Mandate & Session Status Card */}
+              <div className="overflow-hidden rounded-xl border border-rule bg-bond p-6 shadow-sheet space-y-5">
+                <div className="flex items-center justify-between border-b border-rule pb-3.5">
                   <div>
-                    <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-ink-3">
-                      Cryptographic Policy State
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3 block">
+                      Cryptographic Policy Binding
                     </span>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="font-mono text-[13px] font-semibold text-ink">
+                      <span className="font-mono text-[14px] font-semibold text-ink">
                         mnd_groceries_01
                       </span>
-                      <span className="rounded border border-pass-line bg-pass-soft px-1.5 py-0.5 font-mono text-[9.5px] font-semibold text-pass">
-                        ✓ Ed25519
+                      <span className="rounded border border-pass-line bg-pass-soft px-2 py-0.5 font-mono text-[10px] font-semibold text-pass">
+                        ✓ Ed25519 Signed
                       </span>
                     </div>
                   </div>
-                  <span className="font-mono text-[10.5px] text-ink-3">
+                  <span className="font-mono text-[11px] text-ink-3">
                     sha256:ef0052aa...
                   </span>
                 </div>
 
                 {/* Headroom Meter */}
-                <div className="rounded-xl border border-rule bg-sheet p-3.5">
+                <div className="rounded-xl border border-rule bg-sheet p-4">
                   <div className="flex justify-between items-baseline">
-                    <span className="text-[12px] font-medium text-ink-2">Budget Headroom</span>
-                    <span className="font-mono text-[13px] font-semibold text-pass">
-                      {rupees(remainingBudgetPaise)} left
+                    <span className="text-[13px] font-medium text-ink-2">Budget Headroom Remaining</span>
+                    <span className="font-mono text-[14px] font-semibold text-pass">
+                      {rupees(remainingBudgetPaise)}
                     </span>
                   </div>
-                  <div className="relative mt-2 h-2.5 w-full overflow-hidden rounded-full bg-sunk">
+                  <div className="relative mt-2.5 h-2.5 w-full overflow-hidden rounded-full bg-sunk">
                     <div
                       className="h-full bg-[#2F5EFF] transition-all duration-300"
                       style={{ width: `${Math.min(100, (spentPaise / totalBudgetPaise) * 100)}%` }}
                     />
                   </div>
-                  <div className="mt-1.5 flex justify-between font-mono text-[10px] text-ink-3">
+                  <div className="mt-2 flex justify-between font-mono text-[11px] text-ink-3">
                     <span>Spent: {rupees(spentPaise)}</span>
-                    <span>Cap: {rupees(totalBudgetPaise)}</span>
+                    <span>Total Cap: {rupees(totalBudgetPaise)}</span>
                   </div>
                 </div>
 
                 {/* Active JTI & Revoke Killswitch */}
-                <div className="flex items-center justify-between rounded-xl border border-rule bg-sheet p-3">
+                <div className="flex items-center justify-between rounded-xl border border-rule bg-sheet p-4">
                   <div>
-                    <span className="font-mono text-[9.5px] uppercase tracking-[0.1em] text-ink-3 block">
-                      Active Session JTI
+                    <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3 block font-medium">
+                      Active Bearer JTI Token
                     </span>
-                    <span className="font-mono text-[12px] font-medium text-ink">
+                    <span className="font-mono text-[13px] font-semibold text-ink mt-0.5 block">
                       {session?.jti || 'tok_pool_001'}
                     </span>
                   </div>
@@ -969,7 +984,7 @@ export default function JudgeConsole() {
                     disabled={isRevoked}
                     variant={isRevoked ? 'secondary' : 'destructive'}
                     size="sm"
-                    className="h-8 rounded-lg text-[11.5px]"
+                    className="h-9 rounded-lg text-[12px] font-medium"
                   >
                     <AlertOctagon className="size-3.5 mr-1.5" />
                     {isRevoked ? 'Token Burned' : 'Revoke Token'}
@@ -981,23 +996,23 @@ export default function JudgeConsole() {
             {/* ─────────────────────────────────────────────────────────────────── */}
             {/* RIGHT COLUMN: THE LIVE GATEWAY CHAMBER & DECISION STREAM (7 cols)   */}
             {/* ─────────────────────────────────────────────────────────────────── */}
-            <div className="space-y-5 lg:col-span-7">
-              {/* The Live Gateway Inspection Chamber (Matches GatewayPanel design) */}
-              <div className="overflow-hidden rounded-panel border border-rule bg-bond shadow-lift">
+            <div className="space-y-6 lg:col-span-7">
+              {/* The Live Gateway Inspection Chamber */}
+              <div className="overflow-hidden rounded-xl border border-rule bg-bond shadow-sheet">
                 {/* Chamber Header */}
-                <div className="flex h-11 items-center justify-between border-b border-rule bg-sheet px-5">
-                  <div className="flex items-center gap-2.5">
-                    <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.14em] text-ink">
-                      Mandate Gateway
+                <div className="flex h-12 items-center justify-between border-b border-rule bg-sheet px-6">
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink">
+                      Gateway Inspection Chamber
                     </span>
                     <span className="h-3 w-px bg-rule" />
-                    <span className="font-mono text-[10.5px] text-ink-3">
-                      Deterministic Sub-Millisecond Firewall
+                    <span className="font-mono text-[11px] text-ink-3 hidden sm:inline">
+                      Deterministic Execution · No Model Call
                     </span>
                   </div>
                   <span
                     className={cn(
-                      'inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em]',
+                      'inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.08em]',
                       isRevoked ? 'text-halt' : 'text-pass',
                     )}
                   >
@@ -1007,7 +1022,7 @@ export default function JudgeConsole() {
                         isRevoked ? 'bg-halt' : 'bg-pass ring-[3px] ring-pass/15',
                       )}
                     />
-                    {isRevoked ? 'REVOKED (403)' : 'ENFORCING'}
+                    {isRevoked ? 'REVOKED (403)' : 'ACTIVE ENFORCE'}
                   </span>
                 </div>
 
@@ -1015,43 +1030,44 @@ export default function JudgeConsole() {
                 <div className="p-6 space-y-6">
                   {/* Order In Flight Header */}
                   <div>
-                    <div className="flex items-center justify-between font-mono text-[9.5px] uppercase tracking-[0.14em] text-ink-3">
-                      <span>Order in Flight</span>
-                      <span className="text-ink-4">Tool: place_order</span>
+                    <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">
+                      <span>Untrusted Agent Wire Proposal</span>
+                      <span className="text-ink-3">Tool: place_order</span>
                     </div>
 
-                    <div className="mt-2.5 flex items-center gap-2.5">
+                    <div className="mt-3 flex items-center gap-3">
                       <SellerChip name={currentDisplay?.seller_name || selectedPreset.seller_name} />
-                      <span className="rounded-md border border-rule bg-sheet px-2 py-1 font-mono text-[11px] text-ink-3">
+                      <span className="rounded-md border border-rule bg-sheet px-2.5 py-1 font-mono text-[11.5px] text-ink-2">
                         POST /v1/orders
                       </span>
                       {currentDisplay?.latency_ms && (
-                        <span className="ml-auto font-mono text-[11px] text-ink-3">
+                        <span className="ml-auto font-mono text-[11.5px] font-medium text-ink-3">
                           ⚡ {currentDisplay.latency_ms}ms
                         </span>
                       )}
                     </div>
 
                     {/* Payload Display Box with Highlight */}
-                    <div className="mt-3 rounded-xl border border-rule bg-sunk p-3.5 font-mono text-[12px] leading-relaxed text-ink-2 break-words">
+                    <div className="mt-3 rounded-xl border border-rule bg-sunk p-4 font-mono text-[12.5px] leading-relaxed text-ink-2 break-words">
                       {currentDisplay?.payload_text || selectedPreset.payloadSnippet}
                       {currentDisplay?.hostile_text && (
-                        <div className="mt-2 rounded-lg bg-halt-soft border border-halt-line p-2 text-[11px] text-halt font-semibold">
-                          ⚠️ Adversarial Injected Vector: {currentDisplay.hostile_text}
+                        <div className="mt-2.5 rounded-lg bg-halt-soft border border-halt-line p-2.5 text-[12px] text-halt font-semibold flex items-center gap-2">
+                          <ShieldAlert className="size-4 shrink-0" />
+                          <span>Adversarial Injected Vector: {currentDisplay.hostile_text}</span>
                         </div>
                       )}
                     </div>
                   </div>
 
                   {/* Figure Comparison Box */}
-                  <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-4 rounded-xl border border-rule bg-sheet p-4">
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-4 rounded-xl border border-rule bg-sheet p-4 sm:p-5">
                     <div>
-                      <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.12em] text-ink-3">
-                        The Agent Asked For
+                      <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 font-medium">
+                        The Agent Proposed
                       </div>
                       <div
                         className={cn(
-                          'font-mono text-[clamp(24px,2.4vw,34px)] font-semibold leading-none tracking-[-0.04em]',
+                          'font-mono text-[clamp(24px,2.6vw,36px)] font-bold leading-none tracking-[-0.04em]',
                           currentDisplay?.verdict === 'ALLOW' ? 'text-pass' : 'text-halt',
                         )}
                       >
@@ -1060,20 +1076,20 @@ export default function JudgeConsole() {
                     </div>
                     <div className="h-full w-px bg-rule self-stretch" />
                     <div>
-                      <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.12em] text-ink-3">
-                        Your Limit Says
+                      <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 font-medium">
+                        Signed Policy Limit
                       </div>
-                      <div className="font-mono text-[clamp(24px,2.4vw,34px)] font-semibold leading-none tracking-[-0.04em] text-ink">
+                      <div className="font-mono text-[clamp(24px,2.6vw,36px)] font-bold leading-none tracking-[-0.04em] text-ink">
                         {currentDisplay?.clause_id?.includes('item') ? '₹500.00' : '₹1,000.00'}
                       </div>
                     </div>
                   </div>
 
                   {/* 9-Clause Evaluation Waterfall */}
-                  <div className="space-y-2 border-t border-rule pt-4">
-                    <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 mb-2">
-                      <span>9-Constraint Evaluation Pipeline</span>
-                      <span>Deterministic Check</span>
+                  <div className="space-y-3 border-t border-rule pt-5">
+                    <div className="flex items-center justify-between font-mono text-[10.5px] uppercase tracking-[0.12em] text-ink-3 font-medium mb-1">
+                      <span>9-Clause Evaluation Waterfall</span>
+                      <span>Deterministic Code</span>
                     </div>
 
                     <div className="space-y-1.5">
@@ -1083,18 +1099,18 @@ export default function JudgeConsole() {
                           <div
                             key={part.key}
                             className={cn(
-                              'flex items-center gap-3 rounded-lg border px-3 py-2 text-[12px] transition-all',
+                              'flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-[12.5px] transition-all',
                               state === 'allow'
                                 ? 'border-pass-line bg-pass-soft/40 text-ink'
                                 : state === 'deny'
-                                ? 'border-halt-line bg-halt-soft font-medium text-halt shadow-2xs'
+                                ? 'border-halt-line bg-halt-soft font-semibold text-halt shadow-2xs'
                                 : state === 'skip'
                                 ? 'border-transparent text-ink-4 opacity-50'
                                 : 'border-rule/60 bg-sheet/40 text-ink-3',
                             )}
                           >
                             {/* State icon */}
-                            <span className="shrink-0 font-mono text-[11px] font-bold">
+                            <span className="shrink-0 font-mono text-[12px] font-bold">
                               {state === 'allow' ? (
                                 <CheckCircle2 className="size-4 text-pass" />
                               ) : state === 'deny' ? (
@@ -1105,15 +1121,11 @@ export default function JudgeConsole() {
                                 <span className="size-4 inline-flex items-center justify-center text-ink-4">○</span>
                               )}
                             </span>
-
-                            <span className="font-mono text-[11px] text-ink-3 w-5">
-                              0{part.n}
-                            </span>
                             <span className="font-medium flex-1 truncate">
                               {part.label}
                             </span>
 
-                            <span className="font-mono text-[11px] text-ink-3 shrink-0">
+                            <span className="font-mono text-[11.5px] text-ink-3 shrink-0">
                               {state === 'deny' ? 'BREACHED' : state === 'allow' ? 'PASS' : state === 'skip' ? 'SKIPPED' : part.bound}
                             </span>
                           </div>
@@ -1123,26 +1135,26 @@ export default function JudgeConsole() {
                   </div>
                 </div>
 
-                {/* Verdict Banner (Exact match to GatewayPanel bottom banner) */}
+                {/* Verdict Banner */}
                 <div
                   className={cn(
-                    'border-t p-5 transition-colors',
+                    'border-t p-6 transition-colors',
                     currentDisplay?.verdict === 'ALLOW'
                       ? 'border-pass-line bg-pass-soft'
                       : 'border-halt-line bg-halt-soft',
                   )}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex items-center gap-3">
                       <span
                         className={cn(
-                          'size-2.5 rotate-45',
+                          'size-3 rotate-45',
                           currentDisplay?.verdict === 'ALLOW' ? 'bg-pass' : 'bg-halt',
                         )}
                       />
                       <span
                         className={cn(
-                          'font-mono text-[15px] font-bold tracking-[0.05em]',
+                          'font-mono text-[17px] font-bold tracking-[0.05em]',
                           currentDisplay?.verdict === 'ALLOW' ? 'text-pass' : 'text-halt',
                         )}
                       >
@@ -1152,7 +1164,7 @@ export default function JudgeConsole() {
 
                     <span
                       className={cn(
-                        'font-mono text-[12px] font-semibold',
+                        'font-mono text-[14px] font-bold',
                         currentDisplay?.verdict === 'ALLOW' ? 'text-pass' : 'text-halt',
                       )}
                     >
@@ -1162,7 +1174,7 @@ export default function JudgeConsole() {
                     </span>
                   </div>
 
-                  <p className="mt-2 text-[13px] leading-relaxed text-ink-2">
+                  <p className="mt-2.5 text-[14px] leading-relaxed text-ink-2">
                     {currentDisplay?.message ||
                       (currentDisplay?.verdict === 'ALLOW'
                         ? 'All 9 constraints satisfied. Order placed safely with Razorpay.'
@@ -1170,7 +1182,7 @@ export default function JudgeConsole() {
                   </p>
 
                   {/* Air-gap / Downstream proof line */}
-                  <div className="mt-3.5 pt-3 border-t border-ink/10 flex items-center justify-between font-mono text-[10.5px] text-ink-3">
+                  <div className="mt-4 pt-3.5 border-t border-ink/10 flex items-center justify-between font-mono text-[11px] text-ink-3">
                     <span>
                       {currentDisplay?.verdict === 'ALLOW'
                         ? `Downstream Order: ${currentDisplay.order_id || 'order_rzp_mock'}`
@@ -1183,33 +1195,33 @@ export default function JudgeConsole() {
                 </div>
               </div>
 
-              {/* ─── Real-Time Merkle Decision Stream (Clean Light-Mode Ledger) ─── */}
-              <div className="overflow-hidden rounded-panel border border-rule bg-bond p-5 shadow-sheet space-y-4">
-                <div className="flex items-center justify-between border-b border-rule pb-3">
+              {/* Real-Time Merkle Audit Ledger */}
+              <div className="overflow-hidden rounded-xl border border-rule bg-bond p-6 shadow-sheet space-y-4">
+                <div className="flex items-center justify-between border-b border-rule pb-3.5">
                   <div>
-                    <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-ink-3">
-                      Audit Trail
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3 block">
+                      Tamper-Evident Audit Log
                     </span>
-                    <h4 className="text-[15px] font-semibold tracking-[-0.02em] text-ink">
+                    <h4 className="text-base font-semibold tracking-[-0.02em] text-ink">
                       Real-Time Decision Stream
                     </h4>
                   </div>
-                  <span className="rounded-md border border-rule bg-sheet px-2 py-0.5 font-mono text-[11px] text-ink-3">
+                  <span className="rounded-md border border-rule bg-sheet px-2.5 py-1 font-mono text-[11px] text-ink-3 font-medium">
                     {decisions.length} Evaluated Actions
                   </span>
                 </div>
 
                 {decisions.length === 0 ? (
-                  <div className="py-8 text-center text-[12.5px] text-ink-3">
-                    No orders evaluated in this session yet. Click any attack preset above to begin!
+                  <div className="py-8 text-center text-[13px] text-ink-3">
+                    No orders evaluated in this session yet. Click any attack preset on the left to begin!
                   </div>
                 ) : (
-                  <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+                  <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-1">
                     {decisions.map((dec, i) => (
                       <div
                         key={dec.id || i}
                         className={cn(
-                          'rounded-xl border p-3 text-[12px] transition-all flex items-center justify-between',
+                          'rounded-xl border p-3.5 text-[12.5px] transition-all flex items-center justify-between',
                           dec.verdict === 'ALLOW'
                             ? 'border-pass-line bg-pass-soft/30'
                             : dec.verdict === 'REVOKED'
@@ -1221,7 +1233,7 @@ export default function JudgeConsole() {
                           <div className="flex items-center gap-2">
                             <span
                               className={cn(
-                                'font-mono text-[10px] font-bold px-1.5 py-0.5 rounded',
+                                'font-mono text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider',
                                 dec.verdict === 'ALLOW'
                                   ? 'bg-pass-soft text-pass border border-pass-line'
                                   : 'bg-halt-soft text-halt border border-halt-line',
@@ -1229,10 +1241,10 @@ export default function JudgeConsole() {
                             >
                               {dec.verdict}
                             </span>
-                            <span className="font-mono text-[11px] text-ink-3">
+                            <span className="font-mono text-[11.5px] text-ink-3">
                               #{String(decisions.length - i).padStart(2, '0')} · {dec.timestamp}
                             </span>
-                            <span className="font-mono text-[10.5px] text-ink-4">
+                            <span className="font-mono text-[11px] text-ink-4">
                               ⚡ {dec.latency_ms}ms
                             </span>
                           </div>
@@ -1243,10 +1255,10 @@ export default function JudgeConsole() {
                         </div>
 
                         <div className="text-right shrink-0">
-                          <div className="font-mono font-semibold text-ink">
+                          <div className="font-mono font-semibold text-ink text-[13.5px]">
                             {rupees(dec.amount_paise)}
                           </div>
-                          <span className="font-mono text-[10px] text-ink-4 block">
+                          <span className="font-mono text-[10.5px] text-ink-4 block">
                             {dec.record_hash?.slice(0, 14)}...
                           </span>
                         </div>
@@ -1260,10 +1272,10 @@ export default function JudgeConsole() {
         )}
       </main>
 
-      {/* ─── Minimal Clean Footer ─── */}
-      <footer className="mx-auto mt-12 flex max-w-[1360px] flex-wrap justify-between items-center gap-4 border-t border-rule px-8 py-7 text-[12.5px] text-ink-3">
+      {/* ─── Footer ─── */}
+      <footer className="mx-auto mt-16 flex max-w-[1280px] flex-wrap justify-between items-center gap-4 border-t border-rule px-8 py-7 text-[13px] text-ink-3">
         <span>Mandate · Autonomous Agent Payment Guardrails</span>
-        <span>Deterministic 0.2ms Enforcement · Tested against 18 Attack Families</span>
+        <span>Deterministic Gateway · Tested against 9 Conformance Vectors</span>
       </footer>
     </div>
   );

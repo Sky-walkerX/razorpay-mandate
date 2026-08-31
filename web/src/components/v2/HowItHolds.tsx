@@ -248,7 +248,7 @@ export default function HowItHolds() {
                         Refuse and cite limit
                       </div>
                       <p className="mt-0.5 text-[12px] leading-relaxed text-ink-2">
-                        If ANY single limit fails, execution aborts in &lt;0.2ms. The payment rail is never reached.
+                        If ANY single limit fails, execution aborts before the payment rail is ever reached. No model call, no network round trip — pure deterministic code.
                       </p>
                     </div>
                   </motion.div>
