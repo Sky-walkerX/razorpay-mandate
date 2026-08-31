@@ -5,11 +5,11 @@ directory `/tmp/sessions/<jti>/` containing its own `audit.jsonl` and `ledger.js
 Every session shares the same signed policy, catalog, pricebook, downstream,
 and revocation list.
 """
+import shutil
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-import shutil
-import threading
 
 from mandate.gateway.audit import AuditLog
 from mandate.gateway.core import Gateway, Mode

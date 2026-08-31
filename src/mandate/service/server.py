@@ -5,7 +5,6 @@ Enforces the process boundary: agents communicate with this service
 via scoped bearer tokens over HTTP or MCP.
 """
 import json
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -14,16 +13,13 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from mandate.harness.catalog import Catalog
 from mandate.downstream.fake import FakeDownstream
 from mandate.gateway.action import ActionType, Proposal, ProposalItem
-from mandate.gateway.audit import AuditChainBroken, AuditLog
-from mandate.gateway.core import Gateway, Mode
-from mandate.gateway.idem import Ledger
+from mandate.gateway.audit import AuditChainBroken
 from mandate.gateway.pricebook import DictPriceBook, PriceBook
 from mandate.gateway.revocation import RevocationList
 from mandate.gateway.state import AccumulatedState, Verdict
@@ -34,10 +30,12 @@ from mandate.gateway.tokens import (
     TokenMalformed,
     verify_agent_token,
 )
+from mandate.harness.catalog import Catalog
 from mandate.policy.canonical import policy_hash
 from mandate.policy.crypto import SignatureInvalid
 from mandate.policy.loader import load as load_policy
-from mandate.policy.models import ConstraintId as C, Policy
+from mandate.policy.models import ConstraintId as C
+from mandate.policy.models import Policy
 from mandate.service.session import SessionManager
 from mandate.service.token_pool import PoolExhausted, TokenPool
 
@@ -121,9 +119,8 @@ class SPAStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
         try:
             response = await super().get_response(path, scope)
-            if response.status_code == 404:
-                if "." not in path.split("/")[-1]:
-                    return await super().get_response("index.html", scope)
+            if response.status_code == 404 and "." not in path.split("/")[-1]:
+                return await super().get_response("index.html", scope)
             return response
         except Exception:
             return await super().get_response("index.html", scope)
@@ -232,7 +229,7 @@ def create_app(
                 "message": "no judge sessions available",
             }, status_code=503)
 
-        session = session_manager.create_session(token, claims)
+        session_manager.create_session(token, claims)
         return JSONResponse({
             "token": token,
             "jti": claims.jti,
@@ -427,7 +424,7 @@ def create_app(
         return JSONResponse({"status": "captured", "result": dec.downstream})
 
     async def get_audit(req: Request):
-        token, claims, err_resp = _extract_and_verify_token(req)
+        _token, claims, err_resp = _extract_and_verify_token(req)
         if err_resp is not None:
             return err_resp
         assert claims is not None
@@ -448,7 +445,7 @@ def create_app(
         })
 
     async def get_headroom(req: Request):
-        token, claims, err_resp = _extract_and_verify_token(req)
+        _token, claims, err_resp = _extract_and_verify_token(req)
         if err_resp is not None:
             return err_resp
         assert claims is not None
@@ -458,7 +455,7 @@ def create_app(
         return JSONResponse(_compute_headroom(policy, state))
 
     async def revoke_token(req: Request):
-        token, claims, err_resp = _extract_and_verify_token(req)
+        _token, claims, err_resp = _extract_and_verify_token(req)
         if err_resp is not None:
             return err_resp
         assert claims is not None
@@ -484,6 +481,7 @@ def create_app(
         try:
             import asyncio
             from datetime import timedelta
+
             from mandate.compiler.compile import compile_intent
             from mandate.llm import provider_for
             

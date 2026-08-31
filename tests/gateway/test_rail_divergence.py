@@ -1,9 +1,6 @@
 """Unit tests for downstream amount reconciliation (rail divergence check)."""
 from datetime import UTC, datetime
-from pathlib import Path
-import pytest
 
-from mandate.downstream.fake import FakeDownstream
 from mandate.gateway.action import ActionType, Proposal, ProposalItem
 from mandate.gateway.audit import AuditLog
 from mandate.gateway.core import Gateway, Mode

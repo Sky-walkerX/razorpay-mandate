@@ -1,6 +1,6 @@
 """Tests for per-session isolation and token pool management on the HTTP gateway."""
 from datetime import UTC, datetime, timedelta
-import pytest
+
 from starlette.testclient import TestClient
 
 from mandate.gateway.pricebook import DictPriceBook, PriceBookItem
@@ -75,7 +75,7 @@ def _setup_service(tmp_path, token_count=5):
 
 
 def test_session_isolation_budget_exhaustion(tmp_path):
-    client, pool, pol = _setup_service(tmp_path)
+    client, _pool, _pol = _setup_service(tmp_path)
     
     # 1. Claim session A
     res_a = client.post("/v1/sessions")
@@ -111,11 +111,11 @@ def test_session_isolation_budget_exhaustion(tmp_path):
 
 
 def test_session_revocation_isolation(tmp_path):
-    client, pool, pol = _setup_service(tmp_path)
+    client, _pool, _pol = _setup_service(tmp_path)
     
     res_a = client.post("/v1/sessions")
     tok_a = res_a.json()["token"]
-    jti_a = res_a.json()["jti"]
+    res_a.json()["jti"]
     
     res_b = client.post("/v1/sessions")
     tok_b = res_b.json()["token"]
@@ -139,7 +139,7 @@ def test_session_revocation_isolation(tmp_path):
 
 
 def test_pool_exhaustion_returns_503(tmp_path):
-    client, pool, pol = _setup_service(tmp_path, token_count=2)
+    client, _pool, _pol = _setup_service(tmp_path, token_count=2)
     
     # Claim 1
     r1 = client.post("/v1/sessions")

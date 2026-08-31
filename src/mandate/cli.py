@@ -530,6 +530,7 @@ def mint_pool_cmd(
     """Pre-mint a pool of signed agent tokens offline for judge sessions."""
     import json
     from datetime import UTC, datetime, timedelta
+
     from mandate.gateway.tokens import mint_agent_token
 
     if not key_file.exists():
@@ -566,8 +567,9 @@ def serve_cmd(
 ) -> None:
     """Run the standalone Mandate Gateway daemon process."""
     import os
+
     import uvicorn
-    from mandate.harness.catalog import Catalog
+
     from mandate.downstream.fake import FakeDownstream
     from mandate.downstream.razorpay import RazorpayDownstream
     from mandate.gateway.pricebook import DictPriceBook
@@ -630,7 +632,7 @@ def conformance_cmd(
     trials: Annotated[int, typer.Option("--trials", help="Concurrency trials per race attack.")] = 200,
 ) -> None:
 
-    """Run the 8-Attack Protocol Conformance Test Suite with Witnesses.
+    """Run the Protocol Conformance Test Suite with Witnesses.
 
     Every attack runs against both an unhardened gateway (the witness) and the
     hardened gateway. Reports exact counts (BLOCKED / ESCAPED / VACUOUS).
@@ -639,8 +641,8 @@ def conformance_cmd(
 
     from mandate.conformance.suite import run_conformance_suite
 
-    typer.echo("Running Mandate Protocol Conformance Suite (8 hostile attacks)...\n")
     results = run_conformance_suite(trials=trials)
+    typer.echo(f"Running Mandate Protocol Conformance Suite ({len(results)} hostile attacks)...\n")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     report_rows = []

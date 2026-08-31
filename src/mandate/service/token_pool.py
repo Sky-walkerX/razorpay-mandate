@@ -5,9 +5,9 @@ Tokens are handed out one per session. Revoked tokens are retired permanently
 and never return to the pool.
 """
 import json
-from pathlib import Path
 import threading
-from typing import Sequence
+from collections.abc import Sequence
+from pathlib import Path
 
 from mandate.gateway.tokens import TokenClaims, verify_agent_token
 
