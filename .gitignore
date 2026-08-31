@@ -41,5 +41,6 @@ results-*/
 .vscode/
 .idea/
 .impeccable/
+.playwright-mcp/
 
 
