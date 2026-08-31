@@ -1,5 +1,5 @@
 import { COUNTS, DECISIONS } from '@/data/decisions';
-import { MANDATE, PARTS, type Part } from '@/data/policy';
+import { MANDATE, type Part } from '@/data/policy';
 import { rupeesWhole } from './money';
 
 export type ReadoutStatus = 'pass' | 'halt' | 'unset';
@@ -21,11 +21,6 @@ function citedCount(part: Part): number {
   return DECISIONS.reduce((n, d) => n + (d.reason.startsWith(needle) ? 1 : 0), 0);
 }
 
-/** Every part's citation count, in evaluation order — what the refusals bar wants. */
-export function citedCounts(): { part: Part; count: number }[] {
-  return PARTS.map((part) => ({ part, count: citedCount(part) }));
-}
-
 /**
  * What a constraint row reports for this run, not one simulated order:
  * how much of its bound the mandate has actually used, and whether it is the
@@ -38,7 +33,7 @@ export function readoutForPart(part: Part): PartReadout {
   const cited = citedCount(part);
 
   if (part.source === 'unset') {
-    return { citedCount: cited, status: 'unset', figure: '—', sub: 'no bound signed', percent: null };
+    return { citedCount: cited, status: 'unset', figure: part.bound, sub: 'no bound was signed', percent: null };
   }
 
   const status: ReadoutStatus = cited > 0 ? 'halt' : 'pass';
@@ -87,62 +82,30 @@ export function readoutForPart(part: Part): PartReadout {
       return {
         citedCount: cited,
         status,
-        figure: `${sellers.size} seller${sellers.size === 1 ? '' : 's'} used`,
-        sub: 'every one within the allow-list',
+        figure: part.bound,
+        sub: `${sellers.size} seller${sellers.size === 1 ? '' : 's'} used, all on the list`,
         percent: null,
       };
     }
 
+    // A rule matches rather than measures, so it has no fraction to report.
+    // Its figure is the bound itself — the list, the category, the date — and
+    // the line under it says how many of the run's refusals cited it. Both
+    // halves read as standalone phrases, because they are set on their own
+    // lines rather than run together in a sentence.
     default:
       if (part.kind === 'limit') {
-        return { citedCount: cited, status, figure: 'not exceeded', sub: 'not exceeded in this run', percent: null };
+        return { citedCount: cited, status, figure: part.bound, sub: 'not exceeded in this run', percent: null };
       }
       return {
         citedCount: cited,
         status,
-        figure: `${cited} / ${COUNTS.evaluated} denials`,
-        sub: 'cite this clause',
+        figure: part.bound,
+        sub:
+          cited === 0
+            ? `no refusal in this run cited it`
+            : `${cited} of ${COUNTS.evaluated} refusals cite it`,
         percent: null,
       };
   }
-}
-
-export interface SpendPoint {
-  seq: number;
-  paise: number;
-}
-
-export interface SpendSeries {
-  /** Cumulative executed spend, as a step series across every evaluated attempt. */
-  points: SpendPoint[];
-  /** Sequence numbers of every refused attempt, for marking the flat stretch. */
-  refusedSeqs: number[];
-  finalPaise: number;
-  count: number;
-}
-
-/**
- * The mandate's spend, replayed as a cumulative step against the evaluated
- * attempts, 0 to n. Only an executed decision moves the line; a refused one
- * holds it flat and is recorded so the chart can mark where it tried.
- */
-export function buildSpendSeries(): SpendSeries {
-  const chronological = [...DECISIONS].sort((a, b) => a.seq - b.seq);
-  let running = 0;
-  const points: SpendPoint[] = [{ seq: 0, paise: 0 }];
-  const refusedSeqs: number[] = [];
-
-  for (const d of chronological) {
-    if (d.executed) {
-      running += d.amountPaise;
-      points.push({ seq: d.seq, paise: running });
-    } else {
-      refusedSeqs.push(d.seq);
-    }
-  }
-
-  const count = chronological.length;
-  if (points[points.length - 1].seq !== count) points.push({ seq: count, paise: running });
-
-  return { points, refusedSeqs, finalPaise: running, count };
 }

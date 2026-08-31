@@ -156,4 +156,23 @@
     outline-offset: 2px;
     border-radius: 5px;
   }
+
+  /* The run strip on the dashboard draws one column per evaluated attempt —
+   * fifty-three of them. Fifty-three springs driven from JS is a lot of work
+   * for a decoration that runs once, so the columns rise on a CSS animation
+   * with a per-column delay instead. `--ease-settle` is the same zero-bounce
+   * curve the rest of the app uses for anything carrying an amount: a column
+   * that overshot would show money the run did not spend. */
+  @keyframes mandate-tick-rise {
+    from { transform: scaleY(0); }
+    to   { transform: scaleY(1); }
+  }
+  [data-v2] .tick-rise {
+    animation: mandate-tick-rise 0.42s var(--ease-settle) both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [data-v2] .tick-rise {
+      animation: none;
+    }
+  }
 }

@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
  * name would. Nothing here renders the Razorpay logotype.
  *
  * This replaced three hand-copied SVGs in `Landing`, `JudgeConsole` and
- * `DashboardSidebar` that had already drifted apart in size and colour.
+ * the dashboard sidebar that had already drifted apart in size and colour.
  */
 export function MandateLockup({
   size = 'md',
