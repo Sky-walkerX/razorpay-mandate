@@ -1,6 +1,6 @@
 # Mandate: working context
 
-Last updated 2026-08-30. This file records where the evaluation stands, what has
+Last updated 2026-08-31. This file records where the evaluation stands, what has
 been verified, and what is still open. Read it before touching the harness.
 
 ## What this project is
@@ -152,8 +152,9 @@ Status as of 29 Aug: steps 0-6 are in. `mandate demo --replay`, `PriceBook` /
 `issue-token`/`revoke`, the atomic reservation, `src/mandate/service/server.py`
 behind `mandate serve`, the capture HMAC, and the eight-attack conformance suite
 behind `mandate conformance`. 321 tests pass, ruff clean. Step 7 (re-running the
-g37 sweep) is running as of 29 Aug into `results-heldout-g37-hardened/`. Until it
-lands, every containment number in the repo still predates the hardening.
+g37 sweep) has since landed in `results-heldout-g37-hardened/`: 70 scored runs,
+`baseline` 44.4%, `compromised` 41.2%, both enforced arms 100%. See "The cost
+not being hidden" below for the full accounting.
 
 **Audited against the spec on 29 Aug. Seven deviations were found and fixed:**
 
@@ -502,18 +503,37 @@ README limitations.
 
 ## Open items
 
-**The demo takes 25+ minutes and cannot go on stage as it stands.** `mandate
-demo` on `budget.salami` made 114 model calls in the `compromised` arm alone,
-then kept going in `enforce_compromised`. That is inherent to the attack: the
-agent retries dozens of times and every retry is a Vertex round trip. Three
-fixes, in order of how much they cost: replay from the recorded
-`model_calls.jsonl` instead of re-calling (the artefacts are already written for
-this), cap turns once the point is proven, or open with `mandate demo-failure`,
-which needs no model and no network and finishes instantly. Unfixed.
+**"0.2ms" was an unmeasured marketing number, same failure mode as the
+dashboard tile this file already calls out below ("The 'slowest check 1.4 ms'
+tile was a latency nobody measured").** It sat in the README badge, the README
+architecture diagram, and one bullet, plus `web/src/pages/Landing.tsx`,
+`web/src/components/v2/HowItHolds.tsx`, and `web/src/pages/JudgeConsole.tsx`.
+Measured on 31 Aug (`Gateway.propose()` against `FakeDownstream`, 2,000 warm
+calls): pure 9-clause `evaluate_all` is ~0.0075ms median; the full `propose()`
+path including audit persistence and the downstream call is ~4.9ms median,
+~10ms p95 — single-digit milliseconds, not sub-millisecond, and the gap is I/O,
+not the policy check. Fixed in `README.md` and `ARCHITECTURE.md` with the real
+numbers and their provenance. **Not yet fixed in the three web files above** —
+they still show "0.2ms" as static/hardcoded copy (`JudgeConsole.tsx` also has
+`latency_ms: 0.21` and `latency_ms: 0.1` as literal fallback values in a couple
+of code paths, separate from the `elapsed`-timed live ones). Sweep those before
+a judge reads the page closely; use the two numbers above, not a new one.
 
-**`python -m mandate.cli` silently exits 0 and prints nothing.** There is no
-`__main__` guard, so the module imports and returns. Use `.venv/bin/mandate`.
-Worth a two-line guard before anyone runs it on stage.
+**Closed: the demo used to take 25+ minutes and could not go on stage.**
+`mandate demo` on `budget.salami` made 114 model calls in the `compromised` arm
+alone, then kept going in `enforce_compromised`. Fixed by the demo replay flag
+(Build order step 0): `mandate demo --replay --family budget.salami` replays
+the recorded `model_calls.jsonl` instead of re-calling Vertex, so it now
+finishes instantly with no model and no network. `mandate demo-failure` also
+exists as a zero-dependency fallback opener. This is what the README quickstart
+now documents.
+
+**Closed: `python -m mandate.cli` no longer silently exits.** Both
+`src/mandate/__main__.py` and `src/mandate/cli.py` carry an `if __name__ ==
+"__main__":` guard now, and `python -m mandate --help` (or `python -m
+mandate.cli --help`) prints the command list correctly. `.venv/bin/mandate`
+still works and is still the documented entry point, but the silent-exit
+footgun is gone.
 
 **`budget.salami` is not honestly held out.** It was repaired after being seen
 to fail (BREAKAGE Day 16), so its number is dated to the repair. The README says
@@ -581,6 +601,19 @@ prefer few large batches over many small ones, or cache the hash.
   - `TokenPool` manages 200 pre-minted offline signed Ed25519 tokens (`tok_pool_001` ... `tok_pool_200`).
   - Added `mandate mint-pool --count 200` CLI command.
   - All 338 pytest unit and integration tests passing.
+
+**Lint drift from this batch, cleaned up 31 Aug.** The service/session/
+token-pool code landed without a ruff pass: 41 errors, mostly unused imports
+and unsorted import blocks in `cli.py`, `service/server.py` and
+`service/token_pool.py`. Auto-fix (`ruff check --fix`, then `--unsafe-fixes`
+for the unused-variable renames) cleared 33 of them with no behaviour change;
+338 tests still pass. 9 remain, all `except Exception: pass`/`continue`
+(`BLE001`/`S110`/`S112`) in `service/server.py`, `service/session.py` and
+`service/token_pool.py` — deliberate best-effort paths (session directory
+cleanup, catalog fallback lookup, skipping an invalid pooled token, a graceful
+compiler-error response) rather than bugs. Left as-is rather than silenced with
+`# noqa`, since papering over a real lint finding to make a badge green is
+worse than an honest "ruff clean except these nine, and here is why."
 
 ## Closed, 29 Aug
 

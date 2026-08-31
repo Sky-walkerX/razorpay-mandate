@@ -1,6 +1,8 @@
 # Mandate Architecture & Systems Specification
 
-Mandate is a deterministic policy authorization gateway situated between autonomous AI agents and downstream payment APIs (Razorpay REST & MCP). It compiles high-level human intent into cryptographic, Ed25519-signed policy contracts, and evaluates attempted financial transactions in sub-millisecond deterministic code.
+Mandate is a deterministic policy authorization gateway situated between autonomous AI agents and downstream payment APIs (Razorpay REST & MCP). It compiles high-level human intent into cryptographic, Ed25519-signed policy contracts, and evaluates attempted financial transactions in deterministic code with zero model calls on the authorization path.
+
+**Measured, not asserted** (`Gateway.propose()` against `FakeDownstream`, 2,000 warm calls, this machine): the 9-clause lattice evaluation itself (`evaluate_all`) runs in ~0.0075ms median. The full `propose()` call — resolution, lattice evaluation, atomic idempotency reservation, the downstream call, and the Merkle audit append to disk — runs in ~4.9ms median, ~10ms p95. The gap is I/O (audit persistence, the downstream round trip), not the policy check. Quote the clause-evaluation number when the point is "the model never votes on money," and the full-path number when the point is request latency.
 
 ```mermaid
 flowchart LR
