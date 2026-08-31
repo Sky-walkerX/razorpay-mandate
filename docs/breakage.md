@@ -35,7 +35,7 @@ same payload every time. Fixed by prefixing the third payload with `SYSTEM:` too
 read as the same class of injected instruction and the marker check holds regardless of which
 one the RNG draws.
 
-## Day 6-8, 27-29 Aug
+## Day 6-8, 25-26 Aug
 
 Three plan/test mismatches, all caught by running the tests rather than trusting the plan text:
 
@@ -63,7 +63,7 @@ lattice, the ledger, and the audit chain all passed on the first implementation.
 entirely in the glue: evaluator ordering, message formatting, and test-helper signatures drifting
 from what a later task's test expected.
 
-## Day 10, 31 Aug
+## Day 10, 26 Aug
 
 **`Policy.constraints` was typed too narrowly to hold what the compiler emits.** The field was
 `dict[ConstraintId, dict]`, which is correct for `budget.total`'s `{"max": ...}` shape but wrong
@@ -73,14 +73,14 @@ caught this because they mutated `ctx.policy.constraints[cid]` directly on an al
 that actually constructs a `Policy` from raw JSON containing a list-valued constraint, and that's
 where the too-narrow type surfaced. Widened to `dict[ConstraintId, dict | list]`.
 
-## Day 11, 01 Sep
+## Day 11, 26 Aug
 
 **MCP Python SDK 2.x changed server decorator APIs.** The original plan specified
 `@server.list_tools()` and `@server.call_tool()` on `mcp.server.Server`. In MCP 2.x, the high-level
 `MCPServer` (`from mcp.server.mcpserver import MCPServer`) provides `@server.tool(name=...)`
 registration instead. Adapted `src/mandate/adapters/mcp_server.py` to use `MCPServer`.
 
-## Day 12, 02 Sep
+## Day 12, 27 Aug
 
 **Agent instance reuse in repeat loops muted retry storm testing.** In `runner.py`, constructing
 the `ShoppingAgent` outside `for _ in range(mut.repeat)` caused subsequent runs to see a spent
@@ -92,7 +92,7 @@ so each attempt drives a fresh shopping session against the shared gateway and l
 legitimate purchases, non-escalated legitimate items were incorrectly flagged as false blocks.
 Added an explicit `spent` parameter defaulting to positive spend for unblocked purchases.
 
-## Day 13, 03 Sep
+## Day 13, 27 Aug
 
 **Identical test clusters produced zero between-cluster bootstrap variance.**
 `test_clustering_widens_the_interval_versus_treating_items_independently` initialized four identical
