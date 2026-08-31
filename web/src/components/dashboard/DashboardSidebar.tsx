@@ -4,6 +4,7 @@ import { LayoutGrid, ListChecks, FileText, Link2, FlaskConical, Settings, type L
 import { MANDATE } from '@/data/policy';
 import { COUNTS } from '@/data/decisions';
 import { cn } from '@/lib/utils';
+import { MandateLockup } from '@/components/brand/MandateLockup';
 
 interface NavItem {
   label: string;
@@ -25,12 +26,8 @@ const NAV: NavItem[] = [
 export function DashboardSidebar() {
   return (
     <aside className="flex w-[236px] shrink-0 flex-col gap-1 border-r border-rule bg-sheet px-3.5 py-5">
-      <Link to="/" className="flex items-center gap-[9px] px-2 pb-5 text-[14.5px] font-semibold tracking-[-0.02em]">
-        <svg viewBox="0 0 20 20" fill="none" aria-hidden className="size-[18px] text-indigo">
-          <rect x=".75" y=".75" width="18.5" height="18.5" rx="4.5" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M5.5 13.5v-7l4.5 4 4.5-4v7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        Mandate
+      <Link to="/" aria-label="Mandate, by Razorpay" className="px-2 pb-5">
+        <MandateLockup size="sm" attribution={false} />
       </Link>
 
       <nav className="flex flex-col gap-[2px]">

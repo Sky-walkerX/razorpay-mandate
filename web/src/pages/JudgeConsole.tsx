@@ -19,6 +19,7 @@ import { rupees } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { SellerChip } from '@/components/v2/SellerMark';
 import { Button } from '@/components/ui/button';
+import { MandateLockup } from '@/components/brand/MandateLockup';
 
 type RowState = 'idle' | 'allow' | 'deny' | 'unknown' | 'skip';
 
@@ -520,12 +521,8 @@ export default function JudgeConsole() {
       <nav className="sticky top-0 z-50 border-b border-rule bg-bond/85 backdrop-blur-[12px]">
         <div className="mx-auto flex h-[60px] max-w-[1280px] items-center justify-between px-6 sm:px-8">
           <div className="flex items-center gap-3">
-            <Link to="/" className="flex items-center gap-[9px] text-[16.5px] font-semibold tracking-[-0.04em]">
-              <svg viewBox="0 0 20 20" fill="none" aria-hidden className="size-[19px]">
-                <rect x=".75" y=".75" width="18.5" height="18.5" rx="4.5" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M5.5 13.5v-7l4.5 4 4.5-4v7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              Mandate
+            <Link to="/" aria-label="Mandate, by Razorpay">
+              <MandateLockup />
             </Link>
             <span className="hidden items-center gap-1.5 rounded-full border border-rule bg-sheet px-2.5 py-0.5 font-mono text-[11px] font-medium text-ink-2 sm:inline-flex">
               <span className="size-[5px] rounded-full bg-[#2F5EFF]" />

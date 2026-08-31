@@ -86,13 +86,13 @@ function Copy({ opacity, style }: { opacity?: number; style?: MotionStyle }) {
     <motion.div className="min-w-0" style={{ opacity, ...style }}>
       <span className="inline-flex items-center gap-2 rounded-full border border-rule bg-bond px-[13px] py-[6px] font-mono text-[10.5px] uppercase tracking-[0.1em] text-ink-3">
         <span className="size-[6px] rotate-45 bg-halt" />
-        nine parts · checked in order
+        the answer · nine parts, checked in order
       </span>
 
-      <h1 className="mt-[22px] text-balance text-[clamp(2.15rem,4.2vw,3.45rem)] font-semibold leading-[1.05] tracking-[-0.048em]">
+      <h2 className="mt-[22px] text-balance text-[clamp(2.15rem,4.2vw,3.45rem)] font-semibold leading-[1.05] tracking-[-0.048em]">
         A limit does not need to be persuaded.{' '}
         <span className="text-ink-3">It stops at the number you set.</span>
-      </h1>
+      </h2>
 
       <p className="mt-[22px] max-w-[32rem] text-[17px] leading-[1.62] text-ink-2">
         Mandate turns what you actually meant into a signed set of limits, then checks every

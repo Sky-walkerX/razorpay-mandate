@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { MandateLockup } from '@/components/brand/MandateLockup';
+import ProblemHero from '@/components/v2/ProblemHero';
 import HeroScrollStage from '@/components/v2/HeroScrollStage';
 import IntentScored from '@/components/v2/IntentScored';
 import FailureModes from '@/components/v2/FailureModes';
@@ -14,12 +16,8 @@ export default function Landing() {
     <div data-v2 className="min-h-screen bg-bond font-sans text-ink">
       <nav className="sticky top-0 z-50 border-b border-rule bg-bond/85 backdrop-blur-[12px]">
         <div className="mx-auto flex h-[60px] max-w-[1220px] items-center gap-[26px] px-8 max-sm:px-[18px]">
-          <Link to="/" className="flex items-center gap-[9px] text-[16.5px] font-semibold tracking-[-0.04em]">
-            <svg viewBox="0 0 20 20" fill="none" aria-hidden className="size-[19px]">
-              <rect x=".75" y=".75" width="18.5" height="18.5" rx="4.5" stroke="currentColor" strokeWidth="1.5" />
-              <path d="M5.5 13.5v-7l4.5 4 4.5-4v7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            Mandate
+          <Link to="/" aria-label="Mandate, by Razorpay">
+            <MandateLockup />
           </Link>
           <div className="ml-3 hidden gap-[22px] text-[13.5px] text-ink-2 lg:flex">
             <a href="#gap" className="transition-colors hover:text-ink">The gap</a>
@@ -42,6 +40,8 @@ export default function Landing() {
           </div>
         </div>
       </nav>
+
+      <ProblemHero />
 
       <HeroScrollStage />
 
