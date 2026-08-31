@@ -365,7 +365,13 @@ export default function HowItHolds() {
                   <span className="flex items-center gap-1.5">
                     <span className="size-2 rounded-full bg-pass" /> Constant-time termination O(1)
                   </span>
-                  <span className="text-ink-3">Execution: &lt; 0.38ms</span>
+                  {/* Measured, not asserted: 2,000 warm calls of `Gateway.propose()`
+                      against `FakeDownstream`, 31 Aug. The nine clauses are the
+                      0.0075 ms; the rest of the median is audit persistence and the
+                      downstream call. The tile said "< 0.38ms" before, which was the
+                      third invented latency to reach this interface after the README
+                      badge and the "slowest check 1.4 ms" dashboard tile. */}
+                  <span className="text-ink-3">9 clauses: 0.0075&#8239;ms &middot; full call: 4.9&#8239;ms median</span>
                 </div>
 
               </div>

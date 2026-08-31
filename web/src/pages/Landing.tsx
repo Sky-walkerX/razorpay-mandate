@@ -2,11 +2,9 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { MandateLockup } from '@/components/brand/MandateLockup';
 import ProblemHero from '@/components/v2/ProblemHero';
-import HeroScrollStage from '@/components/v2/HeroScrollStage';
-import IntentScored from '@/components/v2/IntentScored';
+import GapAndParts from '@/components/v2/GapAndParts';
 import FailureModes from '@/components/v2/FailureModes';
 import HowItHolds from '@/components/v2/HowItHolds';
-import YourLimitsGrid from '@/components/v2/YourLimitsGrid';
 
 /**
  * The default Mandate homepage on the shadcn + Motion stack.
@@ -43,56 +41,11 @@ export default function Landing() {
 
       <ProblemHero />
 
-      <HeroScrollStage />
-
-      <section id="gap" className="border-b border-rule">
-        <div className="mx-auto max-w-[1220px] px-8 py-[88px] max-sm:px-[18px] max-md:py-14">
-          <div className="max-w-[38rem]">
-            <h2 className="text-balance text-[clamp(1.75rem,3.2vw,2.35rem)] font-semibold leading-[1.05] tracking-[-0.04em]">
-              The payment rail holds three things. People mean considerably more.
-            </h2>
-            <p className="mt-[14px] text-[16.5px] leading-[1.62] text-ink-2">
-              UPI Reserve Pay knows a total cap, a seller and an expiry. AP2&rsquo;s Intent Mandate
-              lands in the same place. Everything meant beyond those three has been living in a
-              system prompt — which makes the control protecting your money a language model&rsquo;s
-              willingness to keep remembering an instruction while an attacker writes into its
-              context.
-            </p>
-          </div>
-
-          <div className="mt-[46px]">
-            <IntentScored />
-          </div>
-
-          <div className="mt-[26px] grid gap-4 md:grid-cols-2">
-            <blockquote className="rounded-xl border border-rule bg-sheet p-[22px]">
-              <p className="text-[16px] leading-[1.5] tracking-[-0.022em]">
-                &ldquo;Order my usual groceries before the match, under ₹2,000.&rdquo;
-              </p>
-              <cite className="mt-[11px] block text-[13px] not-italic leading-[1.6] text-ink-3">
-                Carries a dozen unstated conditions. Nothing alcoholic. Don&rsquo;t swap the ₹80 dal
-                for the ₹400 organic one. Not the seller who sent rotten produce. One order, not five.
-              </cite>
-            </blockquote>
-            <blockquote className="rounded-xl border border-rule bg-sheet p-[22px]">
-              <p className="text-[16px] leading-[1.5] tracking-[-0.022em]">
-                A shopping agent holds a private mandate, reads untrusted seller-controlled text, and
-                can move money.
-              </p>
-              <cite className="mt-[11px] block text-[13px] not-italic leading-[1.6] text-ink-3">
-                All three at once, by construction. You cannot remove any one of them without
-                removing the product.
-              </cite>
-            </blockquote>
-          </div>
-        </div>
-      </section>
+      <GapAndParts />
 
       <FailureModes />
 
       <HowItHolds />
-
-      <YourLimitsGrid />
 
       <footer className="mx-auto flex max-w-[1220px] flex-wrap justify-between items-center gap-4 px-8 py-7 text-[12.5px] text-ink-3 max-sm:px-[18px]">
         <span>Mandate · Autonomous Agent Payment Guardrails</span>

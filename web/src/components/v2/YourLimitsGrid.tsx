@@ -30,26 +30,38 @@ const PART_ICONS: Record<number, React.ReactNode> = {
   9: <RotateCcw className="size-5" />,
 };
 
-const ACCENT_COLORS: Record<number, { bar: string; glow: string; text: string; bg: string }> = {
-  1: { bar: 'bg-pass', glow: 'from-pass-soft/80', text: 'text-pass', bg: 'bg-pass-soft' },
-  2: { bar: 'bg-pass', glow: 'from-pass-soft/80', text: 'text-pass', bg: 'bg-pass-soft' },
-  3: { bar: 'bg-pass', glow: 'from-pass-soft/80', text: 'text-pass', bg: 'bg-pass-soft' },
-  4: { bar: 'bg-indigo', glow: 'from-indigo-soft/80', text: 'text-indigo', bg: 'bg-indigo-soft' },
-  5: { bar: 'bg-indigo', glow: 'from-indigo-soft/80', text: 'text-indigo', bg: 'bg-indigo-soft' },
-  6: { bar: 'bg-indigo', glow: 'from-indigo-soft/80', text: 'text-indigo', bg: 'bg-indigo-soft' },
-  7: { bar: 'bg-halt', glow: 'from-halt-soft/90', text: 'text-halt', bg: 'bg-halt-soft' },
-  8: { bar: 'bg-indigo', glow: 'from-indigo-soft/80', text: 'text-indigo', bg: 'bg-indigo-soft' },
-  9: { bar: 'bg-refer', glow: 'from-refer-soft/80', text: 'text-refer', bg: 'bg-refer-soft' },
+/**
+ * The ink on each part's BOUND chip. This is the only place per-part colour
+ * survives, because it is the only place colour means something: `pass` for a
+ * figure you set, `indigo` for a list or a clock, `halt` for a denial, `refer`
+ * for a part that is implemented but carries no attack evidence.
+ *
+ * Hover is deliberately NOT in here. Hover is chrome — it says "this card, now"
+ * and nothing about the constraint — so it is Razorpay blue on every card,
+ * per `theme.css`: indigo is chrome and never carries meaning.
+ *
+ * This used to be a four-key record read through `group-hover/feature:${...}`
+ * template strings. Tailwind generates utilities by scanning source text for
+ * complete class names, and `group-hover/feature:text-pass` appears nowhere in
+ * this file, so every one of those hover rules silently resolved to nothing:
+ * the accent bars stayed `bg-rule` grey and the icon tiles never changed. The
+ * static classes below are the fix as much as the colour is.
+ */
+const BOUND_INK: Record<number, { text: string; bg: string }> = {
+  1: { text: 'text-pass', bg: 'bg-pass-soft' },
+  2: { text: 'text-pass', bg: 'bg-pass-soft' },
+  3: { text: 'text-pass', bg: 'bg-pass-soft' },
+  4: { text: 'text-indigo', bg: 'bg-indigo-soft' },
+  5: { text: 'text-indigo', bg: 'bg-indigo-soft' },
+  6: { text: 'text-indigo', bg: 'bg-indigo-soft' },
+  7: { text: 'text-halt', bg: 'bg-halt-soft' },
+  8: { text: 'text-indigo', bg: 'bg-indigo-soft' },
+  9: { text: 'text-refer', bg: 'bg-refer-soft' },
 };
 
 export function LimitCard({ part, index }: LimitCardProps) {
   const icon = PART_ICONS[part.n] ?? <Zap className="size-5" />;
-  const styling = ACCENT_COLORS[part.n] ?? {
-    bar: 'bg-indigo',
-    glow: 'from-indigo-soft/80',
-    text: 'text-indigo',
-    bg: 'bg-indigo-soft',
-  };
+  const ink = BOUND_INK[part.n] ?? { text: 'text-indigo', bg: 'bg-indigo-soft' };
 
   // Border positions for a 3-column layout on lg screens
   const isBottomRow = index >= 6;
@@ -67,12 +79,11 @@ export function LimitCard({ part, index }: LimitCardProps) {
         'bg-bond hover:bg-raise/60'
       )}
     >
-      {/* Directional hover gradient */}
+      {/* Directional hover wash. Enters from the outside edge of the grid. */}
       <div
         className={cn(
-          'pointer-events-none absolute inset-0 h-full w-full opacity-0 transition-opacity duration-300 group-hover/feature:opacity-100',
+          'pointer-events-none absolute inset-0 h-full w-full from-indigo-soft/70 opacity-0 transition-opacity duration-300 group-hover/feature:opacity-100',
           index < 3 ? 'bg-gradient-to-b to-transparent' : 'bg-gradient-to-t to-transparent',
-          styling.glow
         )}
       />
 
@@ -81,8 +92,7 @@ export function LimitCard({ part, index }: LimitCardProps) {
         <div
           className={cn(
             'flex size-9 items-center justify-center rounded-lg border border-rule bg-sunk text-ink-2 transition-colors duration-200',
-            `group-hover/feature:${styling.text}`,
-            `group-hover/feature:${styling.bg}`
+            'group-hover/feature:border-indigo/30 group-hover/feature:bg-indigo-soft group-hover/feature:text-indigo',
           )}
         >
           {icon}
@@ -96,8 +106,8 @@ export function LimitCard({ part, index }: LimitCardProps) {
       <div className="relative z-10 mb-2">
         <div
           className={cn(
-            'absolute -left-7 inset-y-0 h-5 w-1 rounded-r-full bg-rule transition-all duration-200 group-hover/feature:h-7',
-            `group-hover/feature:${styling.bar}`
+            'absolute -left-7 inset-y-0 h-5 w-1 rounded-r-full bg-rule transition-all duration-200',
+            'group-hover/feature:h-7 group-hover/feature:bg-indigo',
           )}
         />
         <h3 className="text-[15.5px] font-semibold tracking-[-0.02em] text-ink transition-transform duration-200 group-hover/feature:translate-x-1.5">
@@ -120,7 +130,7 @@ export function LimitCard({ part, index }: LimitCardProps) {
             'rounded px-2 py-0.5 font-mono text-[12px] font-semibold transition-colors',
             part.bound === 'Not set'
               ? 'italic text-ink-4'
-              : `${styling.bg} ${styling.text}`
+              : cn(ink.bg, ink.text)
           )}
         >
           {part.bound}
@@ -130,53 +140,23 @@ export function LimitCard({ part, index }: LimitCardProps) {
   );
 }
 
-export default function YourLimitsGrid() {
+/**
+ * The nine parts, as one joined surface rather than nine cards.
+ *
+ * The shared hairlines are the point: a closed set should look like a closed
+ * set, so the cells butt against each other inside a single rounded border and
+ * only the outer edge is drawn. Lives inside section 02 now, directly under the
+ * twelve conditions it resolves — it used to be its own section at the foot of
+ * the page, several screens away from the argument that motivates it.
+ */
+export function PartsGrid() {
   return (
-    <section id="limits" className="border-b border-rule bg-bond py-20">
-      <div className="mx-auto max-w-[1220px] px-8 max-sm:px-[18px]">
-        
-        {/* Section Header */}
-        <div className="mb-12 flex flex-col justify-between gap-6 md:flex-row md:items-end">
-          <div className="max-w-[36rem]">
-            <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-ink-3">
-              Pre-Signed Policy Matrix
-            </span>
-            <h2 className="mt-2 text-balance text-[clamp(1.85rem,3.2vw,2.5rem)] font-semibold leading-[1.1] tracking-[-0.04em] text-ink">
-              Nine kinds of limit.{' '}
-              <span className="text-ink-3">A closed set, evaluated in bounded time.</span>
-            </h2>
-            <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
-              Five compare numbers against figures you set. Four test lists, categories and monotonic
-              clocks. A closed set guarantees constant-time evaluation without unbounded execution loops.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-rule bg-sheet p-2 font-mono text-[11px] text-ink-3">
-            <span className="inline-flex items-center gap-1.5 px-1.5 py-0.5">
-              <span className="size-2 rounded-full bg-pass" /> 5 Numerical Limits
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-1.5 py-0.5">
-              <span className="size-2 rounded-full bg-indigo" /> 4 Deterministic Rules
-            </span>
-          </div>
-        </div>
-
-        {/* 3x3 Feature Grid with Hover Effect */}
-        <div className="relative z-10 overflow-hidden rounded-2xl border border-rule bg-bond shadow-sheet">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-            {PARTS.map((part, index) => (
-              <LimitCard key={part.key} part={part} index={index} />
-            ))}
-          </div>
-        </div>
-
-        {/* Footnotes */}
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-4 font-mono text-[11px] text-ink-3">
-          <span>Provenance: <b>Stated intent</b> compiled into signed policy hash</span>
-          <span>Coverage: 100% evaluated on every proposed order</span>
-        </div>
+    <div className="relative z-10 overflow-hidden rounded-2xl border border-rule bg-bond shadow-sheet">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+        {PARTS.map((part, index) => (
+          <LimitCard key={part.key} part={part} index={index} />
+        ))}
       </div>
-    </section>
+    </div>
   );
 }
-
