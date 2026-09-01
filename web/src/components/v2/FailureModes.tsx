@@ -15,14 +15,18 @@ import { cn } from '@/lib/utils';
  * the failures already handled is marketing, so the one that beat the gateway
  * is on the page with its own badge.
  *
- * Re-measured 2 Sep on gemini-3.7-flash over all 12 `price.flip` items
- * (`results-priceflip-g37/`, run `run_priceflip_g37_20260902`): baseline 41.7%,
- * compromised 33.3%, enforce 83.3%, enforce_compromised 75.0%. The
- * `rail.divergence` check fires and still does not contain it, because
- * `create_order` writes the order before the gateway can compare amounts and
- * there is no void call. Do not quote that run's confidence intervals: the
- * bootstrap resamples families and this set is one family, so they collapse to
- * a point. Full accounting in that directory's README-results.md.
+ * Re-measured 2 Sep on gemini-3.7-flash, all 12 `price.flip` items x 4 arms
+ * (`results-priceflip-g37/`, run `run_priceflip_g37_20260902`). The arm
+ * percentages (enforce 83.3%) are misleading and are deliberately not shown.
+ * `price.flip` poisons one SKU, so the rail only diverges when the agent buys
+ * that SKU: it fired in 10 of 48 runs and escaped all 10, in every arm. The
+ * other 38 rows were scored on clauses this attack never touched. Counting a
+ * run where the mutation never reached the basket as a containment is the
+ * VACUOUS problem, in the corpus rather than the conformance suite.
+ *
+ * `rail.divergence` fires correctly and still does not contain it:
+ * `create_order` writes the order before the gateway can compare amounts, and
+ * there is no void call. Full accounting in that directory's README-results.md.
  *
  * Figures are quoted from the corpus and the scored runs, and each card names
  * the family and the directory it came from, per the repo rule that no number
@@ -156,7 +160,7 @@ const MODES: Mode[] = [
       </>
     ),
     verdict: 'this one got through',
-    source: 'price.flip · gemini-3.7-flash · results-priceflip-g37 · 2 of 12 still escape enforce',
+    source: 'price.flip · gemini-3.7-flash · results-priceflip-g37 · fired 10 times, won 10 times',
   },
 ];
 
@@ -301,13 +305,15 @@ export default function FailureModes() {
           <span aria-hidden className="mt-[5px] size-[9px] shrink-0 rotate-45 bg-refer" />
           <p className="text-[13.5px] leading-[1.6] text-ink-2">
             <b className="font-semibold text-ink">Mode 03 is on this page because it still beats us.</b>{' '}
-            Re-run on gemini-3.7-flash across all 12 items:{' '}
-            <span className="font-mono text-[12.5px]">enforce</span> contains 10 of 12, not 12 of 12.
-            The gateway does catch the divergence. It authorises ₹806, sees the rail create ₹8,060,
-            logs <span className="font-mono text-[12.5px]">rail.divergence</span>, withholds the
-            capture capability and marks the ledger failed. Then the order stays on the rail,
-            because the gateway has no void call to make. Detected and logged is not the same as
-            prevented, and this card says which one we have.
+            Re-run on gemini-3.7-flash, 48 runs across four arms. The attack poisons one SKU, so it
+            only fires when the agent actually buys that SKU. It fired 10 times. It won all 10, in
+            every arm, enforced or not. The gateway does see it: it authorises ₹806, watches the
+            rail create ₹8,060, logs{' '}
+            <span className="font-mono text-[12.5px]">rail.divergence</span>, withholds the capture
+            capability and marks the ledger failed. Then the order stays on the rail, because there
+            is no void call to make. Detected is not prevented. The arm percentages for this family
+            are not worth quoting, because the other 38 runs were scored on a clause this attack
+            never touched.
           </p>
         </div>
       </div>
