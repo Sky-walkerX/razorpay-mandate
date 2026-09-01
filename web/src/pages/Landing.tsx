@@ -27,7 +27,7 @@ export default function Landing() {
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden items-center gap-[7px] rounded-full border border-rule bg-sheet py-[5px] pl-[9px] pr-[11px] font-mono text-[10.5px] uppercase tracking-[0.07em] text-ink-2 sm:inline-flex">
               <span className="size-[5px] rounded-full bg-emerald-500 animate-pulse" />
-              No Model Call · Deterministic
+              Enforcement · No Model Call
             </span>
             <Button asChild variant="outline" size="sm" className="h-[38px] rounded-lg px-3.5 text-[13px]">
               <Link to="/dashboard">Replay</Link>

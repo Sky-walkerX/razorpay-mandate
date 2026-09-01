@@ -179,7 +179,8 @@ export default function LiveAgentPanel({ token }: { token: string | null }) {
           <h3 className="text-[13px] font-medium text-ink">Live agent</h3>
           <p className="mt-0.5 text-[11.5px] text-ink-3">
             One prompt, one catalog, two arms. The only difference is whether the gateway may
-            refuse.
+            refuse. A real model runs here and decides what to buy. The gateway still decides
+            what is allowed, and that half calls no model.
           </p>
         </div>
 

@@ -656,8 +656,8 @@ export default function JudgeConsole() {
               Try to get money past it.
             </h1>
             <p className="mt-[5px] text-[13.5px] leading-[1.5] text-ink-2">
-              Nine ways in. Pick one and watch all nine clauses run — there is no model call anywhere
-              on this path.
+              Nine ways in. Pick one and watch all nine clauses run. This tab calls no model. Live
+              agent and Compiler both call one, and each says so on its own panel.
             </p>
           </div>
 
