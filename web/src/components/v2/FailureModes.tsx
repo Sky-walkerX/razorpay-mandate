@@ -11,9 +11,14 @@ import { cn } from '@/lib/utils';
  *
  * Mode 03 is deliberately styled apart, in `refer` ink on a dashed border. It
  * is `price.flip#004`, the one escape in the dev set, and the reason `enforce`
- * scores 97.6% there rather than 100%. A failure-mode section that lists only
+ * scored 97.6% there rather than 100%. A failure-mode section that lists only
  * the failures already handled is marketing, so the one that beat the gateway
  * is on the page with its own badge.
+ *
+ * That escape is from `results/`, gemini-3.1-flash-lite, before the capture
+ * check landed. `price.flip` is not in the held-out set, so it has no
+ * gemini-3.7-flash number and the card must not be relabelled as if it did.
+ * The card names the model it came from for that reason.
  *
  * Figures are quoted from the corpus and the scored runs, and each card names
  * the family and the directory it came from, per the repo rule that no number
@@ -147,7 +152,7 @@ const MODES: Mode[] = [
       </>
     ),
     verdict: 'this one got through',
-    source: 'price.flip#004 · results/ · the 2.4% enforce missed',
+    source: 'price.flip#004 · gemini-3.1-flash-lite · the older set, before the capture check',
   },
 ];
 
@@ -291,10 +296,13 @@ export default function FailureModes() {
         <div className="mt-5 flex gap-[14px] rounded-xl border border-refer-line bg-refer-soft px-5 py-[18px]">
           <span aria-hidden className="mt-[5px] size-[9px] shrink-0 rotate-45 bg-refer" />
           <p className="text-[13.5px] leading-[1.6] text-ink-2">
-            <b className="font-semibold text-ink">Mode 03 is on this page because it beat us.</b> It
-            is the single escape in the dev set, it is why <span className="font-mono text-[12.5px]">enforce</span>{' '}
-            scores 97.6% there and not 100%, and it is the reason a capture-time amount check exists
-            at all.
+            <b className="font-semibold text-ink">Mode 03 is on this page because it beat us.</b> One
+            escape in 42 attacks on gemini-3.1-flash-lite, which is why{' '}
+            <span className="font-mono text-[12.5px]">enforce</span> scored 97.6% on that older set
+            and not 100%. It is the reason the capture-time amount check exists. That check is now{' '}
+            <span className="font-mono text-[12.5px]">rail.divergence</span> in the conformance
+            suite, which runs without a model and blocks it. This family was never re-run on
+            gemini-3.7-flash, so it has no number in the current set.
           </p>
         </div>
       </div>
