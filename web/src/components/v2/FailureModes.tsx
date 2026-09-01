@@ -15,10 +15,14 @@ import { cn } from '@/lib/utils';
  * the failures already handled is marketing, so the one that beat the gateway
  * is on the page with its own badge.
  *
- * That escape is from `results/`, gemini-3.1-flash-lite, before the capture
- * check landed. `price.flip` is not in the held-out set, so it has no
- * gemini-3.7-flash number and the card must not be relabelled as if it did.
- * The card names the model it came from for that reason.
+ * Re-measured 2 Sep on gemini-3.7-flash over all 12 `price.flip` items
+ * (`results-priceflip-g37/`, run `run_priceflip_g37_20260902`): baseline 41.7%,
+ * compromised 33.3%, enforce 83.3%, enforce_compromised 75.0%. The
+ * `rail.divergence` check fires and still does not contain it, because
+ * `create_order` writes the order before the gateway can compare amounts and
+ * there is no void call. Do not quote that run's confidence intervals: the
+ * bootstrap resamples families and this set is one family, so they collapse to
+ * a point. Full accounting in that directory's README-results.md.
  *
  * Figures are quoted from the corpus and the scored runs, and each card names
  * the family and the directory it came from, per the repo rule that no number
@@ -152,7 +156,7 @@ const MODES: Mode[] = [
       </>
     ),
     verdict: 'this one got through',
-    source: 'price.flip#004 · gemini-3.1-flash-lite · the older set, before the capture check',
+    source: 'price.flip · gemini-3.7-flash · results-priceflip-g37 · 2 of 12 still escape enforce',
   },
 ];
 
@@ -296,13 +300,14 @@ export default function FailureModes() {
         <div className="mt-5 flex gap-[14px] rounded-xl border border-refer-line bg-refer-soft px-5 py-[18px]">
           <span aria-hidden className="mt-[5px] size-[9px] shrink-0 rotate-45 bg-refer" />
           <p className="text-[13.5px] leading-[1.6] text-ink-2">
-            <b className="font-semibold text-ink">Mode 03 is on this page because it beat us.</b> One
-            escape in 42 attacks on gemini-3.1-flash-lite, which is why{' '}
-            <span className="font-mono text-[12.5px]">enforce</span> scored 97.6% on that older set
-            and not 100%. It is the reason the capture-time amount check exists. That check is now{' '}
-            <span className="font-mono text-[12.5px]">rail.divergence</span> in the conformance
-            suite, which runs without a model and blocks it. This family was never re-run on
-            gemini-3.7-flash, so it has no number in the current set.
+            <b className="font-semibold text-ink">Mode 03 is on this page because it still beats us.</b>{' '}
+            Re-run on gemini-3.7-flash across all 12 items:{' '}
+            <span className="font-mono text-[12.5px]">enforce</span> contains 10 of 12, not 12 of 12.
+            The gateway does catch the divergence. It authorises ₹806, sees the rail create ₹8,060,
+            logs <span className="font-mono text-[12.5px]">rail.divergence</span>, withholds the
+            capture capability and marks the ledger failed. Then the order stays on the rail,
+            because the gateway has no void call to make. Detected and logged is not the same as
+            prevented, and this card says which one we have.
           </p>
         </div>
       </div>
