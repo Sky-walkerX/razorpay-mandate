@@ -7,7 +7,9 @@ from mandate.compiler.compile import compile_intent
 from mandate.policy.models import ConstraintId as C
 
 IST = timezone(timedelta(hours=5, minutes=30))
-EXP = datetime(2026, 9, 1, 19, 30, tzinfo=IST)
+# compile_intent stamps `issued` from the real clock, so a fixed expiry date
+# turns the suite red the moment that date passes. Keep it relative.
+EXP = datetime.now(IST) + timedelta(days=30)
 
 
 class FakeClient:
