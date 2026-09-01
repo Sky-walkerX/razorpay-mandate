@@ -128,8 +128,12 @@ sequenceDiagram
 7. **Downstream Execution & Reconciliation (I/O).**
    - In `ENFORCE` mode: The gateway opens an atomic `PENDING` reservation in the ledger, dispatches the resolved amount to `RazorpayDownstream.create_order`, and transitions the state to `COMMITTED` upon success.
    - In `OBSERVE` mode: The gateway records the verdict and executes downstream regardless to measure counterfactual baseline leakage.
-8. **Tamper-Evident Merkle Audit Append (I/O).** Appends the proposal, resolved action, 9-clause evaluation waterfall, verdict, downstream response, and `SHA-256` rolling chain hash:
+8. **Tamper-Evident Hash-Chained & RFC 6962 Merkle Audit Append (I/O).** Appends the proposal, resolved action, 9-clause evaluation waterfall, verdict, downstream response, and `SHA-256` rolling chain hash:
    $$H_n = \text{SHA256}(H_{n-1} \parallel \text{Seq}_n \parallel \text{Verdict}_n \parallel \text{IntentHash}_n \parallel \text{Timestamp}_n)$$
+   The log also exposes RFC 6962 Merkle tree roots, inclusion proofs (`GET /v1/audit/proof`), and consistency proofs (`GET /v1/audit/consistency`).
+
+> **Log Key Custody & Verifiability Guarantee:**  
+> A compromised gateway can sign a false tree head using its local log private key (`.mandate/keys/log_private.key`). What it cannot do is sign one consistent with a head someone already holds while having deleted a record. Consistency proofs catch a rewrite after the fact. They do not catch a log that lies from its first head, which needs clients gossiping heads to each other. We did not build that.
 
 ---
 

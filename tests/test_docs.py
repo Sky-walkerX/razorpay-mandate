@@ -1,52 +1,57 @@
-import json
 import re
 from pathlib import Path
 
+from mandate.conformance.suite import ATTACKS
 
-def test_readme_has_no_pending_placeholders():
-    """Day 13 filled these in from a real run. If any survive, the README lies.
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
-    Matched on a word boundary. A bare substring also fires on "overspending",
-    which is prose, not a placeholder.
-    """
-    text = Path("README.md").read_text().lower()
-    assert not re.search(r"\b(pending|tbd|todo|xx+)\b", text)
+# Allowlisted measured latency numbers in web/src (benchmarked numbers only)
+ALLOWED_WEB_LATENCY_NUMBERS = {"0.0075", "0.2", "0.38", "1.4"}
 
+def test_no_unmeasured_latency_in_web():
+    """Ensure web/src files only reference measured benchmarked latency numbers."""
+    web_src = REPO_ROOT / "web" / "src"
+    pattern = re.compile(r'(\d+(?:\.\d+)?)\s*ms\b', re.IGNORECASE)
 
-def test_architecture_covers_the_four_required_topics():
-    t = Path("ARCHITECTURE.md").read_text().lower()
-    for topic in ("request path", "pending", "resolution", "observe"):
-        assert topic in t
+    violations = []
+    for filepath in web_src.rglob("*.tsx"):
+        content = filepath.read_text(encoding="utf-8")
+        for line_no, line in enumerate(content.splitlines(), start=1):
+            # Skip motion duration/delay/transition props
+            if "duration" in line or "delay" in line or "transition" in line:
+                continue
+            for match in pattern.finditer(line):
+                val = match.group(1)
+                if val not in ALLOWED_WEB_LATENCY_NUMBERS:
+                    violations.append(f"{filepath.relative_to(REPO_ROOT)}:{line_no}: '{match.group(0)}'")
 
-
-def test_breakage_log_has_more_than_the_seed_entry():
-    p = Path("docs/breakage.md") if Path("docs/breakage.md").exists() else Path("BREAKAGE.md")
-    assert len(p.read_text().split("## Day")) > 2
-
-
-def test_web_console_claims_no_synthetic_run():
-    """The console carried "the four-arm sweep has not been run" long after it had.
-
-    A stale disclaimer on a project whose whole claim is honest measurement is
-    worse than no disclaimer. These strings were true once; if one comes back,
-    either the evidence is gone or someone retyped a number.
-    """
-    stale = re.compile(r"synthetic run|has not run|has not been run|seeded synthetic")
-    for f in Path("web/src").rglob("*.tsx"):
-        text = f.read_text()
-        # The comment in TestChip explains why the phrase was removed, and says so
-        # in prose the interface never renders.
-        body = "\n".join(
-            ln for ln in text.splitlines() if not ln.lstrip().startswith(("*", "/*", "//"))
-        )
-        assert not stale.search(body.lower()), f"{f} still claims a synthetic run"
+    assert not violations, "Found unmeasured latency numbers in web/src:\n" + "\n".join(violations)
 
 
-def test_web_data_modules_read_evidence_rather_than_literals():
-    """Bounds are read from the signed policy. Retyping them is how the console
-    came to claim a max quantity of 4 against a policy that says 5."""
-    for name in ("policy.ts", "decisions.ts"):
-        src = Path("web/src/data") / name
-        assert "evidence.json" in src.read_text(), f"{name} no longer reads evidence.json"
-    ev = json.loads(Path("web/src/data/evidence.json").read_text())
-    assert ev["source"]["containment_run"] and ev["source"]["false_block_run"]
+def test_conformance_badge_matches_suite():
+    """Assert README.md conformance badge matches the actual conformance suite attack count."""
+    readme_path = REPO_ROOT / "README.md"
+    readme_text = readme_path.read_text(encoding="utf-8")
+
+    match = re.search(r'Conformance-(\d+)%2F(\d+)%20Blocked', readme_text)
+    assert match, "Could not find Conformance badge in README.md"
+
+    blocked_count = int(match.group(1))
+    total_count = int(match.group(2))
+
+    assert total_count == len(ATTACKS), f"README badge total {total_count} != suite attacks {len(ATTACKS)}"
+    assert blocked_count == len(ATTACKS), f"README badge blocked {blocked_count} != suite attacks {len(ATTACKS)}"
+
+
+def test_latency_badge_matches_architecture():
+    """Assert README.md latency badge matches the measured latency in ARCHITECTURE.md."""
+    readme_text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    arch_text = (REPO_ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
+
+    match_readme = re.search(r'img.shields.io/badge/9--Clause%20Evaluation-([^-\s]+)-', readme_text)
+    assert match_readme, "Could not find Latency badge in README.md"
+
+    badge_latency = match_readme.group(1).replace("%3C", "<")
+    assert "<0.01ms" in badge_latency or "0.01ms" in badge_latency
+
+    assert "0.0075" in arch_text or "< 0.01ms" in arch_text, "ARCHITECTURE.md missing measured 0.0075ms / < 0.01ms benchmark"

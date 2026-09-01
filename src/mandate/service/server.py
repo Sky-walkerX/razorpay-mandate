@@ -32,7 +32,7 @@ from mandate.gateway.tokens import (
 )
 from mandate.harness.catalog import Catalog
 from mandate.policy.canonical import policy_hash
-from mandate.policy.crypto import SignatureInvalid
+from mandate.policy.crypto import SignatureInvalid, sign_bytes
 from mandate.policy.loader import load as load_policy
 from mandate.policy.models import ConstraintId as C
 from mandate.policy.models import Policy
@@ -138,6 +138,7 @@ def create_app(
     token_pool: TokenPool | None = None,
     catalog: Catalog | None = None,
     static_dir: Path | str | None = None,
+    log_private_key_path: Path | str | None = Path(".mandate/keys/log_private.key"),
 ) -> Starlette:
     if not capability_secret:
         raise ServiceMisconfigured(
@@ -152,6 +153,13 @@ def create_app(
             f"`mandate sign` first."
         )
     pub_hex = Path(public_key_path).read_text().strip()
+
+    # The log signs its own tree heads with a key distinct from the issuer's, so the
+    # issuer key can stay offline. Absent, /v1/audit/head reports 503 rather than
+    # serving an unsigned head that would look verified.
+    log_private_key_hex = None
+    if log_private_key_path and Path(log_private_key_path).exists():
+        log_private_key_hex = Path(log_private_key_path).read_text().strip()
 
     policy = load_policy(Path(policy_path), public_key_hex=pub_hex)
     pol_hash = policy_hash(policy)
@@ -527,6 +535,61 @@ def create_app(
             return JSONResponse(json.loads(conf_file.read_text()))
         return JSONResponse({"status": "no_conformance_file_found"}, status_code=404)
 
+    async def get_ap2_mandate(req: Request):
+        from mandate.ap2.render import render_ap2_mandate
+        doc = render_ap2_mandate(policy)
+        return JSONResponse(doc.model_dump(mode="json"))
+
+    def _session_audit(req: Request):
+        """Resolve the caller's per-session audit log, or an error response."""
+        _token, claims, err_resp = _extract_and_verify_token(req)
+        if err_resp is not None:
+            return None, err_resp
+        assert claims is not None
+        session = session_manager.get_session(claims.jti)
+        if session is None:
+            return None, JSONResponse({"error": "no session for this token"}, status_code=404)
+        return session.audit, None
+
+    async def get_audit_head(req: Request):
+        audit_log, err_resp = _session_audit(req)
+        if err_resp is not None:
+            return err_resp
+
+        root = audit_log.get_merkle_root()
+        size = len(audit_log.records())
+        ts = datetime.now(UTC).isoformat()
+        msg = f"{size}:{root}:{ts}".encode()
+
+        if log_private_key_hex is None:
+            return JSONResponse(
+                {"error": "gateway holds no log signing key; run 'mandate keygen --log'"},
+                status_code=503,
+            )
+        sig = sign_bytes(msg, log_private_key_hex)
+        return JSONResponse({"size": size, "root": root, "ts": ts, "sig": sig})
+
+    async def get_audit_proof(req: Request):
+        audit_log, err_resp = _session_audit(req)
+        if err_resp is not None:
+            return err_resp
+        try:
+            seq = int(req.query_params.get("seq", 1))
+            return JSONResponse(audit_log.get_inclusion_proof(seq))
+        except (ValueError, IndexError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+
+    async def get_audit_consistency(req: Request):
+        audit_log, err_resp = _session_audit(req)
+        if err_resp is not None:
+            return err_resp
+        try:
+            from_cnt = int(req.query_params.get("from", 1))
+            to_cnt = int(req.query_params.get("to", len(audit_log.records())))
+            return JSONResponse(audit_log.get_consistency_proof(from_cnt, to_cnt))
+        except (ValueError, IndexError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+
     middleware = [
         Middleware(
             CORSMiddleware,
@@ -541,9 +604,13 @@ def create_app(
         Route("/v1/sessions", create_session, methods=["POST"]),
         Route("/v1/catalog", get_catalog, methods=["GET"]),
         Route("/v1/policy", get_policy, methods=["GET"]),
+        Route("/v1/mandate/ap2", get_ap2_mandate, methods=["GET"]),
         Route("/v1/orders", create_order, methods=["POST"]),
         Route("/v1/payments/capture", capture_payment, methods=["POST"]),
         Route("/v1/audit", get_audit, methods=["GET"]),
+        Route("/v1/audit/head", get_audit_head, methods=["GET"]),
+        Route("/v1/audit/proof", get_audit_proof, methods=["GET"]),
+        Route("/v1/audit/consistency", get_audit_consistency, methods=["GET"]),
         Route("/v1/headroom", get_headroom, methods=["GET"]),
         Route("/v1/revoke", revoke_token, methods=["POST"]),
         Route("/v1/compile", compile_policy, methods=["POST"]),

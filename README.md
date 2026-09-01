@@ -24,7 +24,7 @@ In February 2026, Razorpay and NPCI launched agentic commerce for food and quick
 
 Once nobody is watching the basket, what holds the agent to what the person actually meant?
 
-1. **The payment rail speaks three scalars:** UPI Reserve Pay and AP2 Intent Mandates know an aggregate spend ceiling, one merchant, and an expiration timestamp.
+1. **The payment rail speaks three scalars:** UPI Reserve Pay and AP2 Checkout Mandates (v0.2) know an aggregate spend ceiling, one merchant, and an expiration timestamp.
 2. **People mean far more than three scalars:** *"Order weekly groceries from Blinkit or Zepto under ₹2,000, no single item over ₹500, nothing alcoholic, max 3 orders"* carries nine distinct boundaries.
 3. **Everything in between lives in a system prompt:** The control protecting user funds reduces to a language model's willingness to remember instructions while an untrusted seller writes hostile prompt injections into its context.
 
@@ -34,7 +34,7 @@ A shopping agent holds a private mandate, ingests untrusted seller text, and mov
 
 ## The Solution: The One Rule
 
-Mandate sits between autonomous agents and payment rails, enforcing signed policy contracts in pure, sub-millisecond code.
+Mandate sits between autonomous agents and payment rails, enforcing signed policy contracts in pure deterministic code.
 
 ```mermaid
 flowchart LR

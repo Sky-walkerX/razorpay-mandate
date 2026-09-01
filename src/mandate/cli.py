@@ -3,6 +3,7 @@ import json
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from dotenv import load_dotenv
@@ -317,7 +318,7 @@ def demo(
     typer.echo(f"  Mandate Enforced     : {fmt(enf_exec)}  ({'100% CONTAINED' if out['enforce_compromised'].contained else 'BREACHED'})")
     typer.echo(f"  Unauthorized Prevent : {fmt(max(0, comp_exec - enf_exec))}")
     typer.echo(f"  Primary Clause Cited : {out['enforce_compromised'].blocking_clause or 'all constraints satisfied'}")
-    typer.echo(f"  Final Merkle Hash    : {last_hash}")
+    typer.echo(f"  Hash-Chained Audit Record : {last_hash}")
     typer.echo("═" * 60 + "\n")
 
 
@@ -355,54 +356,80 @@ def demo_failure(
                f"{fmt(r.naive_charged)} without.")
 
 
-@app.command("export")
-def export(
-    fmt_: str = typer.Option("diff", "--format",
-                             help="diff | ap2 | reserve-pay"),
-    policy: Path = Path("policies/policy.yaml"),
+@app.command("keygen")
+def keygen(
+    out_dir: Path = Path(".mandate/keys"),
+    log: Annotated[bool, typer.Option("--log", help="Generate log keypair for the gateway instead of issuer keypair")] = False,
 ) -> None:
-    """Project the signed policy onto AP2 and UPI Reserve Pay, and show what is lost."""
-    import json as _json
+    """Generate an Ed25519 asymmetric keypair for the offline policy issuer or gateway log."""
+    import os
 
-    from mandate.policy.canonical import policy_hash
-    from mandate.policy.rails import (
-        diff,
-        money_at_risk,
-        to_ap2_intent_mandate,
-        to_ap2_payment_constraints,
-        to_reserve_pay,
-    )
+    from mandate.policy.crypto import generate_keypair
 
-    pol = load_policy(policy)
-    if fmt_ == "ap2":
-        typer.echo(_json.dumps({
-            "intent_mandate": to_ap2_intent_mandate(pol),
-            "payment_mandate_constraints": to_ap2_payment_constraints(pol),
-        }, indent=2))
-        return
-    if fmt_ in ("reserve-pay", "reserve_pay"):
-        typer.echo(_json.dumps(to_reserve_pay(pol), indent=2))
-        return
-    if fmt_ != "diff":
-        raise typer.BadParameter("--format must be diff, ap2 or reserve-pay")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    priv_hex, pub_hex = generate_keypair()
 
-    d = diff(pol, policy_hash(pol))
-    typer.echo(f"\npolicy {d.mandate_id}  {d.policy_hash[:23]}")
-    typer.echo(f'"{pol.source_text}"\n')
-    typer.echo(f"  {'clause':26}{'stated':>8}{'AP2':>8}{'ReservePay':>13}")
-    typer.echo("  " + "-" * 55)
-    for f in d.fates:
-        typer.echo(f"  {f.clause:26}{'yes' if f.stated_by_user else 'inferred':>8}"
-                   f"{f.ap2:>8}{f.reserve_pay:>13}")
-    typer.echo("  " + "-" * 55)
-    typer.echo(f"  {'held':26}{d.total_clauses:>8}{d.ap2_held:>8}{d.reserve_pay_held:>13}")
-    typer.echo(f"  {'lost':26}{0:>8}{d.ap2_lost:>8}{d.reserve_pay_lost:>13}")
-    typer.echo("\nwhat neither rail can hold:")
-    for f in d.fates:
-        if f.ap2 != "ap2" and f.reserve_pay != "rail":
-            typer.echo(f"  {f.clause:26}{f.ap2_note}")
-    typer.echo(f"\nUnder a Reserve Pay block alone, {fmt(money_at_risk(pol))} is spendable on "
-               f"anything\nthe payee sells, including everything the clauses above refuse.")
+    prefix = "log" if log else "issuer"
+    priv_path = out_dir / f"{prefix}_private.key"
+    pub_path = out_dir / f"{prefix}_public.key"
+
+    priv_path.write_text(priv_hex + "\n")
+    os.chmod(priv_path, 0o600)
+    pub_path.write_text(pub_hex + "\n")
+
+    label = "gateway log" if log else "offline issuer"
+    typer.echo(f"Generated Ed25519 {label} keypair:")
+    typer.echo(f"  private key (keep secret): {priv_path} (mode 0600)")
+    typer.echo(f"  public key  (distribute) : {pub_path}")
+    typer.echo(f"  public key hex           : {pub_hex}")
+
+
+@app.command("verify")
+def verify_cmd(
+    receipt: Annotated[Path, typer.Option("--receipt", help="Path to audit inclusion proof receipt JSON")],
+    head: Annotated[Path, typer.Option("--head", help="Path to signed Merkle log head JSON")],
+    log_public_key: Annotated[Path, typer.Option("--log-public-key")] = Path(".mandate/keys/log_public.key"),
+) -> None:
+    """Verify an offline audit receipt against a signed Merkle log head."""
+    from mandate.gateway.merkle import verify_inclusion_proof
+    from mandate.policy.crypto import verify_bytes
+
+    if not receipt.exists() or not head.exists():
+        typer.echo("Error: receipt or head file not found.")
+        raise typer.Exit(code=1)
+
+    rec_data = json.loads(receipt.read_text())
+    head_data = json.loads(head.read_text())
+
+    # 1. Verify the signature on the log head. A missing key file is a failure, not a
+    #    skip: an unverified head proves nothing, and reporting success without it is
+    #    the fail-open the service startup check already refuses elsewhere.
+    if not log_public_key.exists():
+        typer.echo(f"ERROR: log public key not found at {log_public_key}. "
+                   f"Cannot verify a head without it.")
+        raise typer.Exit(code=1)
+
+    pub_hex = log_public_key.read_text().strip()
+    sig_hex = head_data.get("sig", "")
+    msg = f"{head_data['size']}:{head_data['root']}:{head_data['ts']}".encode()
+    if not verify_bytes(msg, sig_hex, pub_hex):
+        typer.echo("ERROR: log head signature INVALID for this public key")
+        raise typer.Exit(code=1)
+    typer.echo("OK  log head signature verified")
+
+    # 2. Verify inclusion proof
+    leaf_record_hash = rec_data["leaf_record_hash"]
+    index = rec_data["seq"] - 1
+    tree_size = rec_data["tree_size"]
+    proof = rec_data["proof"]
+    expected_root = head_data["root"]
+
+    ok = verify_inclusion_proof(leaf_record_hash, index, tree_size, proof, expected_root)
+    if ok:
+        typer.echo(f"OK  seq #{rec_data['seq']} included in root {expected_root[:23]}...")
+    else:
+        typer.echo("ERROR: inclusion proof failed verification")
+        raise typer.Exit(code=1)
 
 
 @app.command("evidence")
@@ -434,32 +461,7 @@ def evidence(
     typer.echo(f"  feed      {ev['feed']['run']} {ev['feed']['counts']}")
 
 
-@app.command("keygen")
-def keygen(
-    out_dir: Path = Path(".mandate/keys"),
-) -> None:
-    """Generate an Ed25519 asymmetric keypair for the offline policy issuer."""
-    import os
 
-    from mandate.policy.crypto import generate_keypair
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-    priv_hex, pub_hex = generate_keypair()
-
-    priv_path = out_dir / "issuer_private.key"
-    pub_path = out_dir / "issuer_public.key"
-
-    priv_path.write_text(priv_hex + "\n")
-    os.chmod(priv_path, 0o600)
-    pub_path.write_text(pub_hex + "\n")
-
-    typer.echo("Generated Ed25519 issuer keypair:")
-    typer.echo(f"  private key (keep secret): {priv_path} (mode 0600)")
-    typer.echo(f"  public key  (distribute) : {pub_path}")
-    typer.echo(f"  public key hex           : {pub_hex}")
-
-
-from typing import Annotated
 
 
 @app.command("sign")
@@ -552,6 +554,24 @@ def mint_pool_cmd(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(tokens, indent=2))
     typer.echo(f"Minted {len(tokens)} tokens to {out} (jti tok_pool_001..tok_pool_{count:03d}, expires {expires})")
+
+
+@app.command("ap2-export")
+def ap2_export_cmd(
+    policy: Annotated[Path, typer.Option("--policy")] = Path("policies/policy.yaml"),
+    out: Annotated[Path | None, typer.Option("--out")] = None,
+) -> None:
+    """Export a signed policy AST as an AP2 v0.2 Open Checkout Mandate credential."""
+    from mandate.ap2.render import render_ap2_mandate
+    pol = load_policy(policy)
+    doc = render_ap2_mandate(pol)
+    output_json = json.dumps(doc.model_dump(mode="json"), indent=2)
+    if out:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(output_json)
+        typer.echo(f"Exported AP2 v0.2 mandate to {out}")
+    else:
+        typer.echo(output_json)
 
 
 @app.command("serve")

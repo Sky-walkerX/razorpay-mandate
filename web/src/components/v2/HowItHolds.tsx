@@ -39,7 +39,7 @@ const STAGES = [
     subtitle: 'Pure deterministic code',
     icon: Cpu,
     body: 'Every proposed order goes through the nine parts in pure functions with no I/O and no model. Allow and pay, refuse and say which limit, or escalate when unresolved.',
-    note: '< 0.4ms · no LLMs in payment path',
+    note: '0.0075 ms · no LLMs in payment path',
     actor: 'deterministic gateway',
     isModel: false,
     hoverBorder: 'hover:border-pass',

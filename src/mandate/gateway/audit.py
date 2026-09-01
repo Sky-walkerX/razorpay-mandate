@@ -1,13 +1,19 @@
-"""Append-only, hash-chained decision log. One record per proposed action, any verdict."""
+"""Append-only, hash-chained decision log with RFC 6962 Merkle tree capabilities."""
 import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel
 
 from mandate.gateway.action import Action
 from mandate.gateway.lattice import combine
+from mandate.gateway.merkle import (
+    consistency_proof,
+    inclusion_proof,
+    merkle_tree_hash,
+)
 from mandate.gateway.state import ClauseResult, Verdict
 
 GENESIS = "sha256:" + "0" * 64
@@ -45,17 +51,27 @@ class AuditLog:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._cached_records: list[AuditRecord] | None = None
+
+    def _load_cache(self) -> list[AuditRecord]:
+        if self._cached_records is None:
+            if not self.path.exists():
+                self._cached_records = []
+            else:
+                self._cached_records = [
+                    AuditRecord(**json.loads(ln))
+                    for ln in self.path.read_text().splitlines()
+                    if ln.strip()
+                ]
+        return self._cached_records
 
     def records(self) -> list[AuditRecord]:
-        if not self.path.exists():
-            return []
-        return [AuditRecord(**json.loads(ln))
-                for ln in self.path.read_text().splitlines() if ln.strip()]
+        return list(self._load_cache())
 
     def append(self, *, ts: datetime, mandate_id: str, policy_hash: str, idem_key: str,
                action: Action, verdict: Verdict, clauses: list[ClauseResult],
                downstream: dict | None) -> AuditRecord:
-        existing = self.records()
+        existing = self._load_cache()
         seq = len(existing) + 1
         prev = existing[-1].record_hash if existing else GENESIS
         rec_model = AuditRecord(
@@ -76,8 +92,8 @@ class AuditLog:
         rec = rec_model.model_copy(update={"record_hash": h})
         with self.path.open("a") as fh:
             fh.write(rec.model_dump_json() + "\n")
+        existing.append(rec)
         return rec
-
 
     def verify_chain(self) -> None:
         prev = GENESIS
@@ -90,3 +106,33 @@ class AuditLog:
             if _hash_body(body) != rec.record_hash:
                 raise AuditChainBroken(f"seq {rec.seq} content does not match its hash")
             prev = rec.record_hash
+
+    def leaf_hashes(self) -> list[str]:
+        return [r.record_hash for r in self.records()]
+
+    def get_merkle_root(self) -> str:
+        leaves = self.leaf_hashes()
+        return merkle_tree_hash(leaves)
+
+    def get_inclusion_proof(self, seq: int) -> dict[str, Any]:
+        leaves = self.leaf_hashes()
+        index = seq - 1
+        proof = inclusion_proof(index, leaves)
+        return {
+            "seq": seq,
+            "leaf_record_hash": leaves[index],
+            "tree_size": len(leaves),
+            "root": merkle_tree_hash(leaves),
+            "proof": proof,
+        }
+
+    def get_consistency_proof(self, from_count: int, to_count: int) -> dict[str, Any]:
+        leaves = self.leaf_hashes()
+        proof = consistency_proof(from_count, to_count, leaves)
+        return {
+            "from_count": from_count,
+            "to_count": to_count,
+            "from_root": merkle_tree_hash(leaves[:from_count]),
+            "to_root": merkle_tree_hash(leaves[:to_count]),
+            "proof": proof,
+        }
