@@ -66,7 +66,7 @@
       "outcome": "BLOCKED",
       "witness_executed": true,
       "hardened_executed": false,
-      "detail": "10x rail divergence halted by 'rail.divergence' with verdict UNKNOWN; capability withheld (True); the witness allowed 500000 paise"
+      "detail": "10x rail divergence halted by 'rail.divergence' with verdict UNKNOWN; capability withheld (True); 0 paise left standing on the rail; the witness allowed 500000 paise"
     }
   ]
 }

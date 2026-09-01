@@ -53,6 +53,19 @@ class FakeDownstream:
         self._maybe_fail_after_write()
         return order
 
+    def void_order(self, order_id: str) -> dict:
+        """Cancel an order the gateway decided it should not have placed.
+
+        The status is flipped rather than the record deleted. An order that was
+        created and pulled back is a thing that happened, and the audit log has
+        to be able to say so.
+        """
+        o = self._orders.get(order_id)
+        if o is None:
+            raise DownstreamError(f"unknown order {order_id}")
+        o["status"] = "voided"
+        return o
+
     def capture_payment(self, payment_id: str, amount: Paise) -> dict:
         p = {"id": payment_id, "amount": int(amount), "status": "captured"}
         self._payments[payment_id] = p

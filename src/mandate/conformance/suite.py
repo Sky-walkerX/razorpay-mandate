@@ -17,7 +17,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from mandate.conformance.witness import AttackResult, UnhardenedGateway
-from mandate.downstream.fake import FakeDownstream
+from mandate.downstream.fake import DownstreamError, FakeDownstream
 from mandate.gateway.action import Proposal, ProposalItem
 from mandate.gateway.audit import AuditLog
 from mandate.gateway.core import Gateway, Mode
@@ -418,6 +418,18 @@ class DivergentDownstream:
         self._orders[order_id] = order
         return order
 
+    def void_order(self, order_id):
+        o = self._orders.get(order_id)
+        if o is None:
+            raise DownstreamError(f"unknown order {order_id}")
+        o["status"] = "voided"
+        return o
+
+    def live_paise(self) -> int:
+        """What the rail would still settle. A voided order settles nothing."""
+        return sum(int(o["amount"]) for o in self._orders.values()
+                   if o["status"] != "voided")
+
 
 def attack_rail_divergence(tmp_path: Path) -> AttackResult:
     """The downstream payment rail creates an order for 10x the authorised amount."""
@@ -428,7 +440,7 @@ def attack_rail_divergence(tmp_path: Path) -> AttackResult:
     witness_down = DivergentDownstream(multiplier=10)
     w_gw = UnhardenedGateway(env.policy, witness_down)
     w_dec = w_gw.propose(_buy(), token=token, unit_prices=PRICES)
-    witness_executed = w_dec.executed and sum(int(o["amount"]) for o in witness_down._orders.values()) > 200000
+    witness_executed = w_dec.executed and witness_down.live_paise() > 200000
 
     # Hardened: gateway inspects downstream_body['amount'] vs action.amount, detects divergence,
     # refuses capability, sets verdict to UNKNOWN and logs rail.divergence clause.
@@ -444,12 +456,21 @@ def attack_rail_divergence(tmp_path: Path) -> AttackResult:
     )
     dec = hardened_gw.propose(_buy(), NOW, token=token)
 
-    # Hardened must NOT execute, must NOT mint capability, and verdict must be UNKNOWN
-    hardened_executed = dec.executed or (dec.capability is not None) or (dec.verdict is Verdict.ALLOW)
+    # The decision is not the outcome. The witness half of this attack always
+    # checked the rail; the hardened half used to check only `dec`, so it passed
+    # while a 10x order sat on the rail unvoided. Ask the rail here too.
+    hardened_executed = (
+        dec.executed
+        or (dec.capability is not None)
+        or (dec.verdict is Verdict.ALLOW)
+        or divergent_down.live_paise() > 0
+    )
     return AttackResult.judge(
         "rail.divergence", witness_executed, hardened_executed,
         f"10x rail divergence halted by {dec.clause_id!r} with verdict {dec.verdict}; "
-        f"capability withheld ({dec.capability is None}); the witness allowed {sum(int(o['amount']) for o in witness_down._orders.values())} paise",
+        f"capability withheld ({dec.capability is None}); "
+        f"{divergent_down.live_paise()} paise left standing on the rail; "
+        f"the witness allowed {witness_down.live_paise()} paise",
     )
 
 

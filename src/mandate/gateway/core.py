@@ -200,6 +200,26 @@ class Gateway:
             raise TokenRejected(f"jti {claims.jti} is revoked")
         return claims.jti
 
+    def _void_order(self, body: dict | None) -> bool:
+        """Pull a divergent order back off the rail. True only if the rail agreed.
+
+        Fails closed on purpose. A downstream with no `void_order`, a missing
+        order id, or a rail that refuses all report False, and the caller then
+        records that the order stands. Claiming a void that did not happen would
+        make the audit log say money came back when it did not.
+        """
+        order_id = (body or {}).get("id")
+        if not order_id:
+            return False
+        void = getattr(self.downstream, "void_order", None)
+        if void is None:
+            return False
+        try:
+            void(order_id)
+        except (DownstreamError, DownstreamTimeout):
+            return False
+        return True
+
     def propose(
         self,
         proposal: Proposal | Action,
@@ -294,16 +314,28 @@ class Gateway:
                 if downstream_amt is not None and int(downstream_amt) != int(action.amount):
                     final = Verdict.UNKNOWN
                     executed = False
+                    # Detecting the overcharge is not containing it. The order
+                    # exists on the rail the moment create_order returns, so
+                    # withholding the capability leaves the money moved. Pull it
+                    # back, and say in the clause whether that worked.
+                    voided = self._void_order(downstream_body)
+                    if voided:
+                        downstream_body = {**downstream_body, "status": "voided", "voided": True}
                     div_clause = ClauseResult(
                         id="rail.divergence",
                         result=Verdict.UNKNOWN,
                         observed=int(downstream_amt),
                         limit=int(action.amount),
-                        detail=f"downstream rail amount ₹{int(downstream_amt)/100:.2f} diverges from authorized amount ₹{int(action.amount)/100:.2f}",
+                        detail=(
+                            f"downstream rail amount ₹{int(downstream_amt)/100:.2f} diverges from "
+                            f"authorized amount ₹{int(action.amount)/100:.2f}; "
+                            + ("order voided on the rail" if voided
+                               else "VOID FAILED, the order stands on the rail")
+                        ),
                     )
                     clauses.append(div_clause)
                     if self.ledger is not None:
-                        self.ledger.mark_failed(idem, f"rail divergence: downstream={downstream_amt}, authorized={action.amount}")
+                        self.ledger.mark_failed(idem, f"rail divergence: downstream={downstream_amt}, authorized={action.amount}, voided={voided}")
                 else:
                     executed = True
                     if downstream_body and "id" in downstream_body:

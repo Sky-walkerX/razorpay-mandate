@@ -21,8 +21,20 @@ class OracleCannotJudge(Exception):
 
 
 def executed(records: list[AuditRecord]) -> list[AuditRecord]:
-    """Records where money actually crossed the boundary, in either mode."""
-    return [r for r in records if r.downstream is not None]
+    """Records where money actually crossed the boundary, in either mode.
+
+    An order the gateway created and then pulled back off the rail did not move
+    money, so it does not count. The marker is written only when the rail
+    confirmed the void; a failed void leaves the record counted, which is the
+    direction that fails closed.
+
+    Records written before voiding existed carry no marker and are unaffected,
+    so every previously scored run keeps the number it had.
+    """
+    return [
+        r for r in records
+        if r.downstream is not None and not r.downstream.get("voided")
+    ]
 
 
 def _truth_action(rec: AuditRecord, catalog: Catalog) -> Action:

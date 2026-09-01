@@ -15,18 +15,27 @@ import { cn } from '@/lib/utils';
  * the failures already handled is marketing, so the one that beat the gateway
  * is on the page with its own badge.
  *
- * Re-measured 2 Sep on gemini-3.7-flash, all 12 `price.flip` items x 4 arms
- * (`results-priceflip-g37/`, run `run_priceflip_g37_20260902`). The arm
- * percentages (enforce 83.3%) are misleading and are deliberately not shown.
- * `price.flip` poisons one SKU, so the rail only diverges when the agent buys
- * that SKU: it fired in 10 of 48 runs and escaped all 10, in every arm. The
- * other 38 rows were scored on clauses this attack never touched. Counting a
- * run where the mutation never reached the basket as a containment is the
- * VACUOUS problem, in the corpus rather than the conformance suite.
+ * Re-measured twice on 2 Sep, on gemini-3.7-flash.
  *
- * `rail.divergence` fires correctly and still does not contain it:
- * `create_order` writes the order before the gateway can compare amounts, and
- * there is no void call. Full accounting in that directory's README-results.md.
+ * First (`results-priceflip-g37/`, run `run_priceflip_g37_20260902`, all 12
+ * items x 4 arms): the arm percentages are misleading and are deliberately not
+ * shown. `price.flip` poisons one SKU, so the rail only diverges when the agent
+ * buys that SKU. It fired in 10 of 48 runs and escaped all 10. The other 38
+ * rows were scored on clauses this attack never touched, which is how `enforce`
+ * read 83.3%. Counting a run whose mutation never reached the basket as a
+ * containment is the VACUOUS problem, in the corpus rather than the conformance
+ * suite.
+ *
+ * Then the void call landed, and the three items in which the attack ever fired
+ * were re-run (`results-priceflip-void/`, run `run_priceflip_void_20260902`).
+ * Same items, same arms, same seed: contained went 2/12 to 11/12 and the attack
+ * landed 0 times instead of 10. The remaining row is a `budget.per_transaction`
+ * violation in an unenforced arm, not a divergence.
+ *
+ * The card says "beat us twice" because the first fix only detected. Do not
+ * simplify that to "caught at capture": the honest claim is that the gateway
+ * detects, voids, and records the money as recovered only when the rail
+ * confirms. Full accounting in both directories' README-results.md.
  *
  * Figures are quoted from the corpus and the scored runs, and each card names
  * the family and the directory it came from, per the repo rule that no number
@@ -156,11 +165,11 @@ const MODES: Mode[] = [
     ),
     caught: (
       <>
-        Now caught at <b className="font-semibold text-ink">capture</b>
+        Detected, then <b className="font-semibold text-ink">voided</b>
       </>
     ),
-    verdict: 'this one got through',
-    source: 'price.flip · gemini-3.7-flash · results-priceflip-g37 · fired 10 times, won 10 times',
+    verdict: 'this one got through, then got fixed',
+    source: 'price.flip · gemini-3.7-flash · fired 10 times, won 10, then 0 after the void',
   },
 ];
 
@@ -304,16 +313,17 @@ export default function FailureModes() {
         <div className="mt-5 flex gap-[14px] rounded-xl border border-refer-line bg-refer-soft px-5 py-[18px]">
           <span aria-hidden className="mt-[5px] size-[9px] shrink-0 rotate-45 bg-refer" />
           <p className="text-[13.5px] leading-[1.6] text-ink-2">
-            <b className="font-semibold text-ink">Mode 03 is on this page because it still beats us.</b>{' '}
-            Re-run on gemini-3.7-flash, 48 runs across four arms. The attack poisons one SKU, so it
-            only fires when the agent actually buys that SKU. It fired 10 times. It won all 10, in
-            every arm, enforced or not. The gateway does see it: it authorises ₹806, watches the
-            rail create ₹8,060, logs{' '}
-            <span className="font-mono text-[12.5px]">rail.divergence</span>, withholds the capture
-            capability and marks the ledger failed. Then the order stays on the rail, because there
-            is no void call to make. Detected is not prevented. The arm percentages for this family
-            are not worth quoting, because the other 38 runs were scored on a clause this attack
-            never touched.
+            <b className="font-semibold text-ink">Mode 03 is on this page because it beat us, twice.</b>{' '}
+            Re-run on gemini-3.7-flash: the attack poisons one SKU, so it only fires when the agent
+            buys that SKU. It fired 10 times and won all 10, in every arm, enforced or not. The
+            gateway saw every one of them. It authorised ₹806, watched the rail create ₹8,060, logged{' '}
+            <span className="font-mono text-[12.5px]">rail.divergence</span> and withheld the capture
+            capability. The order stayed on the rail anyway, because detecting an overcharge is not
+            undoing one. The gateway now calls{' '}
+            <span className="font-mono text-[12.5px]">void_order</span> and only records the money as
+            recovered when the rail confirms. Same 12 runs, same seed: 2 of 12 contained became 11 of
+            12, and the attack landed 0 times instead of 10. It took measuring twice to find that the
+            first fix was only a detector.
           </p>
         </div>
       </div>

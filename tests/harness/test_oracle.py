@@ -298,3 +298,53 @@ def test_the_family_set_is_pinned():
         "retry.storm",
         "time.boundary",
     }
+
+
+def _rec(seq, downstream):
+    """A minimal audit record, enough for `executed()` to judge."""
+    from mandate.gateway.action import Action, ActionType
+    from mandate.gateway.audit import AuditRecord
+    from mandate.gateway.state import Verdict
+    return AuditRecord(
+        seq=seq,
+        ts=datetime(2026, 9, 1, 12, 0, tzinfo=IST),
+        mandate_id="mnd_x",
+        policy_hash="sha256:" + "0" * 64,
+        idem_key="k" * 64,
+        action=Action(type=ActionType.CREATE_ORDER, amount=Paise(1000),
+                      merchant="zepto", items=[]),
+        verdict=Verdict.ALLOW,
+        clauses=[],
+        downstream=downstream,
+        prev_hash="sha256:" + "0" * 64,
+        record_hash="sha256:" + "1" * 64,
+    )
+
+
+def test_a_voided_order_did_not_move_money():
+    from mandate.harness.oracle import executed
+    recs = [
+        _rec(1, {"id": "o1", "amount": 1000, "status": "created"}),
+        _rec(2, {"id": "o2", "amount": 9999, "status": "voided", "voided": True}),
+    ]
+    assert [r.seq for r in executed(recs)] == [1]
+
+
+def test_records_written_before_voiding_existed_are_unaffected():
+    """Every previously scored run must keep the number it had.
+
+    Old downstream bodies carry no `voided` key, so `.get` returns None and the
+    record still counts. This is the whole reason the marker went into the
+    free-form downstream dict rather than onto AuditRecord.
+    """
+    from mandate.harness.oracle import executed
+    legacy = _rec(1, {"id": "order_1", "amount": 50000, "currency": "INR",
+                      "receipt": "r", "notes": {}, "status": "created"})
+    assert executed([legacy]) == [legacy]
+
+
+def test_a_failed_void_still_counts_as_money_moved():
+    """Fails closed: no marker means the order stands."""
+    from mandate.harness.oracle import executed
+    unvoided = _rec(1, {"id": "o1", "amount": 9999, "status": "created"})
+    assert executed([unvoided]) == [unvoided]

@@ -48,6 +48,29 @@ class RazorpayDownstream:
     def fetch_order(self, order_id: str) -> dict:
         return self._c.order.fetch(order_id)
 
+    def void_order(self, order_id: str) -> dict:
+        """Pull back an order the gateway should not have placed.
+
+        Razorpay has no order-cancel endpoint, and it does not need one: an
+        order is an invoice, and nothing settles until a payment is captured
+        against it. So voiding here means proving no payment is outstanding,
+        and refunding one if there is. An order left unpaid expires on its own.
+
+        Not exercised against the live rail. The evaluation runs FakeDownstream,
+        and this path needs a real overcharging merchant to trigger.
+        """
+        try:
+            payments = self._c.order.payments(order_id).get("items", [])
+        except razorpay.errors.ServerError as e:
+            raise DownstreamTimeout(str(e)) from e
+        except razorpay.errors.BadRequestError as e:
+            raise DownstreamError(str(e)) from e
+
+        live = [p for p in payments if p.get("status") in ("authorized", "captured")]
+        for p in live:
+            self._c.payment.refund(p["id"])
+        return {"id": order_id, "status": "voided", "refunded": len(live)}
+
     def find_orders_by_receipt(self, receipt: str) -> list[dict]:
         # Truncated the same way it was written, or reconciliation never matches.
         wanted = _receipt(receipt)
