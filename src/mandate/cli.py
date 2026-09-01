@@ -584,11 +584,17 @@ def serve_cmd(
     token_pool: Annotated[Path, typer.Option("--token-pool")] = Path(".mandate/token_pool.json"),
     capability_secret: Annotated[str | None, typer.Option("--capability-secret", envvar="MANDATE_CAPABILITY_SECRET")] = None,
     static_dir: Annotated[Path | None, typer.Option("--static-dir")] = Path("web/dist"),
+    store: Annotated[Path | None, typer.Option("--store", envvar="MANDATE_STORE_PATH")] = None,
 ) -> None:
     """Run the standalone Mandate Gateway daemon process."""
     import os
 
     import uvicorn
+
+    # `check`, `compile`, `evaluate` and `demo` all do this; serve did not, so
+    # RAZORPAY_KEY_* and MANDATE_CAPABILITY_SECRET in .env were never read and
+    # the daemon silently fell back to FakeDownstream however the file was set.
+    load_dotenv()
 
     from mandate.downstream.fake import FakeDownstream
     from mandate.downstream.razorpay import RazorpayDownstream
@@ -631,6 +637,7 @@ def serve_cmd(
     typer.echo(f"  Public Key : {public_key}")
     typer.echo(f"  Revocations: {revocations}")
     typer.echo(f"  Token Pool : {pool.available_count} available tokens")
+    typer.echo(f"  Storefront : {store or '/tmp/mandate-store/orders.jsonl'}")
 
     app_instance = create_app(
         policy_path=policy,
@@ -642,6 +649,7 @@ def serve_cmd(
         token_pool=pool,
         catalog=catalog,
         static_dir=static_dir if (static_dir and static_dir.exists()) else None,
+        store_path=store or Path("/tmp/mandate-store/orders.jsonl"),
     )
     uvicorn.run(app_instance, host=host, port=port, log_level="info")
 

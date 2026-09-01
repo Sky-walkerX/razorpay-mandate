@@ -4,6 +4,7 @@ import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
 import JudgeConsole from './pages/JudgeConsole';
 import PitchDeck from './pages/PitchDeck';
+import Storefront from './pages/Storefront';
 
 export default function App() {
   return (
@@ -12,6 +13,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/try" element={<JudgeConsole />} />
+        <Route path="/store" element={<Storefront />} />
         <Route path="/pitch" element={<PitchDeck />} />
         <Route path="/v2" element={<Navigate to="/" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />

@@ -7,7 +7,7 @@ evidence of anything.
 """
 import os
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -94,13 +94,18 @@ class FamilyCatalogs:
         # refusal against products they never saw.
         self._by_family: dict[str, Catalog] = {}
         self._clean: Catalog | None = clean
+        # The provenance of the hostile text. A page claiming an attack predates
+        # the gateway should be able to name the corpus it came from.
+        self.corpus_hash: str | None = None
         path = Path(corpus_path)
         if not path.exists():
             return
         keep_clean = self._clean is not None
-        from mandate.harness.corpus import load_corpus
+        from mandate.harness.corpus import corpus_hash, load_corpus
 
-        for item in load_corpus(path):
+        items = load_corpus(path)
+        self.corpus_hash = corpus_hash(items)
+        for item in items:
             if not keep_clean and self._clean is None and item.mutation.clean_catalog is not None:
                 self._clean = item.mutation.clean_catalog
             if item.is_attack and item.family_id not in self._by_family:
@@ -129,12 +134,18 @@ def run_agent_stream(
     compromised: bool,
     mode: Mode,
     max_steps: int = 30,
+    on_decision: Callable[[object], None] | None = None,
 ) -> Iterator[AgentEvent]:
     """Yield one `step` and one `verdict` event per agent turn, then `done`.
 
     `mode` is echoed on every event, not just applied to the gateway. A judge who
     screenshots an unenforced pane has a screenshot of money leaking, so the arm
     it came from travels with the data rather than living only in the CSS.
+
+    `on_decision` receives each `Decision` as it happens. The events are a view
+    for the browser and drop the resolved line items; a caller that needs to
+    record what was actually decided gets the object rather than parsing the
+    view back apart.
     """
     model = AgentModel(catalog=catalog, intent=intent, provider=provider,
                        compromised=compromised)
@@ -147,6 +158,8 @@ def run_agent_stream(
             event="step", mode=mode.value, n=trace.steps, tool=name,
             merchant=args.get("merchant"), items=args.get("items", []),
         )
+        if on_decision is not None:
+            on_decision(decision)
         yield AgentEvent(
             event="verdict", mode=mode.value, n=trace.steps,
             verdict=decision.verdict.value, clause=decision.clause_id,

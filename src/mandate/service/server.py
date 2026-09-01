@@ -5,19 +5,23 @@ Enforces the process boundary: agents communicate with this service
 via scoped bearer tokens over HTTP or MCP.
 """
 import asyncio
+import contextlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from mcp.server.streamable_http_manager import StreamableHTTPASGIApp
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, StreamingResponse
+from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
+from mandate.adapters.mcp_server import build_mcp_server
 from mandate.downstream.fake import FakeDownstream
 from mandate.gateway.action import ActionType, Proposal, ProposalItem
 from mandate.gateway.audit import AuditChainBroken
@@ -47,6 +51,7 @@ from mandate.service.agent_runner import (
     pricebook_for,
     run_agent_stream,
 )
+from mandate.service.order_store import OrderStore
 from mandate.service.session import SessionManager
 from mandate.service.token_pool import PoolExhausted, TokenPool
 
@@ -150,6 +155,7 @@ def create_app(
     catalog: Catalog | None = None,
     static_dir: Path | str | None = None,
     log_private_key_path: Path | str | None = Path(".mandate/keys/log_private.key"),
+    store_path: Path | str | None = None,
 ) -> Starlette:
     if not capability_secret:
         raise ServiceMisconfigured(
@@ -195,6 +201,9 @@ def create_app(
 
     call_budget = DailyCallBudget()
     families = FamilyCatalogs(clean=cat)
+    # `store_path` defaults to None, i.e. in memory. A shared on-disk default
+    # would have every test in the suite appending to one file.
+    store = OrderStore(store_path)
 
     pb = pricebook
     if pb is None:
@@ -235,6 +244,18 @@ def create_app(
             return None, None, JSONResponse({"error": "token_revoked", "detail": f"jti {claims.jti} is revoked"}, status_code=403)
 
         return token, claims, None
+
+    def _audit_row_for(session, decision):
+        """The audit record this decision wrote, or None.
+
+        `Gateway.propose` returns early on `authentication` and `pricebook`
+        before appending anything, so a missing row is a real outcome rather
+        than a failed lookup, and the storefront still shows those refusals.
+        """
+        records = session.audit.records()
+        if records and records[-1].idem_key == decision.idem_key:
+            return records[-1]
+        return None
 
     async def health(req: Request) -> JSONResponse:
         return JSONResponse({
@@ -372,7 +393,8 @@ def create_app(
         if session is None:
             # Fallback for single-token tests or non-session harness
             if not pool.total_count:
-                session = session_manager.create_session(token, claims)
+                session = session_manager.create_session(
+                    token, claims, pricebook=_week_pricebook())
             else:
                 return JSONResponse({
                     "error": "session_not_found",
@@ -396,11 +418,10 @@ def create_app(
         dec = session.gateway.propose(prop, now=now, token=token)
         dec_json = dec.model_dump(mode="json")
 
-        # Read back audit record
-        records = session.audit.records()
-        rec_json = None
-        if records and records[-1].idem_key == dec.idem_key:
-            rec_json = records[-1].model_dump(mode="json")
+        rec = _audit_row_for(session, dec)
+        rec_json = rec.model_dump(mode="json") if rec is not None else None
+        store.record(decision=dec, audit_record=rec, jti=claims.jti,
+                     mandate_id=policy.mandate_id, source="http")
 
         # Compute updated headroom
         headroom = _compute_headroom(policy, session.gateway._state())
@@ -547,6 +568,60 @@ def create_app(
                 "binding_policy_hash": pol_hash,
             })
 
+    async def get_store_orders(req: Request) -> Response:
+        """The customer's order history. Unauthenticated on purpose: it is the
+        shop's own record of what it sold, and carries no token or capability."""
+        raw = req.query_params.get("week")
+        week = int(raw) if raw and raw.isdigit() else None
+
+        etag = store.etag()
+        if req.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers={"ETag": etag})
+
+        rows = store.orders(week=week)
+        executed = [r for r in rows if r.status == "EXECUTED"]
+        return JSONResponse({
+            "week": week if week is not None else store.current_week,
+            "weeks": [w.model_dump(mode="json") for w in store.weeks()],
+            "family": store.week_family(week),
+            "orders": [r.model_dump(mode="json") for r in rows],
+            "totals": {
+                "executed_paise": sum(r.amount_paise for r in executed),
+                "executed_count": len(executed),
+                "refused_count": sum(1 for r in rows if r.status == "REFUSED"),
+            },
+        }, headers={"ETag": etag})
+
+    async def get_store_week(req: Request) -> JSONResponse:
+        return JSONResponse({
+            "week": store.current_week,
+            "family": store.week_family(),
+            "families": families.families,
+            "corpus_hash": families.corpus_hash,
+        })
+
+    async def advance_store_week(req: Request) -> JSONResponse:
+        """Start the next week. A week is a new mandate instance under the same
+        signed policy, so this writes a label and touches no constraint."""
+        _token, _claims, err_resp = _extract_and_verify_token(req)
+        if err_resp is not None:
+            return err_resp
+
+        try:
+            body = await req.json()
+        except (ValueError, TypeError, json.JSONDecodeError):
+            body = {}
+
+        family = (body.get("family") or CLEAN).strip()
+        if families.get(family) is None:
+            # Labelling a week with an attack the corpus cannot load would leave
+            # the page claiming a catalog nobody is shopping.
+            return JSONResponse({"error": f"unknown family {family!r}",
+                                 "families": families.families}, status_code=400)
+
+        marker = store.advance_week(family=family)
+        return JSONResponse({"week": marker.week, "family": marker.family})
+
     async def get_conformance(req: Request):
         conf_file = Path("results-conformance/conformance_results.json")
         if conf_file.exists():
@@ -678,13 +753,25 @@ def create_app(
         loop = asyncio.get_running_loop()
         sentinel = object()
 
+        def on_decision(decision) -> None:
+            # Only the enforced arm reaches the customer's order history. An
+            # OBSERVE row is a counterfactual shown beside the real one in the
+            # console; filing it in the storefront would present money that
+            # never moved as money that did.
+            if mode is not Mode.ENFORCE:
+                return
+            store.record(
+                decision=decision, audit_record=_audit_row_for(session, decision),
+                jti=claims.jti, mandate_id=policy.mandate_id, source="agent",
+            )
+
         def produce() -> None:
             try:
                 for ev in run_agent_stream(
                     intent=intent, catalog=catalog,
                     client=TokenBoundClient(session.gateway, _token),
                     provider=provider, compromised=compromised, mode=mode,
-                    max_steps=max_steps,
+                    max_steps=max_steps, on_decision=on_decision,
                 ):
                     loop.call_soon_threadsafe(queue.put_nowait, ev)
             # This is the error boundary for a worker thread. Anything the model,
@@ -723,6 +810,91 @@ def create_app(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    # One gateway session per MCP connection per week. Keying on the week means
+    # advancing it claims a fresh token and fresh accumulators, which is the
+    # whole of "a week is a new mandate instance under the same signed policy".
+    mcp_sessions: dict[tuple[str, int], str] = {}
+
+    def _week_catalog() -> Catalog:
+        """The catalog the storefront is currently serving.
+
+        A hostile week serves a poisoned catalog from the frozen corpus. The
+        agent reads seller text from it and can do nothing with what it reads,
+        because create_order takes a SKU and a quantity.
+        """
+        return families.get(store.week_family()) or cat
+
+    def _week_pricebook() -> PriceBook:
+        """The service's configured price book in a clean week.
+
+        Only a hostile week derives one from its catalog, and it must: a poisoned
+        SKU the book does not carry would be denied on `pricebook` before any
+        clause ran, so the attack would never reach the thing being tested.
+        """
+        family = store.week_family()
+        if family == CLEAN:
+            return pb
+        catalog = families.get(family)
+        return pricebook_for(catalog) if catalog is not None else pb
+
+    def _session_for(headers):
+        """Resolve the caller's gateway session, claiming a pool token lazily.
+
+        The token never reaches the model. An MCP client asks for an order and
+        the credential is attached on this side of the boundary, which is the
+        property the whole thing rests on. An explicit bearer overrides, so a
+        judge can drive this surface with a token they minted themselves.
+        """
+        auth = headers.get("authorization", "")
+        if auth.lower().startswith("bearer "):
+            token = auth.split(" ", 1)[1].strip()
+            claims = verify_agent_token(token, pub_hex)
+            return (session_manager.get_session(claims.jti)
+                    or session_manager.create_session(
+                        token, claims, pricebook=_week_pricebook()))
+
+        # No session id means a non-HTTP transport or an in-process call. One
+        # walk-up session is the honest answer for a single-instance demo.
+        key = (headers.get("mcp-session-id") or "_walkup", store.current_week)
+        jti = mcp_sessions.get(key)
+        if jti is not None:
+            existing = session_manager.get_session(jti)
+            if existing is not None:
+                return existing
+
+        token, claims = pool.claim_token(pub_hex)
+        mcp_sessions[key] = claims.jti
+        return session_manager.create_session(
+            token, claims, pricebook=_week_pricebook())
+
+    mcp_server = build_mcp_server(
+        session_for=_session_for,
+        catalog_for=_week_catalog,
+        store=store,
+        policy=policy,
+        headroom_fn=_compute_headroom,
+        policy_hash=pol_hash,
+    )
+    # Called for its side effect: it builds the StreamableHTTP session manager.
+    # The Starlette app it returns is discarded, because Starlette does not run
+    # a mounted sub-app's lifespan and the manager would never start. The ASGI
+    # handler is mounted directly and the manager runs from this app's lifespan.
+    #
+    # DNS-rebinding protection is off deliberately. Left on, it defaults to
+    # allowing localhost Host and Origin headers only, which rejects every
+    # request on Cloud Run. The bearer token is what authorises a caller here.
+    mcp_server.streamable_http_app(
+        streamable_http_path="/mcp",
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=False),
+    )
+    mcp_asgi = StreamableHTTPASGIApp(mcp_server.session_manager)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app):
+        async with mcp_server.session_manager.run():
+            yield
+
     middleware = [
         Middleware(
             CORSMiddleware,
@@ -748,6 +920,12 @@ def create_app(
         Route("/v1/revoke", revoke_token, methods=["POST"]),
         Route("/v1/compile", compile_policy, methods=["POST"]),
         Route("/v1/conformance", get_conformance, methods=["GET"]),
+        Route("/v1/store/orders", get_store_orders, methods=["GET"]),
+        Route("/v1/store/week", get_store_week, methods=["GET"]),
+        Route("/v1/store/advance", advance_store_week, methods=["POST"]),
+        # A non-function endpoint leaves `methods` unset, so GET, POST and
+        # DELETE all reach the MCP handler. Registered before the SPA mount.
+        Route("/mcp", endpoint=mcp_asgi),
         Route("/v1/agent", run_agent, methods=["POST"]),
         Route("/v1/agent/families", list_agent_families, methods=["GET"]),
     ]
@@ -755,4 +933,4 @@ def create_app(
     if static_dir and Path(static_dir).exists():
         routes.append(Mount("/", SPAStaticFiles(directory=str(static_dir), html=True)))
 
-    return Starlette(routes=routes, middleware=middleware)
+    return Starlette(routes=routes, middleware=middleware, lifespan=lifespan)
