@@ -77,6 +77,27 @@ By computing prices, totals, and category assignments inside the gateway boundar
 | **Attack Console** | [`/try`](https://mandate-gateway-214049084577.asia-south1.run.app/try) | Live adversary station to test 9 attack presets against warm Cloud Run instances. |
 | **Pitch Keynote** | [`/pitch`](https://mandate-gateway-214049084577.asia-south1.run.app/pitch) | Fullscreen 5-slide keynote deck with Razorpay Blue branding. |
 | **Operator Dashboard** | [`/dashboard`](https://mandate-gateway-214049084577.asia-south1.run.app/dashboard) | Live spend headroom gauges, refusal breakdowns, and Merkle audit feed. |
+| **Storefront** | [`/store`](https://mandate-gateway-214049084577.asia-south1.run.app/store) | A customer's weekly grocery order history. Refused orders keep the shape of delivered ones and name the clause where the delivery status would be. |
+| **MCP endpoint** | `/mcp` | Streamable HTTP. Point your own MCP client at it and shop through the gateway. Six tools, one of which moves money. |
+
+### Shopping through MCP
+
+Add the deployed URL to any MCP client:
+
+```bash
+claude mcp add --transport http mandate \
+  https://mandate-gateway-214049084577.asia-south1.run.app/mcp
+```
+
+Then ask it to buy the week's groceries. The client holds no Razorpay
+credentials and no bearer token: the service claims one per connection, so the
+token never enters the model's context. The tools are `search_catalog`,
+`create_order`, `check_budget`, `list_orders`, `explain_refusal` and
+`get_mandate`. Only `create_order` mutates anything, it accepts a SKU and a
+quantity and nothing else, and it goes through `Gateway.propose` like every
+other caller. `tests/service/test_mcp_no_unmediated_path.py` asserts all three
+of those properties by enumerating the surface rather than by trusting this
+paragraph.
 
 ---
 
@@ -160,8 +181,9 @@ mandate demo --replay --family budget.salami
 ## Product Roadmap for Razorpay
 
 1. **Policy-Scoped Agent API Keys:** API keys issued by Razorpay that carry signed mandate boundaries rather than raw ambient authority.
-2. **Mandate-Aware Razorpay MCP Server:** Native Model Context Protocol (MCP) server wrapping Razorpay endpoints with Mandate gateway enforcement.
+2. **Mandate-Aware Razorpay MCP Server:** built, and mounted at `/mcp`. Razorpay's own MCP server exposes `create_order`, `capture_payment` and `create_payment_link_upi`; this one mirrors those names behind the nine clauses, so an agent written against the official server is drop-in.
 3. **Published Containment Benchmark:** Standardizing adversarial red-team conformance for agentic commerce platforms across India.
+4. **Constraints on a UPI Autopay mandate:** UPI Autopay already gives an agent standing authority to debit without per-payment approval, bounded by a single `max_amount` per debit. That is one clause. This project is the other eight, plus an audit log that names which one fired.
 
 ---
 

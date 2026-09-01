@@ -76,6 +76,13 @@ By computing prices, line totals, and category assignments inside the gateway bo
 
 Every financial proposal dispatched to the gateway along the request path (`Gateway.propose(proposal, now)`) executes through eight discrete, deterministic stages:
 
+The agent reaches this flow one of two ways, and both land on the same
+`Gateway.propose`. `POST /v1/orders` is the direct HTTP surface. `/mcp` is a
+streamable-HTTP Model Context Protocol server mounted into the same app,
+exposing six tools of which only `create_order` mutates anything; it accepts a
+SKU and a quantity, and the bearer token is attached on the gateway's side of
+the boundary so it never enters the model's context.
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -87,7 +94,7 @@ sequenceDiagram
     participant Downstream as Razorpay Rail
     participant Audit as Hash-Chain Audit
 
-    Agent->>Gateway: POST /v1/orders (Proposal + Bearer Token)
+    Agent->>Gateway: POST /v1/orders or MCP create_order [Proposal + Bearer Token]
     Gateway->>Gateway: Step 1: Verify Ed25519 Token & Revocation List
     Gateway->>PriceBook: Step 2: Resolve SKUs to canonical prices & categories
     Gateway->>Ledger: Step 3: Accumulate State (Spent Budget, Velocity, Recency)

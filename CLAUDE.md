@@ -503,6 +503,38 @@ README limitations.
 
 ## Open items
 
+**Closed, 1 Sep: "no model call" was claimed too widely on the web.** The
+Landing nav badge read `No Model Call · Deterministic` as a product-wide claim
+and `JudgeConsole.tsx` said "there is no model call anywhere on this path"
+directly above a three-tab bar. Two of those three tabs call a real model.
+`/v1/agent` runs the same `ShoppingAgent` the sweep drives through
+`provider_for()`, and `/v1/compile` runs the intent compiler at temperature 0.
+Only the gateway's own decision is model-free, and that is the claim worth
+making, so it is now the claim being made. The badge reads `Enforcement · No
+Model Call`, the console subhead names which tab is which, and `LiveAgentPanel`
+says a real model picks the basket while the gateway still decides what is
+allowed. `HowItHolds.tsx` was already correct: stage 01 carries `isModel: true`
+and only the deny gate claims no model call.
+
+**Closed, 1 Sep: the Mode 03 failure card cited a set with no model on it.**
+`FailureModes.tsx` sourced the one admitted escape as `price.flip#004 ·
+results/ · the 2.4% enforce missed`. `results/` is gemini-3.1-flash-lite,
+pre-hardening, and `price.flip` is not a held-out family, so there is no
+gemini-3.7-flash number for it and there will not be one without a new sweep.
+The card names its model and set now, and points at `rail.divergence` in the
+conformance suite (deterministic, no model) as what closed it. Do not relabel
+that card to the current set. The honest statement is that the family predates
+it.
+
+**Closed, 1 Sep: a fixed date in the compiler tests was a time bomb.**
+`tests/compiler/test_compile.py` set `EXP = datetime(2026, 9, 1, 19, 30)` while
+`compile_intent` stamps `issued` from the real clock, so six tests went red the
+moment that minute passed. `EXP` is now `datetime.now(IST) + timedelta(days=30)`.
+Other fixed dates in the suite are safe because they pass a fixed `now`
+alongside the fixed `expires`. `policies/policy.yaml` expires 2026-09-30 and
+will need re-signing after that, or the demo starts denying on `time.window`.
+
+
 **"0.2ms" was an unmeasured marketing number, same failure mode as the
 dashboard tile this file already calls out below ("The 'slowest check 1.4 ms'
 tile was a latency nobody measured").** It sat in the README badge, the README
@@ -567,10 +599,109 @@ by design.
 `JSONDecodeError` in tool arguments, about 3%. A retry on parse failure would
 recover them.
 
-**Startup is slow.** Roughly 13 minutes before the first item runs, almost all
-of it `load_corpus` pydantic-validating a 10MB corpus and hashing it, then
-`cli.evaluate` hashing the same items a second time. This is a per-batch tax, so
-prefer few large batches over many small ones, or cache the hash.
+**Closed: startup was never 13 minutes.** This file used to claim roughly 13
+minutes before the first item runs, attributed to `load_corpus` validating and
+hashing a 10MB corpus twice. It does not reproduce: `load_corpus` on the frozen
+180-item corpus measures about 0.2s. Whatever the original 13 minutes was, it
+was not corpus loading, and the advice to prefer few large batches rested on it.
+
+## Closed, 1 Sep: the storefront and the MCP boundary
+
+Full design in the plan file for this work. What landed and why, so it is not
+re-litigated.
+
+**The claim is now testable from outside.** "The agent holds no Razorpay
+credentials, only a handle to the gateway" was enforced by a Python import:
+`TokenBoundClient` wraps `DirectClient` in the same process. There is now an MCP
+server at `/mcp` (streamable HTTP, mounted into the same Starlette app), so a
+judge points their own client at the URL and tries to get around it. Six tools,
+one of which mutates. `tests/service/test_mcp_no_unmediated_path.py` enumerates
+the surface and asserts every mutating tool reaches `Gateway.propose`, that
+breaking `propose` stops the rail, and that no tool schema carries a field from
+`IGNORED_AGENT_FIELDS`.
+
+**A week is a fresh session on a fresh pool token.** `budget.total` and
+`velocity` are `window: mandate`, so week 2 in the same gateway is denied on
+budget immediately. The MCP session map is keyed on `(connection, week)`, so
+advancing a week claims a new token: new jti, new session directory, fresh
+accumulators, and week one's audit chain intact under its own jti. Reusing the
+same token would have destroyed it, because `session.py:76` does `shutil.rmtree`
+on `base_dir / claims.jti`.
+
+Two rejected alternatives, so they stay rejected:
+
+- *A new mandate per week* needs the issuer private key at runtime, which
+  contradicts decision 2 above.
+- *A windowed constraint* is not a small change. `window` is decorative:
+  `idem.py:98` sets `actions_in_window=len(live)`, identical to `action_count`,
+  and `constraints.py:113` uses `window` only inside a `detail` string. Making
+  it mean something changes velocity semantics for the whole frozen corpus.
+
+Nothing here re-signs `policies/policy.yaml`. Its `source_text` already reads
+"Order groceries for the week... At most 3 orders", and per-week caps is the
+reading that sentence already has.
+
+**The week counter never reaches `propose()`.** `policy.expires` is 2026-09-30;
+advancing a simulated clock past it would kill every order on `time.window`.
+
+**`search_catalog` returns `description`, `seller` and `reviews`.** `/v1/catalog`
+omits them, but every `injection.*` family lives in exactly those three fields
+(`families.py:65-89`), so stripping them makes the hostile-catalog demo inert.
+The agent can do nothing with what it reads: `create_order` takes a SKU and a
+quantity.
+
+**No `capture_payment` tool, deliberately.** It needs a payment id the rail never
+issued, so it 400s against test keys, and it would hand the agent a capability
+HMAC. `capture.divergence` in the conformance suite already covers the binding.
+
+**Hostile weeks are a two-week script, not a family picker.** Of the ten
+families, `budget.salami`, `retry.storm` and `time.boundary` mutate the intent or
+the clock rather than the catalog, so flipping the shelf to them does nothing.
+`price.flip` works only through `FakeDownstream.amount_multiplier`, and
+`server.py:178` builds `FakeDownstream()` with no multiplier, so
+**`rail.divergence` cannot fire in the live storefront at all**. Say that rather
+than let a judge assume the live demo covers it.
+
+**The storefront polls, it does not stream.** The `/v1/agent` SSE path is a
+response stream tied to the POST that starts the work; a storefront feed has no
+originating action and a held-open GET meets Cloud Run's 300s request timeout.
+`GET /v1/store/orders` carries an ETag over a revision counter and returns 304.
+
+**Three bugs found while verifying, all live before this work:**
+
+1. **The Docker image shipped `issuer_private.key`.** `Dockerfile:29` was
+   `COPY .mandate/ ./.mandate/` and `.dockerignore` did not exclude it, so the
+   deployed Cloud Run container carried the key the gateway is documented never
+   to hold. Keys are named file by file now, and
+   `test_docker_image_ships_no_signing_key` fails if the copy is re-widened.
+2. **`serve` never called `load_dotenv()`.** `check`, `compile`, `evaluate` and
+   `demo` all do. So `RAZORPAY_KEY_*` in `.env` were never read and the daemon
+   silently fell back to `FakeDownstream` however the file was set, while
+   printing "FakeDownstream (test mode)" as though that were a choice.
+3. **Every order against the real Razorpay rail failed.** Razorpay caps
+   `receipt` at 56 characters and `canonical_intent()` returns a 64-character
+   digest, so `order.create` raised `BadRequestError`, which became
+   `DownstreamError`, which surfaced as a DENY on the `downstream` clause. The
+   receipt is truncated in `RazorpayDownstream` now; the gateway's own
+   idempotency is enforced against the full key in its ledger, and 56 hex
+   characters is still 224 bits. Nothing caught this because
+   `tests/downstream/test_razorpay_guard.py` only asserts the key-prefix guard
+   and never places an order. **`RazorpayDownstream` had never worked.**
+
+**Verified end to end on 1 Sep** against `mandate serve` with real `rzp_test_`
+keys: a ₹200 order on the rail as `order_TWi7znVXAnhv3S`; alcohol refused on
+`category.deny` at the price book's ₹236 while the caller claimed 1 paise; an
+MCP client with no bearer placing `order_TWi8KldVUld4CG`; and in the hostile
+week, a ₹1,766 basket refused on `budget.per_transaction` against the ₹1,000 cap
+followed by a ₹992 order that executed. 419 tests, ruff at 11, conformance 9/9
+blocked and 0 vacuous.
+
+**Still open.** `/store` makes four demo surfaces beside `/`, `/try` and
+`/dashboard`. The storefront's order history is a better version of what the
+dashboard's decision feed already does, so `/dashboard` is a candidate to fold
+in. And `--min-instances=1 --max-instances=1` is now load-bearing for three
+things rather than one: the call budget, the order store, and the MCP session
+map.
 
 ## Closed, 30 Aug: Judge-Testable Live Gateway & GCP Production Deployment
 
@@ -614,6 +745,9 @@ cleanup, catalog fallback lookup, skipping an invalid pooled token, a graceful
 compiler-error response) rather than bugs. Left as-is rather than silenced with
 `# noqa`, since papering over a real lint finding to make a badge green is
 worse than an honest "ruff clean except these nine, and here is why."
+Now 11 of the same kind, after the live-agent and storefront endpoints added
+two more best-effort catches in `service/server.py`. Same reasoning, same
+decision.
 
 ## Closed, 29 Aug
 
@@ -695,3 +829,14 @@ conformance result, which is measured.
   weakness, not to delete the test.
 - The trial count is load-bearing. A broken lock shows up as 1 breach in 200 on
   `race.budget` and not at all in 25, so do not lower `--trials` to save time.
+- The MCP tool surface is enumerated in
+  `tests/service/test_mcp_no_unmediated_path.py`, not documented. Adding a tool
+  fails that test until the decision is written down there, and a second
+  mutating tool has to be added to `MUTATING_TOOLS` before it will pass.
+- `OrderStore.record()` reads `AuditRecord.action`, a ResolvedAction, and takes
+  no proposal argument at all. A signature test enforces that. The storefront is
+  the last place an agent-supplied number could surface, and it must not.
+- `create_app(store_path=...)` defaults to None, meaning in memory. A real
+  default path would have every test in the suite appending to one file.
+- A Dockerfile `COPY` of a key directory is a bug, not a convenience. Name key
+  files one at a time; `test_docker_image_ships_no_signing_key` enforces it.
