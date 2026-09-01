@@ -31,6 +31,7 @@ class Session:
     gateway: Gateway
     audit: AuditLog
     ledger: Ledger
+    mode: Mode = Mode.ENFORCE
 
 
 class SessionManager:
@@ -58,7 +59,17 @@ class SessionManager:
         self._sessions: dict[str, Session] = {}
         self._lock = threading.Lock()
 
-    def create_session(self, token: str, claims: TokenClaims) -> Session:
+    def create_session(
+        self,
+        token: str,
+        claims: TokenClaims,
+        mode: Mode = Mode.ENFORCE,
+        pricebook: PriceBook | None = None,
+    ) -> Session:
+        """Build a session. `mode` is a parameter so the console can run an
+        unenforced control arm beside the enforced one; `pricebook` so a run
+        against a hostile catalog resolves prices from that catalog rather than
+        the default one, which would fail closed on every unknown SKU."""
         with self._lock:
             self._evict_idle_locked()
 
@@ -74,9 +85,9 @@ class SessionManager:
                 policy=self.policy,
                 downstream=self.downstream,
                 audit=audit,
-                mode=Mode.ENFORCE,
+                mode=mode,
                 ledger=ledger,
-                pricebook=self.pricebook,
+                pricebook=pricebook if pricebook is not None else self.pricebook,
                 capability_secret=self.capability_secret,
                 issuer_public_key=self.issuer_public_key,
                 revocations=self.revocations,
@@ -93,6 +104,7 @@ class SessionManager:
                 gateway=gw,
                 audit=audit,
                 ledger=ledger,
+                mode=mode,
             )
             self._sessions[claims.jti] = session
             return session

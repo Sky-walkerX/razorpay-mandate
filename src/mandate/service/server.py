@@ -4,6 +4,7 @@ Holds RAZORPAY_KEY_*, the price book, and the Issuer public key.
 Enforces the process boundary: agents communicate with this service
 via scoped bearer tokens over HTTP or MCP.
 """
+import asyncio
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,13 +14,14 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from mandate.downstream.fake import FakeDownstream
 from mandate.gateway.action import ActionType, Proposal, ProposalItem
 from mandate.gateway.audit import AuditChainBroken
+from mandate.gateway.core import Mode
 from mandate.gateway.pricebook import DictPriceBook, PriceBook
 from mandate.gateway.revocation import RevocationList
 from mandate.gateway.state import AccumulatedState, Verdict
@@ -36,6 +38,15 @@ from mandate.policy.crypto import SignatureInvalid, sign_bytes
 from mandate.policy.loader import load as load_policy
 from mandate.policy.models import ConstraintId as C
 from mandate.policy.models import Policy
+from mandate.service.agent_runner import (
+    CLEAN,
+    CeilingReached,
+    DailyCallBudget,
+    FamilyCatalogs,
+    TokenBoundClient,
+    pricebook_for,
+    run_agent_stream,
+)
 from mandate.service.session import SessionManager
 from mandate.service.token_pool import PoolExhausted, TokenPool
 
@@ -182,6 +193,9 @@ def create_app(
             from mandate.harness.catalog import generate_catalog
             cat = generate_catalog(seed=42)
 
+    call_budget = DailyCallBudget()
+    families = FamilyCatalogs(clean=cat)
+
     pb = pricebook
     if pb is None:
         if cat is not None:
@@ -190,6 +204,10 @@ def create_app(
             pb = DictPriceBook()
 
     pool = token_pool if token_pool is not None else TokenPool([])
+    # The pool must skip tokens already revoked on disk, or the first session
+    # after a restart is handed a dead token.
+    if pool.is_revoked is None:
+        pool.is_revoked = revocations.is_revoked
 
     session_manager = SessionManager(
         policy=policy,
@@ -590,6 +608,121 @@ def create_app(
         except (ValueError, IndexError) as e:
             return JSONResponse({"error": str(e)}, status_code=400)
 
+
+    async def list_agent_families(req: Request):
+        return JSONResponse({
+            "families": families.families,
+            "calls_remaining_today": call_budget.remaining,
+            "ceiling": call_budget.ceiling,
+        })
+
+    async def run_agent(req: Request):
+        """Run a live model agent against this session's gateway, streaming each step.
+
+        The agent is the same ShoppingAgent the sweep drives. It reaches the gateway
+        through DirectClient, so every proposal still passes token verification,
+        resolution and the nine clauses.
+        """
+        _token, claims, err_resp = _extract_and_verify_token(req)
+        if err_resp is not None:
+            return err_resp
+        assert claims is not None
+
+        try:
+            body = await req.json()
+        except (ValueError, TypeError, json.JSONDecodeError):
+            body = {}
+
+        intent = (body.get("intent") or "").strip()
+        if not intent:
+            return JSONResponse({"error": "intent is required"}, status_code=400)
+
+        family = body.get("family") or CLEAN
+        catalog = families.get(family)
+        if catalog is None:
+            return JSONResponse(
+                {"error": f"unknown family {family!r}", "families": families.families},
+                status_code=400,
+            )
+
+        mode = Mode.OBSERVE if body.get("mode") == "observe" else Mode.ENFORCE
+        compromised = bool(body.get("compromised"))
+        max_steps = min(int(body.get("max_steps") or 30), 30)
+
+        try:
+            call_budget.reserve(max_steps)
+        except CeilingReached as e:
+            return JSONResponse(
+                {"error": "daily_call_ceiling_reached", "detail": str(e),
+                 "ceiling": call_budget.ceiling},
+                status_code=429,
+            )
+
+        # One session is one run. Recreating it with the requested mode and the
+        # selected catalog's price book means /v1/audit afterwards shows exactly
+        # this run, and a hostile SKU resolves instead of failing closed.
+        session = session_manager.create_session(
+            _token, claims, mode=mode, pricebook=pricebook_for(catalog)
+        )
+
+        try:
+            from mandate.llm import provider_for
+
+            provider = provider_for()
+        except Exception as e:  # any provider import or config failure is a 503
+            call_budget.refund(max_steps)
+            return JSONResponse({"error": "no_model_provider", "detail": str(e)},
+                                status_code=503)
+
+        queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+        sentinel = object()
+
+        def produce() -> None:
+            try:
+                for ev in run_agent_stream(
+                    intent=intent, catalog=catalog,
+                    client=TokenBoundClient(session.gateway, _token),
+                    provider=provider, compromised=compromised, mode=mode,
+                    max_steps=max_steps,
+                ):
+                    loop.call_soon_threadsafe(queue.put_nowait, ev)
+            # This is the error boundary for a worker thread. Anything the model,
+            # the provider or the gateway raises has to reach the browser as an
+            # `error` event, because a thread that dies silently hangs the stream.
+            except Exception as e:
+                loop.call_soon_threadsafe(
+                    queue.put_nowait,
+                    {"event": "error", "mode": mode.value, "detail": f"{type(e).__name__}: {e}"},
+                )
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, sentinel)
+
+        async def events():
+            yield (
+                "event: start\ndata: "
+                + json.dumps({
+                    "mode": mode.value, "family": family, "compromised": compromised,
+                    "intent": intent, "jti": claims.jti, "max_steps": max_steps,
+                })
+                + "\n\n"
+            )
+            task = asyncio.create_task(asyncio.to_thread(produce))
+            try:
+                while True:
+                    ev = await queue.get()
+                    if ev is sentinel:
+                        break
+                    yield f"event: {ev['event']}\ndata: " + json.dumps(ev, default=str) + "\n\n"
+            finally:
+                await task
+
+        return StreamingResponse(
+            events(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     middleware = [
         Middleware(
             CORSMiddleware,
@@ -615,6 +748,8 @@ def create_app(
         Route("/v1/revoke", revoke_token, methods=["POST"]),
         Route("/v1/compile", compile_policy, methods=["POST"]),
         Route("/v1/conformance", get_conformance, methods=["GET"]),
+        Route("/v1/agent", run_agent, methods=["POST"]),
+        Route("/v1/agent/families", list_agent_families, methods=["GET"]),
     ]
 
     if static_dir and Path(static_dir).exists():

@@ -3,10 +3,15 @@
 Holds pre-minted agent bearer tokens bound to the mandate policy.
 Tokens are handed out one per session. Revoked tokens are retired permanently
 and never return to the pool.
+
+`_retired` is per-process, so it forgets across a restart. The persistent record
+is the RevocationList on disk, and `claim_token` consults it through
+`is_revoked`. Without that, a token revoked in yesterday's demo is handed to
+today's first visitor and every call they make fails authentication.
 """
 import json
 import threading
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from mandate.gateway.tokens import TokenClaims, verify_agent_token
@@ -17,7 +22,12 @@ class PoolExhausted(Exception):
 
 
 class TokenPool:
-    def __init__(self, tokens: Sequence[str] | None = None) -> None:
+    def __init__(
+        self,
+        tokens: Sequence[str] | None = None,
+        is_revoked: Callable[[str], bool] | None = None,
+    ) -> None:
+        self.is_revoked = is_revoked
         self._available: list[str] = list(tokens or [])
         self._claimed: dict[str, str] = {}
         self._retired: set[str] = set()
@@ -66,6 +76,10 @@ class TokenPool:
 
                 if claims.jti in self._retired:
                     continue  # burned token
+
+                if self.is_revoked is not None and self.is_revoked(claims.jti):
+                    self._retired.add(claims.jti)
+                    continue  # revoked in an earlier session and still on disk
 
                 self._claimed[claims.jti] = tok
                 return tok, claims

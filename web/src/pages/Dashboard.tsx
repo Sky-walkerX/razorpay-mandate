@@ -187,12 +187,19 @@ export default function Dashboard() {
               <div className="font-mono text-[9.5px] uppercase tracking-[0.11em] text-ink-3">
                 with no gateway at all
               </div>
-              <div className="mt-2 font-mono text-[27px] font-semibold leading-none tracking-[-0.045em] text-halt">
+              {/* The figure counts what was contained, so it stays neutral: red
+                  on a containment count would read as though 8 were the failure.
+                  The halt ink goes on the escapes, which are the failure. */}
+              <div className="mt-2 font-mono text-[27px] font-semibold leading-none tracking-[-0.045em]">
                 {baseline.contained} / {baseline.total}
               </div>
               <p className="mt-2.5 text-[12.5px] leading-[1.5] text-ink-2">
-                contained in the baseline arm · clearly below the enforced arms, though{' '}
-                {baseline.total} runs is too few to put a precise figure on it
+                contained ·{' '}
+                <b className="font-medium text-halt">
+                  {baseline.total - baseline.contained} executed against your card
+                </b>{' '}
+                — clearly below the enforced arms, though {baseline.total} runs is too few to put a
+                precise figure on it
               </p>
             </div>
           </div>

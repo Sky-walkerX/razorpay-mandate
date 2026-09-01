@@ -25,6 +25,7 @@ from mandate.gateway.tokens import TokenError, verify_agent_token
 from mandate.money import Paise
 from mandate.policy.canonical import policy_hash
 from mandate.policy.crypto import SignatureInvalid
+from mandate.policy.models import ConstraintId as C
 from mandate.policy.models import Policy
 
 
@@ -51,12 +52,21 @@ class Decision(BaseModel):
     capability: str | None = None
 
 
+# Clauses whose observed/limit pair counts things rather than measuring money.
+# Without this, `velocity: limit 3` renders as "limit \u20b90.03", which is both wrong
+# and fed straight back to the agent as the reason it was refused.
+_COUNT_CLAUSES = frozenset({C.VELOCITY, C.QUANTITY_MAX_PER_ITEM})
+
+
 def _explain(clause) -> str:
     if clause is None:
         return "allowed"
     obs, lim = clause.observed, clause.limit
     if isinstance(obs, int) and isinstance(lim, int):
-        return f"{clause.id}: limit ₹{lim / 100:.2f}, attempted ₹{obs / 100:.2f}"
+        if clause.id in _COUNT_CLAUSES:
+            unit = "orders" if clause.id == C.VELOCITY else "per item"
+            return f"{clause.id}: limit {lim} {unit}, attempted {obs}"
+        return f"{clause.id}: limit \u20b9{lim / 100:.2f}, attempted \u20b9{obs / 100:.2f}"
     return f"{clause.id}: {clause.detail or f'observed {obs}, allowed {lim}'}"
 
 

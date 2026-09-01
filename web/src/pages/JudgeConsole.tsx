@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import { RotateCw, Send, Sliders, FileCode2, Zap } from 'lucide-react';
+import { RotateCw, Send, Sliders, FileCode2, Bot, Zap } from 'lucide-react';
 
 import { PARTS } from '@/data/policy';
+import LiveAgentPanel from '@/components/v2/LiveAgentPanel';
 import { rupees } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { SellerChip } from '@/components/v2/SellerMark';
@@ -268,7 +269,7 @@ export default function JudgeConsole() {
   const [decisions, setDecisions] = useState<DecisionRecord[]>([]);
   const [results, setResults] = useState<Record<string, DecisionRecord>>({});
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'console' | 'compiler'>('console');
+  const [activeTab, setActiveTab] = useState<'console' | 'agent' | 'compiler'>('console');
   const [selectedPresetId, setSelectedPresetId] = useState<string>('injection');
   const [showCustom, setShowCustom] = useState(false);
 
@@ -691,7 +692,7 @@ export default function JudgeConsole() {
           </div>
 
           <div className="flex gap-1 rounded-[9px] border border-rule bg-sheet p-1">
-            {(['console', 'compiler'] as const).map((t) => (
+            {(['console', 'agent', 'compiler'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setActiveTab(t)}
@@ -700,8 +701,14 @@ export default function JudgeConsole() {
                   activeTab === t ? 'bg-bond font-medium text-ink shadow-2xs' : 'text-ink-3',
                 )}
               >
-                {t === 'console' ? <Zap className="size-[13px]" /> : <FileCode2 className="size-[13px]" />}
-                {t === 'console' ? 'Console' : 'Compiler'}
+                {t === 'console' ? (
+                  <Zap className="size-[13px]" />
+                ) : t === 'agent' ? (
+                  <Bot className="size-[13px]" />
+                ) : (
+                  <FileCode2 className="size-[13px]" />
+                )}
+                {t === 'console' ? 'Console' : t === 'agent' ? 'Live agent' : 'Compiler'}
               </button>
             ))}
           </div>
@@ -718,7 +725,9 @@ export default function JudgeConsole() {
         )}
       </div>
 
-      {activeTab === 'console' ? (
+      {activeTab === 'agent' ? (
+        <LiveAgentPanel token={session?.token ?? null} />
+      ) : activeTab === 'console' ? (
         <div className="grid items-start gap-5 p-[26px] max-sm:px-4 lg:grid-cols-[372px_minmax(0,1fr)]">
           {/* ── Attacks ───────────────────────────────────────────────── */}
           <div className="overflow-hidden rounded-xl border border-rule bg-bond">
