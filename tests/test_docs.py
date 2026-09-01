@@ -28,6 +28,34 @@ def test_no_unmeasured_latency_in_web():
     assert not violations, "Found unmeasured latency numbers in web/src:\n" + "\n".join(violations)
 
 
+def test_docker_image_ships_no_signing_key():
+    """The gateway holds the issuer public key only, and the image must match.
+
+    `COPY .mandate/ ./.mandate/` shipped issuer_private.key to Cloud Run, so the
+    deployed container could mint itself a higher cap. That is the one property
+    the offline issuer exists to provide, and nothing failed when it was broken.
+    Keys are named file by file now; this asserts nobody re-widens the copy.
+    """
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+    copied = [
+        line.split()[1]
+        for line in dockerfile.splitlines()
+        if line.startswith("COPY ") and "--from=" not in line
+    ]
+
+    # A directory copy of .mandate/ or of a keys dir sweeps the private key in.
+    wildcards = [src for src in copied if src.rstrip("/").endswith((".mandate", "keys"))]
+    assert not wildcards, (
+        f"Dockerfile copies key directories wholesale: {wildcards}. "
+        "Name each key file instead, so a new private key is not shipped by default."
+    )
+
+    assert not [src for src in copied if "private" in src], (
+        "Dockerfile copies a private key into the image"
+    )
+
+
 def test_conformance_badge_matches_suite():
     """Assert README.md conformance badge matches the actual conformance suite attack count."""
     readme_path = REPO_ROOT / "README.md"

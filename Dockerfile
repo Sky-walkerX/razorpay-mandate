@@ -26,7 +26,13 @@ COPY policies/ ./policies
 COPY results/ ./results
 COPY results-conformance/ ./results-conformance
 COPY revocations.jsonl ./revocations.jsonl
-COPY .mandate/ ./.mandate/
+
+# The issuer keypair is named file by file, never `COPY .mandate/`. The gateway
+# verifies tokens and must hold the public key only; an image carrying
+# issuer_private.key could mint itself a higher cap, which is the whole property
+# the offline issuer exists to provide.
+COPY .mandate/token_pool.json ./.mandate/token_pool.json
+COPY .mandate/keys/issuer_public.key ./.mandate/keys/issuer_public.key
 
 # Copy built frontend assets from Stage 1
 COPY --from=frontend /app/web/dist ./web/dist

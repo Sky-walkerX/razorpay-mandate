@@ -1,5 +1,11 @@
 .venv
 .git
+
+# Belt and braces beside the file-by-file COPY in the Dockerfile. The gateway
+# never holds a signing key.
+.mandate/keys/issuer_private.key
+.mandate/keys/log_private.key
+.env
 .pytest_cache
 .coverage
 __pycache__
