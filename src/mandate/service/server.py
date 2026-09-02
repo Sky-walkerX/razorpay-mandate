@@ -142,6 +142,21 @@ class SPAStaticFiles(StaticFiles):
             return await super().get_response("index.html", scope)
 
 
+
+def _source(cid, policy) -> str:
+    """Where a clause came from, in the interface's vocabulary.
+
+    Three buckets, not two. A clause RBI imposes was neither heard from the user
+    nor guessed by the compiler, and labelling it "inferred" would credit the model
+    for a statutory floor and invite the user to decline something they cannot.
+    """
+    if cid in policy.provenance.regulatory:
+        return "regulatory"
+    if cid in policy.provenance.stated:
+        return "heard"
+    return "inferred"
+
+
 def create_app(
     policy_path: Path | str = Path("policies/policy.yaml"),
     public_key_path: Path | str | None = None,
@@ -312,7 +327,7 @@ def create_app(
             parts.append({
                 "n": 1, "key": "budget.total", "label": "Total budget",
                 "kind": "limit", "bound": f"₹{lim/100:,.2f}", "max": lim,
-                "source": "heard" if C.BUDGET_TOTAL in policy.provenance.stated else "inferred",
+                "source": _source(C.BUDGET_TOTAL, policy),
             })
         # 2. Max per order
         if C.BUDGET_PER_TRANSACTION in c:
@@ -321,7 +336,7 @@ def create_app(
             parts.append({
                 "n": 2, "key": "budget.per_transaction", "label": "Max per order",
                 "kind": "limit", "bound": f"₹{lim/100:,.2f}", "max": lim,
-                "source": "heard" if C.BUDGET_PER_TRANSACTION in policy.provenance.stated else "inferred",
+                "source": _source(C.BUDGET_PER_TRANSACTION, policy),
             })
         # 3. Max per item
         if C.BUDGET_PER_ITEM in c:
@@ -330,7 +345,7 @@ def create_app(
             parts.append({
                 "n": 3, "key": "budget.per_item", "label": "Max per item",
                 "kind": "limit", "bound": f"₹{lim/100:,.2f}", "max": lim,
-                "source": "heard" if C.BUDGET_PER_ITEM in policy.provenance.stated else "inferred",
+                "source": _source(C.BUDGET_PER_ITEM, policy),
             })
         # 4. Orders per mandate
         if C.VELOCITY in c:
@@ -339,7 +354,7 @@ def create_app(
             parts.append({
                 "n": 4, "key": "velocity", "label": "Orders per mandate",
                 "kind": "limit", "bound": f"{lim} per mandate", "max": lim,
-                "source": "heard" if C.VELOCITY in policy.provenance.stated else "inferred",
+                "source": _source(C.VELOCITY, policy),
             })
         # 5. Max qty per item
         if C.QUANTITY_MAX_PER_ITEM in c:
@@ -348,7 +363,7 @@ def create_app(
             parts.append({
                 "n": 5, "key": "quantity.max_per_item", "label": "Max qty per item",
                 "kind": "limit", "bound": f"{lim} per item", "max": lim,
-                "source": "heard" if C.QUANTITY_MAX_PER_ITEM in policy.provenance.stated else "inferred",
+                "source": _source(C.QUANTITY_MAX_PER_ITEM, policy),
             })
         # 6. Allowed sellers
         if C.MERCHANT_ALLOW in c:
@@ -356,7 +371,7 @@ def create_app(
             parts.append({
                 "n": 6, "key": "merchant.allow", "label": "Allowed sellers",
                 "kind": "rule", "bound": ", ".join(s.title() for s in sellers), "max": None,
-                "source": "heard" if C.MERCHANT_ALLOW in policy.provenance.stated else "inferred",
+                "source": _source(C.MERCHANT_ALLOW, policy),
             })
         # 7. Blocked categories
         if C.CATEGORY_DENY in c:
@@ -364,14 +379,14 @@ def create_app(
             parts.append({
                 "n": 7, "key": "category.deny", "label": "Blocked categories",
                 "kind": "rule", "bound": ", ".join(ct.title() for ct in cats), "max": None,
-                "source": "heard" if C.CATEGORY_DENY in policy.provenance.stated else "inferred",
+                "source": _source(C.CATEGORY_DENY, policy),
             })
         # 8. Valid until
         if C.TIME_WINDOW in c or policy.expires:
             parts.append({
                 "n": 8, "key": "time_window", "label": "Valid until",
                 "kind": "rule", "bound": policy.expires.strftime("%-d %b %Y") if policy.expires else "Session", "max": None,
-                "source": "heard" if C.TIME_WINDOW in policy.provenance.stated else "inferred",
+                "source": _source(C.TIME_WINDOW, policy),
             })
 
         return JSONResponse({
@@ -545,7 +560,7 @@ def create_app(
                     "mandate_id": compiled_pol.mandate_id,
                     "policy_hash": policy_hash(compiled_pol),
                     "constraints": [
-                        {"id": str(cid), "spec": spec, "source": "heard" if cid in compiled_pol.provenance.stated else "inferred"}
+                        {"id": str(cid), "spec": spec, "source": _source(cid, compiled_pol)}
                         for cid, spec in compiled_pol.constraints.items()
                     ],
                     "fallback": False,
@@ -560,7 +575,7 @@ def create_app(
                 "mandate_id": policy.mandate_id,
                 "policy_hash": pol_hash,
                 "constraints": [
-                    {"id": str(cid), "spec": spec, "source": "heard" if cid in policy.provenance.stated else "inferred"}
+                    {"id": str(cid), "spec": spec, "source": _source(cid, policy)}
                     for cid, spec in policy.constraints.items()
                 ],
                 "fallback": True,

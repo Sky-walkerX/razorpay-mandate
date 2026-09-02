@@ -27,6 +27,8 @@ class AP2MandateExtensions(BaseModel):
     velocity_window_seconds: int | None = None
     time_window_start: datetime | None = None
     time_window_end: datetime | None = None
+    # RBI Digital Payments E-mandate Framework, 2026: AFA required above this.
+    afa_threshold_paise: int | None = None
 
 
 class AP2CheckoutMandate(BaseModel):

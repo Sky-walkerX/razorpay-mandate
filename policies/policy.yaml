@@ -1,9 +1,11 @@
 agent: agt_shopper
 compiler:
-  model: qwen3.5:9b
+  model: gemini-3.6-flash
   temperature: 0.0
   version: 1.0.0
 constraints:
+  afa.required:
+    threshold: 1500000
   budget.per_item:
     max: 50000
   budget.per_transaction:
@@ -25,10 +27,13 @@ constraints:
 expires: '2026-09-30T23:59:59+05:30'
 issued: '2026-08-01T00:00:00+05:30'
 mandate_id: mnd_groceries_01
-policy_hash: sha256:ef0052aa26576a9d7a6f889ffdf63bc4a6d08eec1c1e295f56496e81c21b28c8
+policy_hash: sha256:584bec6292328405e63cc4894f4bb3a33d395dd7c8035993a5644a93e5f38c51
 principal: user_local
 provenance:
   inferred: []
+  regulatory:
+  - afa.required
+  - time.window
   stated:
   - budget.total
   - budget.per_transaction
@@ -37,8 +42,7 @@ provenance:
   - category.deny
   - quantity.max_per_item
   - velocity
-  - time.window
-signature: ed25519:2998b6801c5706506cf9d34a96b616101c5a32d5d3c1482b06e68cc8ecad12436908b0307f94e67fe229f6ac0d11e6081e4d370f3523eb7d9ac5a2e92fe9920e
+signature: ed25519:1ca045cbdc71ae16118e0bb9a88eb2c1de031711d1ead1de1db3a7ef06f4320fcc2720426c8d12bd132d707eb5ac881383cdf756b9eb63eabb95103ef67a1d01
 source_text: Order groceries for the week from Zepto, Blinkit or Instamart. Stay under
   Rs 2000 in total and Rs 1000 per order. No single item over Rs 500, and no more
   than 5 of any one item. Nothing alcoholic. At most 3 orders.

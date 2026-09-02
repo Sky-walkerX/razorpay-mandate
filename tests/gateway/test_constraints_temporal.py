@@ -8,7 +8,7 @@ from tests.gateway.test_constraints_budget import _ctx
 from tests.gateway.test_constraints_resolution import _with
 
 
-def test_all_evaluators_covers_the_nine_ids():
+def test_all_evaluators_covers_every_constraint_id():
     ctx = _ctx(rupees(10))
     ids = {r.id for r in (fn(ctx) for fn in ALL_EVALUATORS)}
     assert ids == set(C)

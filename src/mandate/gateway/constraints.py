@@ -1,4 +1,4 @@
-"""The nine constraint evaluators. Pure functions: no I/O, no clock, no model.
+"""The ten constraint evaluators. Pure functions: no I/O, no clock, no model.
 
 Every evaluator returns ALLOW when its constraint is absent from the policy.
 Absence means unconstrained, not forbidden.
@@ -135,8 +135,39 @@ def item_deny_recent(ctx: EvalContext) -> ClauseResult:
                         detail=f"bought recently: {hits}" if hits else "")
 
 
+def afa_required(ctx: EvalContext) -> ClauseResult:
+    """Escalate to the human above the threshold, instead of allowing or refusing.
+
+    RBI's Digital Payments E-mandate Framework, 2026 allows recurring debits up to
+    Rs 15,000 without an Additional Factor of Authentication and requires one above
+    it. UNKNOWN is the right verdict rather than DENY: the action is not forbidden,
+    it is unauthorised *so far*. `combine` ranks UNKNOWN below DENY and above ALLOW,
+    and `may_execute` already requires ALLOW, so an unapproved action does not
+    execute while a genuine refusal still outranks it in the clause shown.
+
+    `ctx.afa_approved` comes from the gateway's ApprovalStore, keyed on the resolved
+    intent hash. Nothing the agent sends reaches it.
+    """
+    if (r := _absent(C.AFA_REQUIRED, ctx)):
+        return r
+    threshold = int(ctx.policy.constraints[C.AFA_REQUIRED]["threshold"])
+    observed = int(ctx.action.amount)
+    if observed <= threshold:
+        return ClauseResult(id=C.AFA_REQUIRED, result=Verdict.ALLOW,
+                            observed=observed, limit=threshold,
+                            detail="at or below the threshold; no additional factor needed")
+    if ctx.afa_approved:
+        return ClauseResult(id=C.AFA_REQUIRED, result=Verdict.ALLOW,
+                            observed=observed, limit=threshold,
+                            detail="above the threshold and approved by the principal")
+    return ClauseResult(id=C.AFA_REQUIRED, result=Verdict.UNKNOWN,
+                        observed=observed, limit=threshold,
+                        detail="above the threshold; an additional factor of "
+                               "authentication is required from the principal")
+
+
 ALL_EVALUATORS = [
     budget_per_transaction, budget_total, budget_per_item,
     merchant_allow, category_deny, item_deny_recent,
-    velocity, time_window, quantity_max_per_item,
+    velocity, time_window, quantity_max_per_item, afa_required,
 ]

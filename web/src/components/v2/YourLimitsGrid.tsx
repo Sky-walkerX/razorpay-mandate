@@ -123,7 +123,13 @@ export function LimitCard({ part, index }: LimitCardProps) {
       {/* Card Footer: Bound value & Provenance */}
       <div className="relative z-10 mt-6 flex items-center justify-between border-t border-rule-soft pt-3 text-[12px]">
         <span className="font-mono text-[10px] uppercase tracking-wider text-ink-3">
-          {part.source === 'heard' ? 'you said it' : part.source === 'inferred' ? 'we proposed' : 'unset'}
+          {part.source === 'heard'
+            ? 'you said it'
+            : part.source === 'inferred'
+              ? 'we proposed'
+              : part.source === 'regulatory'
+                ? 'required by law'
+                : 'unset'}
         </span>
         <span
           className={cn(

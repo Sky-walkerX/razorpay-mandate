@@ -35,6 +35,10 @@ AP2_CARRIES: dict[C, tuple[str, str]] = {
     C.CATEGORY_DENY: ("prose", "only as words in natural_language_description"),
     C.QUANTITY_MAX_PER_ITEM: ("none", "skus is an allowlist, not a quantity bound"),
     C.ITEM_DENY_RECENT: ("none", "no notion of what was bought before"),
+    # AP2 has user_cart_confirmation_required, but it is a boolean. "Always
+    # confirm" carries; "confirm above Rs 15,000" does not, and the threshold
+    # is the constraint. Marking this as held would overstate the rail.
+    C.AFA_REQUIRED: ("prose", "user_cart_confirmation_required is a flag, not a threshold"),
 }
 
 # UPI Reserve Pay blocks an amount against one merchant until an expiry. That is the
@@ -49,6 +53,9 @@ RESERVE_PAY_CARRIES: dict[C, tuple[str, str]] = {
     C.QUANTITY_MAX_PER_ITEM: ("none", "the rail never sees quantities"),
     C.VELOCITY: ("none", "no debit count inside the block"),
     C.ITEM_DENY_RECENT: ("none", "no purchase history"),
+    # RBI requires an additional factor above Rs 15,000, but a Reserve Pay block
+    # is authorised once at the front. There is no per-debit step-up inside it.
+    C.AFA_REQUIRED: ("none", "the block is pre-authorised; no step-up per debit"),
 }
 
 HELD = {"ap2", "rail"}

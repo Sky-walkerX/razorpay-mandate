@@ -59,10 +59,10 @@ def test_every_proposal_is_audited_regardless_of_verdict(tmp_path):
     assert len(gw.audit.records()) == 2
     gw.audit.verify_chain()
 
-def test_audit_record_carries_all_nine_clause_results(tmp_path):
+def test_audit_record_carries_all_ten_clause_results(tmp_path):
     gw = _gw(tmp_path)
     gw.propose(_act(rupees(500)), now=NOW)
-    assert len(gw.audit.records()[0].clauses) == 9
+    assert len(gw.audit.records()[0].clauses) == 10
 
 def test_expired_mandate_denies(tmp_path):
     gw = _gw(tmp_path)

@@ -43,3 +43,6 @@ class EvalContext(BaseModel):
     now: datetime
     resolved_merchant: str | None = None
     resolved_categories: dict[str, str | None] = Field(default_factory=dict)
+    # Set by the gateway from its own ApprovalStore, never from the proposal.
+    # An agent that could set this could approve its own spending.
+    afa_approved: bool = False

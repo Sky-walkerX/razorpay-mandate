@@ -100,6 +100,7 @@ class Gateway:
         capability_secret: str | None = None,
         issuer_public_key: str | None = None,
         revocations: RevocationList | None = None,
+        approvals=None,
     ) -> None:
         if not capability_secret:
             raise ValueError("capability_secret is required and cannot be empty")
@@ -116,6 +117,9 @@ class Gateway:
         # rather than merely unimplemented.
         self.issuer_public_key = issuer_public_key
         self.revocations = revocations
+        # Out-of-band human approvals for afa.required. The agent has no path
+        # to this store; approvals arrive on the principal's endpoint.
+        self.approvals = approvals
         self._hash = policy_hash(policy)
         self._eval_lock = threading.Lock()
         self._spent_jtis: set[str] = set()
@@ -283,6 +287,11 @@ class Gateway:
                 )
 
             merchant, categories = self._resolve(action)
+            # Keyed on the resolved intent, so an approval for one basket cannot
+            # authorise a different basket of the same value.
+            approved = (
+                self.approvals.is_approved(idem) if self.approvals is not None else False
+            )
             ctx = EvalContext(
                 action=action,
                 policy=self.policy,
@@ -290,6 +299,7 @@ class Gateway:
                 now=now,
                 resolved_merchant=merchant,
                 resolved_categories=categories,
+                afa_approved=approved,
             )
             clauses = evaluate_all(ctx)
             verdict = combine(clauses)

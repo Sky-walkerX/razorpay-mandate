@@ -39,12 +39,21 @@ export interface Part {
   shape: string;
   /** What the constraint is evaluated against. */
   against: string;
-  /** Whether the user said it, or the compiler proposed it at read-back. */
-  source: 'heard' | 'inferred' | 'unset';
+  /**
+   * Where the clause came from. `regulatory` is neither heard nor guessed: RBI's
+   * Digital Payments E-mandate Framework, 2026 imposes it whether or not anyone
+   * asked, so the read-back labels it instead of offering it for confirmation.
+   */
+  source: 'heard' | 'inferred' | 'regulatory' | 'unset';
 }
 
 /** `stated` is the policy's word for it; `heard` is the interface's. */
-const SOURCE = { stated: 'heard', inferred: 'inferred', unset: 'unset' } as const;
+const SOURCE = {
+  stated: 'heard',
+  inferred: 'inferred',
+  regulatory: 'regulatory',
+  unset: 'unset',
+} as const;
 
 export const PARTS: Part[] = evidence.policy.parts.map((p) => ({
   n: p.n,

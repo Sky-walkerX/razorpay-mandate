@@ -38,6 +38,8 @@ PART_LABELS: list[dict[str, Any]] = [
      "shape": "{before, after}", "against": "the gateway's clock"},
     {"key": "item.deny_recent", "label": "Repeat orders", "kind": "rule",
      "shape": "{window_days, source}", "against": "your recent order history"},
+    {"key": "afa.required", "label": "Ask me above", "kind": "limit",
+     "shape": "{threshold: paise}", "against": "the amount of this order"},
 ]
 
 VERDICT = {"ALLOW": "allow", "DENY": "deny", "UNKNOWN": "unknown"}
@@ -70,11 +72,13 @@ def _bound(key: str, spec: dict | list | None) -> str:
 def _parts(pol) -> list[dict[str, Any]]:
     stated = {str(c) for c in pol.provenance.stated}
     inferred = {str(c) for c in pol.provenance.inferred}
+    regulatory = {str(c) for c in pol.provenance.regulatory}
     out = []
     for n, meta in enumerate(PART_LABELS, start=1):
         key = meta["key"]
         spec = pol.constraints.get(key)
-        source = "stated" if key in stated else "inferred" if key in inferred else "unset"
+        source = ("stated" if key in stated else "inferred" if key in inferred
+                  else "regulatory" if key in regulatory else "unset")
         part: dict[str, Any] = {**meta, "n": n, "source": source}
         if key == "time.window":
             part["bound"] = pol.expires.strftime("%-d %b %Y")

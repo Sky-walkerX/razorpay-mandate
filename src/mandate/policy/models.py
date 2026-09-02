@@ -1,4 +1,4 @@
-"""The policy document. Nine constraint types, closed set, no user-defined predicates."""
+"""The policy document. Ten constraint types, closed set, no user-defined predicates."""
 from datetime import datetime
 from enum import StrEnum
 
@@ -15,11 +15,23 @@ class ConstraintId(StrEnum):
     VELOCITY = "velocity"
     TIME_WINDOW = "time.window"
     QUANTITY_MAX_PER_ITEM = "quantity.max_per_item"
+    AFA_REQUIRED = "afa.required"
 
 
 class Provenance(BaseModel):
+    """Where each clause came from, kept in three separate buckets.
+
+    `stated` is in the user's own sentence. `inferred` is the compiler's guess and
+    is the only bucket the read-back asks the user to confirm. `regulatory` is a
+    floor imposed by law, which the user never said and the compiler never guessed:
+    RBI's Digital Payments E-mandate Framework, 2026 requires an additional factor
+    above Rs 15,000 whether or not anyone asked for it. Filing that under `inferred`
+    would credit the model for a rule it did not produce.
+    """
+
     stated: list[ConstraintId] = Field(default_factory=list)
     inferred: list[ConstraintId] = Field(default_factory=list)
+    regulatory: list[ConstraintId] = Field(default_factory=list)
 
 
 class CompilerInfo(BaseModel):
@@ -46,10 +58,17 @@ class Policy(BaseModel):
             raise ValueError("issued and expires require an explicit timezone")
         if self.expires <= self.issued:
             raise ValueError("expires must be after issued")
-        declared = set(self.provenance.stated) | set(self.provenance.inferred)
-        both = set(self.provenance.stated) & set(self.provenance.inferred)
-        if both:
-            raise ValueError(f"constraints in both stated and inferred: {sorted(both)}")
+        buckets = {
+            "stated": set(self.provenance.stated),
+            "inferred": set(self.provenance.inferred),
+            "regulatory": set(self.provenance.regulatory),
+        }
+        declared = set().union(*buckets.values())
+        names = sorted(buckets)
+        for i, a in enumerate(names):
+            for b in names[i + 1:]:
+                if (both := buckets[a] & buckets[b]):
+                    raise ValueError(f"constraints in both {a} and {b}: {sorted(both)}")
         missing = set(self.constraints) - declared
         if missing:
             raise ValueError(f"constraints absent from provenance: {sorted(missing)}")

@@ -19,6 +19,7 @@ CONSTRAINT_AP2_MAPPING: dict[C, tuple[str, str]] = {
     C.ITEM_DENY_RECENT: ("extension", "extensions.item_deny_recent"),
     C.VELOCITY: ("extension", "extensions.velocity_max_actions"),
     C.TIME_WINDOW: ("extension", "extensions.time_window_start"),
+    C.AFA_REQUIRED: ("extension", "extensions.afa_threshold_paise"),
 }
 
 
@@ -48,6 +49,7 @@ def render_ap2_mandate(policy: Policy) -> AP2CheckoutMandate:
         item_deny_recent=c.get(C.ITEM_DENY_RECENT, []),
         velocity_max_actions=c.get(C.VELOCITY, {}).get("max_actions") if C.VELOCITY in c else None,
         velocity_window_seconds=c.get(C.VELOCITY, {}).get("window_seconds") if C.VELOCITY in c else None,
+        afa_threshold_paise=c.get(C.AFA_REQUIRED, {}).get("threshold") if C.AFA_REQUIRED in c else None,
     )
 
     checkout_spec = AP2CheckoutSpec(
