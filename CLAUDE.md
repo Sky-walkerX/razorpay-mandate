@@ -290,7 +290,8 @@ same deliberate best-effort catch as the others: a compiler failure inside
 `/v1/sandbox` has to become an honest response rather than a 500. Same reasoning,
 same decision, recorded here so the baseline moving is a choice and not a drift.
 
-`dev` is pushed through `4c751f8`. Nothing uncommitted.
+`dev` is pushed through `44e7702`; `5065926` (the visual pass) is committed
+and **not yet pushed or deployed**.
 
 **Cloud Run: `mandate-gateway-00008-cx9` is serving and verified.** `00006-s2c`
 was the four-features deploy, `00007-tnb` added `GEMINI_VERTEX_PROJECT`, and
@@ -1216,6 +1217,69 @@ Two tests in `test_docs.py` guard the rest: the data modules must still import
 The "slowest check 1.4 ms" tile was a latency nobody measured. It is now the
 conformance result, which is measured.
 
+## The visual system, 3 Sep
+
+An alignment and consistency pass over `/try`, `/store`, `/dashboard` and `/rails`.
+Home was excluded by request. Every finding was measured in the browser, and that
+mattered: two things that looked wrong measured fine and were left alone.
+
+**There are two page frames, and that is deliberate.**
+
+- **Document frame:** `max-w-[1100px]` with `px-8 max-sm:px-[18px]`. `/store`,
+  `/dashboard` and `/rails`.
+- **App bleed:** no max width, same gutters. `/try` only, because it is a
+  two-panel workspace rather than a document.
+
+Before this there were three, by accident: `/rails` had been built at 1220 and
+`/try` was full-bleed at a 26px gutter, so the brand lockup landed at x=142, 202
+and 26 on different pages and moved as you navigated. If a new page appears, it
+picks one of the two frames above; it does not invent a third.
+
+**Home stays at `max-w-[1220px]`** and is the known exception. The lockup still
+shifts on the home↔elsewhere hop. Fixing it means editing Landing, which was out
+of scope; it is a one-line change if that is ever wanted.
+
+**The nav bar is `h-[60px]` on every page.** `/try` was 56 and the header changed
+height on navigation.
+
+**One radius vocabulary, and no arbitrary pixel values.**
+
+| Token | Use |
+|---|---|
+| `rounded-panel` (14px) | cards, panels, callouts |
+| `rounded-lg` (8px) | buttons, inputs, segmented containers |
+| `rounded-md` (6px) | a control nested inside a `p-1` container |
+| `rounded-full` | chips, badges, status pills, dots |
+| `rounded-sm` (2px) | inline text highlight |
+
+`/try` alone had carried eight: `xl`, `[9px]`, `[7px]`, `[6px]`, `[5px]`, `[4px]`,
+`[2px]` and `lg`. `/store` and `/dashboard` had already settled on the table above,
+so this was drift in one file, not a system without an opinion.
+
+**Chips in the `/rails` clause table are `min-w-[104px]`.** Chip width otherwise
+tracks label length, so "NOWHERE" against "ON THE RAIL" left the note beside it
+starting at a different x on every row — 19px of jitter in the AP2 column and 26px
+in the Reserve Pay column, down ten rows of something meant to read as a table. Do
+not remove the min-width to make a chip hug its label.
+
+**`/dashboard`'s Export button is icon-only below `sm`.** With both nav labels the
+bar was 65px wider than a 390px viewport and the whole page scrolled sideways. It
+keeps its `aria-label`; "Try it live" is the primary action and keeps its text. All
+four pages measure 0px horizontal overflow at 390.
+
+**Two things were deliberately not changed**, so they do not get "fixed" later:
+
+- The 21px difference between the two column bottoms on `/try`. It is content
+  driven — a nine-item list beside a run panel — and forcing it would need height
+  coupling that breaks as soon as the audit chain fills.
+- The `/dashboard` attempt bars, which read as unequal widths and measure a
+  uniform 17.6px across all 212. The green ones look wider because they are taller.
+
+Impeccable's mechanical detector reports no findings on any of the four files. It
+also reported none *before* this pass, which is the point worth remembering: a
+clean scan says nothing about frame, rhythm or alignment. Those came from measuring
+geometry in the page.
+
 ## Conventions
 
 - Tests: `.venv/bin/pytest`. Lint: `.venv/bin/ruff check src tests`.
@@ -1265,3 +1329,10 @@ conformance result, which is measured.
   default path would have every test in the suite appending to one file.
 - A Dockerfile `COPY` of a key directory is a bug, not a convenience. Name key
   files one at a time; `test_docker_image_ships_no_signing_key` enforces it.
+- A new page picks one of the two frames in "The visual system" above. Three
+  frames is what the last pass removed.
+- No arbitrary `rounded-[Npx]`. The five tokens in that table cover every case
+  the four pages needed.
+- Measure the page, do not squint at it. Two defects in the last pass were
+  invisible by eye and obvious in `getBoundingClientRect`; two more looked real
+  and measured clean.
