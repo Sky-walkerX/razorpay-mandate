@@ -284,10 +284,11 @@ Session handoff. Read this first if picking the work back up.
 
 ### State right now
 
-`dev` is pushed through `4f3304c`. One commit sits on top, `702cf60 feat: escalate
-above the RBI additional-factor threshold`. There are **uncommitted changes** on
-top of that (see "uncommitted" below). 448 tests pass, ruff at the documented
-baseline of 11, conformance 9/9 blocked and 0 vacuous.
+`dev` is at `5318680`, three commits past the last push at `4f3304c`:
+`702cf60` (AFA verdict), `6f9918b` + `1ebaf97` (the model default, restored in
+`llm.py` and then in the harness copy of it), and `5318680` (feature 1).
+**Nothing is pushed.** 463 tests pass, ruff at the documented baseline of 11,
+conformance 9/9 blocked and 0 vacuous.
 
 Cloud Run is redeployed and current: revision `mandate-gateway-00005-dzk`.
 
@@ -330,10 +331,8 @@ loses. The two things Reserve Pay does not do are the pitch:
 
 ### The four features, and where each stands
 
-1. **Regulatory and rails alignment page.** NOT STARTED. Map each clause to RBI's
-   Digital Payments E-mandate Framework 2026, NPCI UAP, and Reserve Pay, gaps stated
-   honestly. Feed it from `rails.py` + `evidence.json`, never hand-typed. Cheaper than
-   estimated because `rails.py` already does the analysis.
+1. **Regulatory and rails alignment page.** DONE, committed in `5318680`. Lives at
+   `/rails`. See "What landed in 5318680" below.
 2. **AFA third verdict.** DONE, committed in `702cf60`.
 3. **Bring-your-own-mandate sandbox on `/try`.** NOT STARTED. Judge types intent, it
    compiles at `/v1/compile` and is enforced live. **Design decision already made:**
@@ -342,8 +341,11 @@ loses. The two things Reserve Pay does not do are the pitch:
    runtime would need the private key in the service, which breaks decision 2 and
    fails `test_docker_image_ships_no_signing_key`. The gateway refusing to sign is
    the feature, not a limitation.
-4. **Surface the AP2 export.** NOT STARTED, ~2 hours. `src/mandate/ap2/`,
-   `/v1/mandate/ap2` and `mandate ap2-export` all exist and are invisible on the site.
+4. **Surface the AP2 export.** DONE, folded into feature 1 rather than built
+   separately. The `/rails` page renders the IntentMandate and the five Payment
+   Mandate constraints from `rails.to_ap2_*`, and names both `mandate ap2-export`
+   and `GET /v1/mandate/ap2`. It belonged there: the export is the artefact the
+   rails argument is about, and a standalone page would have restated it.
 
 ### What landed in 702cf60
 
@@ -367,6 +369,69 @@ decline. `time.window` moved into it: three real compiles never emit that clause
 filing it as `stated` claimed the user said something no compiler hears. RBI requires
 every mandate to carry a validity period, so the clause is right to exist and was
 wrong to be attributed to the user. The other seven constraints reproduce byte-for-byte.
+
+### What landed in 5318680, and the decisions inside it
+
+`/rails`, fed from `evidence.json` like every other screen. `mandate evidence` now
+writes an `alignment` block from `mandate.policy.rails` and a new
+`mandate.policy.regulatory`.
+
+**`regulatory.py` is a separate module from `rails.py` on purpose, and merging them
+would be a real loss.** They ask opposite questions. `rails` asks whether a rail can
+carry our clause; `regulatory` asks whether we carry a regulator's obligation. One
+word, "held", would otherwise mean two different things in adjacent columns, and the
+second meaning is the one a compliance reader acts on.
+
+**The four statuses are a closed vocabulary and `gap` vs `out_of_scope` is the load-
+bearing distinction.** A gap is ours and unmet. Out of scope means the obligation
+lands on an issuer or a bank. Filing our own gap under someone else's name is the
+failure this table invites, so `test_out_of_scope_rows_say_whose_obligation_it_is`
+requires every such row to name that other party.
+
+The posture is **3 held, 1 partial, 1 gap, 3 not ours**. The gap is pre-debit
+notification: RBI wants a notice 24 hours ahead, and the gateway decides and calls the
+rail inside one request, so there is no window for one to sit in. Every field such a
+notice needs is already on the resolved action, so it is a missing channel and delay,
+not missing data. `test_the_admitted_gap_is_still_admitted` pins it, so removing the
+gap has to be a deliberate edit.
+
+**NPCI's UAP gets no clause mapping and that is the finding.** It is unveiled at Global
+Fintech Fest 9-11 Sep 2026 and the spec is unpublished, so a clause-by-clause table
+against it would be invention. `test_no_clause_is_mapped_onto_the_unpublished_protocol`
+keeps it that way. Revisit after GFF; until then the page states what is public and
+says it is not a mapping.
+
+**Two claims in the first draft were wrong and the corrections improved the page.**
+The headline said "a person states 9 conditions" when the provenance records 7 stated
+and 2 regulatory, and the AP2 section hand-typed "four clauses". Both are derived now.
+The correction exposed the sharpest line on the page: **`afa.required` is RBI's own
+requirement and has nowhere to sit on either rail** — Reserve Pay authorises once at
+the front, and AP2's `user_cart_confirmation_required` is a boolean, not a threshold.
+The gateway holds it because the rails cannot.
+
+**Citations carry their own dates.** `CITATIONS` in `regulatory.py` records title,
+issue date and a `checked` date, and the page prints them. The RBI framework was
+issued 21 Apr 2026 and checked 2 Sep 2026. Re-check before quoting it later.
+
+**Counts: the page says 9, the boot loader says 10, and both are right.** `rails.diff`
+walks `policy.constraints` (9), `PART_LABELS` carries all 10 parts the gateway
+implements, and `item.deny_recent` is not set in this policy. The page says so in
+prose rather than leaving two numbers to contradict each other on adjacent screens.
+
+**A new drift guard covers the web's own rail claims.**
+`test_no_tsx_claims_a_rail_holds_a_clause_it_does_not` parses the hand-typed `onRail`
+flags in `GapAndParts.tsx` against `RESERVE_PAY_CARRIES`. It is one-directional: a
+condition marked false may legitimately be finer-grained than its clause, but claiming
+a rail holds something it cannot never is. Mutation-verified — flipping `category.deny`
+to `onRail: true` fails it.
+
+**Closed while here: the "0.2ms" sweep, which was already done and left recorded as
+open.** The three web files carry no `0.2ms` any more and `JudgeConsole.tsx` times
+every path with `performance.now()`. What was left was worse than the copy: `0.2` sat
+in `ALLOWED_WEB_LATENCY_NUMBERS` in `tests/test_docs.py`, so the guard explicitly
+permitted the one number this file documents as never measured. Removed. `0.0075` stays
+because it is measured; `0.38` and `1.4` stay only because they survive inside a comment
+naming them as retired.
 
 ### The model drift, and the correction
 
@@ -398,16 +463,29 @@ is the design working, and it is a better story told than discovered.
 
 ### Uncommitted right now
 
-`policies/policy.yaml` (re-signed, `compiler.model` back to 3.7, hash
-`sha256:cb0a4c6b452ba676...`), `src/mandate/llm.py` (default restored + comment),
-`tests/test_llm.py` (tracks the constant), `web/src/data/evidence.json` (regenerated),
-and new `tests/test_llm_defaults.py`. Commit these before starting feature 1.
+Nothing. The model fix landed in `6f9918b`, and the stale-literal sweep that
+followed it found one more real hit: `harness/runner.py` kept its own
+`DEFAULT_MODEL = "gemini-3.6-flash"`, so `mandate evaluate` with no `--model`
+still ran 3.6 after `llm.py` was restored. It never reached a result row because
+every documented sweep passes `--model`, but it was a second hand-typed copy of
+the same fact, which is how the first one drifted. It now tracks `GEMINI_MODEL`
+and `tests/test_llm_defaults.py` pins it a fourth way (`1ebaf97`). The only other
+`gemini-3.6-flash` strings left in the tree are historical prose in this file and
+a verbatim API error message in a `tests/test_llm.py` fixture. Both are correct
+as they stand.
 
 ### Next step
 
-Sweep for other stale `gemini-3.6-flash` literals in docs and web, commit the model
-fix, then build feature 1. Do not retype any number into a `.tsx`; regenerate
-`evidence.json` with `mandate evidence`.
+**Push.** Three commits are local only. Then feature 3, the bring-your-own-mandate
+sandbox on `/try`, is the last of the four; its design decision is already made
+(unsigned, ephemeral, labelled, with the offline signing command shown). Do not
+retype any number into a `.tsx`; regenerate `evidence.json` with `mandate evidence`.
+
+Two things worth doing that are not features. `/rails` makes **five** demo surfaces
+beside `/`, `/try`, `/store` and `/dashboard`, and the note below about folding
+`/dashboard` into the storefront now matters more, not less. And **Cloud Run has not
+been redeployed since `4f3304c`** — revision `mandate-gateway-00005-dzk` predates the
+AFA verdict, the model fix and `/rails`, so the live site and this repo disagree.
 
 
 ## Running on Vertex AI
@@ -726,21 +804,15 @@ alongside the fixed `expires`. `policies/policy.yaml` expires 2026-09-30 and
 will need re-signing after that, or the demo starts denying on `time.window`.
 
 
-**"0.2ms" was an unmeasured marketing number, same failure mode as the
-dashboard tile this file already calls out below ("The 'slowest check 1.4 ms'
-tile was a latency nobody measured").** It sat in the README badge, the README
-architecture diagram, and one bullet, plus `web/src/pages/Landing.tsx`,
-`web/src/components/v2/HowItHolds.tsx`, and `web/src/pages/JudgeConsole.tsx`.
-Measured on 31 Aug (`Gateway.propose()` against `FakeDownstream`, 2,000 warm
-calls): pure 9-clause `evaluate_all` is ~0.0075ms median; the full `propose()`
-path including audit persistence and the downstream call is ~4.9ms median,
-~10ms p95 — single-digit milliseconds, not sub-millisecond, and the gap is I/O,
-not the policy check. Fixed in `README.md` and `ARCHITECTURE.md` with the real
-numbers and their provenance. **Not yet fixed in the three web files above** —
-they still show "0.2ms" as static/hardcoded copy (`JudgeConsole.tsx` also has
-`latency_ms: 0.21` and `latency_ms: 0.1` as literal fallback values in a couple
-of code paths, separate from the `elapsed`-timed live ones). Sweep those before
-a judge reads the page closely; use the two numbers above, not a new one.
+**Closed, 2 Sep: "0.2ms" is gone from the web, and from the test that permitted
+it.** Measured on 31 Aug (`Gateway.propose()` against `FakeDownstream`, 2,000 warm
+calls): pure 9-clause `evaluate_all` is ~0.0075ms median; the full `propose()` path
+including audit persistence and the downstream call is ~4.9ms median, ~10ms p95 —
+single-digit milliseconds, and the gap is I/O, not the policy check. `README.md` and
+`ARCHITECTURE.md` were fixed then. The web files were fixed after this note was
+written and the note was never updated: `HowItHolds.tsx` now carries `0.0075 ms` with
+a comment naming the retired figures, and `JudgeConsole.tsx` times every path with
+`performance.now()`. The residue was in the guard, not the copy — see 5318680 above.
 
 **Closed: the demo used to take 25+ minutes and could not go on stage.**
 `mandate demo` on `budget.salami` made 114 model calls in the `compromised` arm

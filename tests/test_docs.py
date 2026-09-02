@@ -5,8 +5,16 @@ from mandate.conformance.suite import ATTACKS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Allowlisted measured latency numbers in web/src (benchmarked numbers only)
-ALLOWED_WEB_LATENCY_NUMBERS = {"0.0075", "0.2", "0.38", "1.4"}
+# Latency numbers web/src may carry. Only 0.0075 is a live claim: pure 9-clause
+# evaluate_all, measured over 2,000 warm calls on 31 Aug. (The full propose() path
+# is ~4.9ms median / ~10ms p95; the gap is audit persistence and the downstream
+# call, not the policy check, and no tile claims otherwise.)
+#
+# 0.38 and 1.4 are permitted only because they survive inside a comment that names
+# them as the retired unmeasured figures. 0.2 was on this list and is not any more:
+# it is the marketing number the repo documents as never measured, and allowlisting
+# it here would have let it back onto the page silently.
+ALLOWED_WEB_LATENCY_NUMBERS = {"0.0075", "0.38", "1.4"}
 
 def test_no_unmeasured_latency_in_web():
     """Ensure web/src files only reference measured benchmarked latency numbers."""
