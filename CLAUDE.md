@@ -278,17 +278,17 @@ Hostile merchant or rail beyond the capture binding. Multi-tenancy, hosted
 deployment, production observability. Rail-side verification of the mandate.
 Turning `money_at_risk()` into a real instrument (worth doing, not now).
 
-## In flight, 2 Sep: four x-factor features, one of four landed
+## 2 Sep: four x-factor features, all four landed
 
 Session handoff. Read this first if picking the work back up.
 
 ### State right now
 
-`dev` is at `5318680`, three commits past the last push at `4f3304c`:
-`702cf60` (AFA verdict), `6f9918b` + `1ebaf97` (the model default, restored in
-`llm.py` and then in the harness copy of it), and `5318680` (feature 1).
-**Nothing is pushed.** 463 tests pass, ruff at the documented baseline of 11,
-conformance 9/9 blocked and 0 vacuous.
+All four x-factor features have landed. 476 tests pass, conformance 9/9 blocked
+and 0 vacuous, ruff at **12** — one more than the long-standing 11, and it is the
+same deliberate best-effort catch as the others: a compiler failure inside
+`/v1/sandbox` has to become an honest response rather than a 500. Same reasoning,
+same decision, recorded here so the baseline moving is a choice and not a drift.
 
 Cloud Run is redeployed and current: revision `mandate-gateway-00005-dzk`.
 
@@ -334,13 +334,8 @@ loses. The two things Reserve Pay does not do are the pitch:
 1. **Regulatory and rails alignment page.** DONE, committed in `5318680`. Lives at
    `/rails`. See "What landed in 5318680" below.
 2. **AFA third verdict.** DONE, committed in `702cf60`.
-3. **Bring-your-own-mandate sandbox on `/try`.** NOT STARTED. Judge types intent, it
-   compiles at `/v1/compile` and is enforced live. **Design decision already made:**
-   the judge's policy runs **unsigned in an ephemeral sandbox session**, clearly
-   labelled, and the page shows the offline CLI command that would sign it. Signing at
-   runtime would need the private key in the service, which breaks decision 2 and
-   fails `test_docker_image_ships_no_signing_key`. The gateway refusing to sign is
-   the feature, not a limitation.
+3. **Bring-your-own-mandate sandbox on `/try`.** DONE, committed in `d7a0b0b`. The
+   design decision above held exactly as written. See "What landed in d7a0b0b" below.
 4. **Surface the AP2 export.** DONE, folded into feature 1 rather than built
    separately. The `/rails` page renders the IntentMandate and the five Payment
    Mandate constraints from `rails.to_ap2_*`, and names both `mandate ap2-export`
@@ -433,6 +428,79 @@ permitted the one number this file documents as never measured. Removed. `0.0075
 because it is measured; `0.38` and `1.4` stay only because they survive inside a comment
 naming them as retired.
 
+### What landed in d7a0b0b, and the traps inside it
+
+`/try` gains a third tab, "Your mandate". A visitor types an intent, `/v1/sandbox`
+compiles it at temperature 0, and the same `Gateway` enforces their clauses for one
+ephemeral session. The compile is a real Vertex call; the enforcement is the same
+`propose()` every other surface uses. There is no sandbox-flavoured evaluation path,
+deliberately — a second one would let the demo pass while the real gateway broke.
+
+**`Gateway._verify_token` was not relaxed, and must not be.** It requires
+`claims.mandate_id == policy.mandate_id`. Since tokens are minted offline, the id a
+sandbox token binds to has to be known before anyone types anything, so there is one
+reserved `mnd_sandbox_01` for every sandbox and sessions stay apart by `jti` as
+before. The tempting shortcut — let any token open any session — puts a hole in the
+boundary the whole project is about. If a future change needs per-session mandate
+ids, it needs an online issuer, and that contradicts decision 2.
+
+A consequence worth keeping: a sandbox audit record says `mnd_sandbox_01`, which is
+deliberately not the signed mandate's id, so no sandbox order can be read as one the
+signed document authorised.
+
+**The pools must not share a jti namespace.** `SessionManager.create_session` does
+`shutil.rmtree(base_dir / jti)` before building, so two pools minted with the same
+`tok_pool_NNN` scheme would delete a live session's audit chain, not merely collide
+in a lookup. `mint-pool` gained `--jti-prefix` for this; sandbox tokens are
+`tok_sbx_NNN`. Regenerate with
+`mandate mint-pool --count 100 --mandate-id mnd_sandbox_01 --jti-prefix tok_sbx --out .mandate/sandbox_pool.json`.
+Like `token_pool.json` it is gitignored, minted offline against the private key, and
+reaches Cloud Run through the Docker build context rather than through git. **It
+lives on this machine only**, so a deploy from anywhere else silently ships an empty
+sandbox pool and `/v1/sandbox` reports unavailable.
+
+**Two places had hardcoded the service policy where the session's belonged.**
+`/v1/orders` filed every order under `policy.mandate_id` and computed headroom
+against `policy`. On a sandbox session that puts the house's limits on the visitor's
+meter while their clauses do the deciding, which is the exact mismatch the feature
+exists to disprove. Both read `session.gateway.policy` now. Worth checking any new
+handler for the same slip.
+
+**The endpoint does not fall back and `/v1/compile` does.** That difference is
+intentional. `/v1/compile` renders something, so falling back to the signed policy is
+harmless. `/v1/sandbox` enforces something, so falling back would enforce the house
+mandate while the page claimed to be testing the visitor's. With no sandbox pool it
+returns 503, and a test asserts the signed mandate's id appears nowhere in that
+response.
+
+**Refusals carry a `kind`.** `declined` (two readings at temperature 0 disagreed),
+`timeout`, `error`. The page explains each differently because they mean opposite
+things: a decline repeats on the same words, a timeout says nothing about the intent.
+The first version explained a slow network as a careful compiler.
+
+### Closed, 2 Sep: the judge console was posting to the visitor's own laptop
+
+Found while testing the sandbox, unrelated to it, **live on the custom domain**.
+
+`JudgeConsole.tsx` chose its API base by enumerating hosts it knew — port 8000, port
+8811, `*.run.app` — and sent everything else to `http://127.0.0.1:8000`. Correct on
+Cloud Run's own URL, wrong the moment an ALB and a custom domain went in front of it.
+So `/try` on `mandate.namankhandelwal.dev` has been calling the judge's own machine.
+Confirmed by watching the live page's network, not inferred. It renders perfectly,
+which is exactly why it survived: nothing fails loudly.
+
+`/store` and the live agent panel were unaffected — they carried the opposite rule.
+Three copies of one decision that had drifted into two behaviours, which is the same
+shape as the `GEMINI_MODEL` drift and the `DEFAULT_MODEL` copy beside it.
+
+The rule now lives once in `web/src/lib/api.ts` and keys off `import.meta.env.DEV`,
+which is fixed at build time and knows nothing about hostnames.
+`test_no_tsx_claims_a_rail_holds_a_clause_it_does_not`'s neighbour in `test_docs.py`
+fails on any component that defines its own `API_BASE` or mentions `run.app`.
+
+**Check `/try` on the custom domain after deploying, not just on the run.app URL.**
+That habit is what hid this.
+
 ### The model drift, and the correction
 
 **`GEMINI_MODEL` is the model every path uses unless a caller names one.** The sweeps
@@ -463,30 +531,29 @@ is the design working, and it is a better story told than discovered.
 
 ### Uncommitted right now
 
-Nothing. The model fix landed in `6f9918b`, and the stale-literal sweep that
-followed it found one more real hit: `harness/runner.py` kept its own
-`DEFAULT_MODEL = "gemini-3.6-flash"`, so `mandate evaluate` with no `--model`
-still ran 3.6 after `llm.py` was restored. It never reached a result row because
-every documented sweep passes `--model`, but it was a second hand-typed copy of
-the same fact, which is how the first one drifted. It now tracks `GEMINI_MODEL`
-and `tests/test_llm_defaults.py` pins it a fourth way (`1ebaf97`). The only other
-`gemini-3.6-flash` strings left in the tree are historical prose in this file and
-a verbatim API error message in a `tests/test_llm.py` fixture. Both are correct
-as they stand.
+Nothing. `.mandate/sandbox_pool.json` is generated and gitignored by design; see
+the pool note above.
 
 ### Next step
 
-**Push.** Three commits are local only. Then feature 3, the bring-your-own-mandate
-sandbox on `/try`, is the last of the four; its design decision is already made
-(unsigned, ephemeral, labelled, with the offline signing command shown). Do not
-retype any number into a `.tsx`; regenerate `evidence.json` with `mandate evidence`.
+The remaining work is not features. In order of what costs most if skipped:
 
-Two things worth doing that are not features. `/rails` makes **five** demo surfaces
-beside `/`, `/try`, `/store` and `/dashboard`, and the note below about folding
-`/dashboard` into the storefront now matters more, not less. And **Cloud Run has not
-been redeployed since `4f3304c`** — revision `mandate-gateway-00005-dzk` predates the
-AFA verdict, the model fix and `/rails`, so the live site and this repo disagree.
+1. **The vacuous-containment audit.** `price.flip` was found scoring containments on
+   runs its mutation never touched. Four families call `_pick()` — a single
+   `rng.choice` — and so share the structure: `price.flip` plus all three
+   `injection.*`. One of those, `injection.review`, is held out, and
+   `injection.description` is the family the writeup calls the money story. They may
+   well be sound, because an injection payload can steer an agent that never buys the
+   poisoned SKU, whereas a price multiplier only fires on capture. Nobody has checked.
+   **A cheap enabler first: `RunResult` does not record the victim SKU** even though
+   `Mutation.note` names it, so auditing a scored set means replaying the mutator from
+   its seed. Stamping it is a few lines and is plausibly why this went unnoticed.
+2. **A fourth held-out family**, so `budget.salami` is not a single point of evidence.
+3. `/rails` makes five demo surfaces beside `/`, `/try`, `/store` and `/dashboard`.
+   Folding `/dashboard` into the storefront is still the right call.
 
+Do not retype any number into a `.tsx`; regenerate `evidence.json` with
+`mandate evidence`.
 
 ## Running on Vertex AI
 
