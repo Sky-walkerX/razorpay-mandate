@@ -22,6 +22,7 @@ export default function Landing() {
             <a href="#modes" className="transition-colors hover:text-ink">Failure modes</a>
             <a href="#how" className="transition-colors hover:text-ink">How it holds</a>
             <a href="#limits" className="transition-colors hover:text-ink">Your limits</a>
+            <Link to="/rails" className="transition-colors hover:text-ink">Rails &amp; regulation</Link>
             <Link to="/pitch" className="transition-colors hover:text-ink font-medium text-[#2F5EFF]">Pitch Deck</Link>
           </div>
           <div className="ml-auto flex items-center gap-3">

@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import JudgeConsole from './pages/JudgeConsole';
 import PitchDeck from './pages/PitchDeck';
 import Storefront from './pages/Storefront';
+import Alignment from './pages/Alignment';
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
         <Route path="/try" element={<JudgeConsole />} />
         <Route path="/store" element={<Storefront />} />
         <Route path="/pitch" element={<PitchDeck />} />
+        <Route path="/rails" element={<Alignment />} />
         <Route path="/v2" element={<Navigate to="/" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/dashboard/activity" element={<Dashboard />} />

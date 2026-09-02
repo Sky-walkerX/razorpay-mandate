@@ -83,3 +83,36 @@ def test_latency_badge_matches_architecture():
     assert "<0.01ms" in badge_latency or "0.01ms" in badge_latency
 
     assert "0.0075" in arch_text or "< 0.01ms" in arch_text, "ARCHITECTURE.md missing measured 0.0075ms / < 0.01ms benchmark"
+
+
+def test_no_tsx_claims_a_rail_holds_a_clause_it_does_not():
+    """`GapAndParts.tsx` hand-types `onRail` on each of its twelve conditions, and
+    that is a compliance claim about UPI Reserve Pay sitting in a component where
+    nothing compares it to `rails.py`.
+
+    The assertion is one-directional on purpose. A condition marked `onRail: false`
+    is finer-grained than its clause — "nothing from a merchant I have never used"
+    compiles to merchant.allow, which Reserve Pay does carry, but not that reading
+    of it — so a false there is a legitimate narrowing. Claiming a rail holds
+    something it cannot is never legitimate, and that is the direction tested.
+    """
+    import re
+
+    from mandate.harness.evidence import PART_LABELS
+    from mandate.policy.rails import HELD, RESERVE_PAY_CARRIES
+
+    src = (REPO_ROOT / "web/src/components/v2/GapAndParts.tsx").read_text(encoding="utf-8")
+    conditions = re.findall(r"part:\s*(\d+),\s*onRail:\s*(true|false)", src)
+    assert conditions, "GapAndParts.tsx no longer declares CONDITIONS as expected"
+
+    key_of = {i: m["key"] for i, m in enumerate(PART_LABELS, start=1)}
+    overclaimed = []
+    for part, on_rail in conditions:
+        if on_rail != "true":
+            continue
+        key = key_of[int(part)]
+        kind, _ = RESERVE_PAY_CARRIES.get(key, ("none", ""))
+        if kind not in HELD:
+            overclaimed.append(f"part {part} ({key}) claims onRail, rails.py says {kind!r}")
+
+    assert not overclaimed, "web claims a rail carries a clause it cannot:\n" + "\n".join(overclaimed)

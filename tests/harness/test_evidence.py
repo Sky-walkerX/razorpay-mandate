@@ -84,3 +84,64 @@ def test_provenance_block_names_the_runs_it_came_from(ev):
 
 def test_payload_is_json_serialisable(ev):
     json.dumps(ev)
+
+
+def test_the_rails_table_is_computed_by_rails_not_typed_into_the_payload(ev):
+    """`rails.diff` is the only authority on what survives a rail. The console
+    renders this block, so if it could drift from the module the page would be
+    asserting a compliance fact nothing computes."""
+    from mandate.policy import rails
+    from mandate.policy.canonical import policy_hash
+
+    pol = load_policy(ROOT / "policies" / "policy.yaml")
+    d = rails.diff(pol, policy_hash=policy_hash(pol))
+    got = ev["alignment"]["rails"]
+
+    assert got["total_clauses"] == d.total_clauses == len(pol.constraints)
+    assert got["ap2_held"] == d.ap2_held
+    assert got["ap2_lost"] == d.ap2_lost
+    assert got["reserve_pay_held"] == d.reserve_pay_held
+    assert got["reserve_pay_lost"] == d.reserve_pay_lost
+    assert [f["clause"] for f in got["fates"]] == [f.clause for f in d.fates]
+    for f, want in zip(got["fates"], d.fates, strict=True):
+        assert (f["ap2"], f["reserve_pay"]) == (want.ap2, want.reserve_pay)
+
+
+def test_every_clause_the_policy_carries_appears_in_the_rails_table(ev):
+    """A clause missing from the table would read as one with nothing to lose."""
+    pol = load_policy(ROOT / "policies" / "policy.yaml")
+    assert {f["clause"] for f in ev["alignment"]["rails"]["fates"]} == set(pol.constraints)
+
+
+def test_the_regulatory_posture_is_computed_by_its_module(ev):
+    from mandate.policy import regulatory
+
+    pol = load_policy(ROOT / "policies" / "policy.yaml")
+    want = regulatory.posture(pol)
+    got = ev["alignment"]["regulatory"]
+    assert got["held"] == want.held
+    assert got["gaps"] == want.gaps
+    assert got["partial"] == want.partial
+    assert got["out_of_scope"] == want.out_of_scope
+    assert [r["key"] for r in got["requirements"]] == [r.key for r in want.requirements]
+
+
+def test_the_reserve_pay_projection_drops_the_merchants_it_cannot_hold(ev):
+    """A Reserve Pay block names one payee. The mandate allows three, so two have
+    nowhere to go, and the payload reports them rather than collapsing the list
+    quietly to its first element."""
+    pol = load_policy(ROOT / "policies" / "policy.yaml")
+    allowed = pol.constraints["merchant.allow"]
+    rp = ev["alignment"]["reserve_pay"]
+    assert rp["payee"] == allowed[0]
+    assert rp["payee_overflow"] == allowed[1:]
+    assert len(rp["payee_overflow"]) == len(allowed) - 1
+
+
+def test_the_ap2_export_carries_the_users_own_words(ev):
+    """`natural_language_description` is where every clause AP2 cannot hold ends up.
+    That it is prose and not a control is the point the page makes, so it has to
+    really be the source text."""
+    pol = load_policy(ROOT / "policies" / "policy.yaml")
+    assert ev["alignment"]["ap2_export"]["intent_mandate"][
+        "natural_language_description"] == pol.source_text

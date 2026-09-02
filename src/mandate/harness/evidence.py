@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from mandate.policy import rails, regulatory
 from mandate.policy.canonical import policy_hash
 from mandate.policy.loader import load as load_policy
 
@@ -177,6 +178,41 @@ def _reason(clause: dict | None) -> str:
     return f"Part {n} · {label}, {limit}"
 
 
+def _alignment(pol, pol_hash: str) -> dict[str, Any]:
+    """The rails projection and the regulatory posture, both computed.
+
+    Neither half is typed into the console. `rails.diff` decides what survives AP2
+    and Reserve Pay, `regulatory.posture` decides what the RBI framework asks of a
+    gateway, and this only reshapes them for the screen. The two are kept apart in
+    the payload because they answer opposite questions; see the docstring on
+    `mandate.policy.regulatory`.
+    """
+    d = rails.diff(pol, policy_hash=pol_hash)
+    reg = regulatory.posture(pol)
+    labels = {m["key"]: m["label"] for m in PART_LABELS}
+    return {
+        "rails": {
+            "total_clauses": d.total_clauses,
+            "ap2_held": d.ap2_held,
+            "ap2_lost": d.ap2_lost,
+            "reserve_pay_held": d.reserve_pay_held,
+            "reserve_pay_lost": d.reserve_pay_lost,
+            "fates": [
+                {**f.model_dump(), "label": labels.get(f.clause, f.clause)}
+                for f in d.fates
+            ],
+        },
+        "ap2_export": {
+            "intent_mandate": rails.to_ap2_intent_mandate(pol),
+            "payment_constraints": rails.to_ap2_payment_constraints(pol),
+            "endpoint": "/v1/mandate/ap2",
+            "cli": "mandate ap2-export",
+        },
+        "reserve_pay": rails.to_reserve_pay(pol),
+        "regulatory": reg.model_dump(),
+    }
+
+
 def build_evidence(
     root: Path,
     containment_dir: str = "results-heldout-g37-hardened",
@@ -231,5 +267,6 @@ def build_evidence(
                 "race_trials": conf["race_trials"],
             },
         },
+        "alignment": _alignment(pol, policy_hash(pol)),
         "feed": _feed(root / containment_dir / feed_run / "audit.jsonl", feed_run),
     }
