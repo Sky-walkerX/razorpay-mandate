@@ -1,6 +1,6 @@
 agent: agt_shopper
 compiler:
-  model: gemini-3.6-flash
+  model: gemini-3.7-flash
   temperature: 0.0
   version: 1.0.0
 constraints:
@@ -27,7 +27,7 @@ constraints:
 expires: '2026-09-30T23:59:59+05:30'
 issued: '2026-08-01T00:00:00+05:30'
 mandate_id: mnd_groceries_01
-policy_hash: sha256:584bec6292328405e63cc4894f4bb3a33d395dd7c8035993a5644a93e5f38c51
+policy_hash: sha256:cb0a4c6b452ba6767d2a06750312af824d5965552ba2848cfffefdd82685b697
 principal: user_local
 provenance:
   inferred: []
@@ -42,7 +42,7 @@ provenance:
   - category.deny
   - quantity.max_per_item
   - velocity
-signature: ed25519:1ca045cbdc71ae16118e0bb9a88eb2c1de031711d1ead1de1db3a7ef06f4320fcc2720426c8d12bd132d707eb5ac881383cdf756b9eb63eabb95103ef67a1d01
+signature: ed25519:f7dfc5c1b5bec19e7875a3cc29f29a7b2e9b173d83a5f79a6c26e075d4c30fe9f8191c26ceeb824edcdb241292bd2d632e3b9a258b503dc8c7156a9a3f45f103
 source_text: Order groceries for the week from Zepto, Blinkit or Instamart. Stay under
   Rs 2000 in total and Rs 1000 per order. No single item over Rs 500, and no more
   than 5 of any one item. Nothing alcoholic. At most 3 orders.

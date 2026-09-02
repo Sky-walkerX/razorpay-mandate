@@ -1,6 +1,7 @@
 import pytest
 
 from mandate.llm import (
+    GEMINI_MODEL,
     AnthropicProvider,
     GeminiProvider,
     VertexGeminiProvider,
@@ -60,7 +61,9 @@ def test_gemini_sends_system_instruction_as_a_top_level_field():
         "BE A SHOPPER", [{"role": "user", "text": "buy dal"}], TOOLS)
     body = c.calls[0]
     assert body["system_instruction"] == "BE A SHOPPER"
-    assert body["model"] == "gemini-3.6-flash"
+    # Tracks the constant rather than restating it. A literal here is what let
+    # the default drift to 3.6 without a single test going red.
+    assert body["model"] == GEMINI_MODEL
 
 
 def test_gemini_never_stores_state_server_side():

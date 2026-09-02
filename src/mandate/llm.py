@@ -17,7 +17,14 @@ import httpx
 
 DASHSCOPE_MODEL = "qwen3.8-flash"
 DASHSCOPE_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-GEMINI_MODEL = "gemini-3.6-flash"
+# The model every path uses unless a caller names one. The sweeps pass --model
+# explicitly; the compiler, /v1/compile and /v1/agent do not, so this constant
+# is what the judge-facing service actually runs on. It was silently changed
+# from 3.7 to 3.6 inside a 939-file commit titled "docs: spec for the
+# judge-testable hosted gateway" (0ca31a5), which left the live console running
+# a different model from the one every document claimed. test_llm_defaults.py
+# pins it so that cannot recur.
+GEMINI_MODEL = "gemini-3.7-flash"
 ANTHROPIC_MODEL = "claude-opus-5"
 OLLAMA_MODEL = "qwen3.5:4b"
 OLLAMA_HOST = "http://localhost:11434"

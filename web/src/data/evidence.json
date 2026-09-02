@@ -7,13 +7,13 @@
     "false_block_dir": "results-falseblock-hardened",
     "conformance_file": "results-conformance/conformance_results.json",
     "feed_file": "results-heldout-g37-hardened/enforce/budget_salami_005/audit.jsonl",
-    "generated": "2026-09-02T13:00:27+05:30"
+    "generated": "2026-09-02T13:07:55+05:30"
   },
   "policy": {
     "mandate_id": "mnd_groceries_01",
     "principal": "user_local",
     "agent": "agt_shopper",
-    "policy_hash": "sha256:584bec6292328405e63cc4894f4bb3a33d395dd7c8035993a5644a93e5f38c51",
+    "policy_hash": "sha256:cb0a4c6b452ba6767d2a06750312af824d5965552ba2848cfffefdd82685b697",
     "issued": "2026-08-01T00:00:00+05:30",
     "expires": "2026-09-30T23:59:59+05:30",
     "signed_on": "1 August 2026",

@@ -278,6 +278,138 @@ Hostile merchant or rail beyond the capture binding. Multi-tenancy, hosted
 deployment, production observability. Rail-side verification of the mandate.
 Turning `money_at_risk()` into a real instrument (worth doing, not now).
 
+## In flight, 2 Sep: four x-factor features, one of four landed
+
+Session handoff. Read this first if picking the work back up.
+
+### State right now
+
+`dev` is pushed through `4f3304c`. One commit sits on top, `702cf60 feat: escalate
+above the RBI additional-factor threshold`. There are **uncommitted changes** on
+top of that (see "uncommitted" below). 448 tests pass, ruff at the documented
+baseline of 11, conformance 9/9 blocked and 0 vacuous.
+
+Cloud Run is redeployed and current: revision `mandate-gateway-00005-dzk`.
+
+### The custom domain is live
+
+`https://mandate.namankhandelwal.dev` serves the app over HTTPS. Cloud Run domain
+mapping does **not** support `asia-south1`, so this goes through a global external
+Application Load Balancer instead, with the service left in asia-south1 so
+`--min-instances=1` keeps cold starts at zero during judging.
+
+Resources in project `razorpay-mandate`: `mandate-lb-ip` (static IP
+**136.68.23.87**), `mandate-neg` (serverless NEG, asia-south1), `mandate-backend`,
+`mandate-urlmap`, `mandate-cert`, `mandate-https-proxy`, `mandate-https-fr` (:443),
+plus `mandate-redirect-urlmap` / `mandate-http-proxy` / `mandate-http-fr` for the
+:80 redirect. DNS is `A mandate -> 136.68.23.87` in the Vercel dashboard.
+
+Two things that cost time and will again: **backend service timeout is not settable
+on a serverless NEG** (Cloud Run's own 300s governs, so the `/v1/agent` SSE stream is
+safe and the ALB's 30s default never applies), and **ALB config changes take 2-5
+minutes to propagate**, so a curl one minute after an update means nothing.
+
+### Why this work exists
+
+Razorpay already ships the rail. On 20 Feb 2026 Razorpay + NPCI announced agentic
+payments on Claude for Zomato, Swiggy and Zepto, built on **UPI Reserve Pay**: a
+one-time consent setting a spending limit for a merchant, revocable at any time.
+Reuters, 1 Sep 2026: NPCI's **Unified Agent Protocol** is expected at Global Fintech
+Fest, letting customers "set rule-based instructions for AI agents on when and how
+much to pay, with built-in spending limits, audit trails and identity checks."
+Banks cap Reserve Pay blocks at Rs 10,000 for 90 days today.
+
+So **"spending limits for agents" is a shipped Razorpay product** and pitching that
+loses. The two things Reserve Pay does not do are the pitch:
+
+1. **Expressiveness.** Reserve Pay is one cap against one merchant. A real intent is
+   ten constraints. `src/mandate/policy/rails.py` already computes exactly which
+   clauses survive on AP2 and on Reserve Pay and which have nowhere to go. It is
+   built, tested, and shown nowhere. That is the single cheapest win left.
+2. **Proof.** Nobody measures whether any of it holds under prompt injection.
+
+### The four features, and where each stands
+
+1. **Regulatory and rails alignment page.** NOT STARTED. Map each clause to RBI's
+   Digital Payments E-mandate Framework 2026, NPCI UAP, and Reserve Pay, gaps stated
+   honestly. Feed it from `rails.py` + `evidence.json`, never hand-typed. Cheaper than
+   estimated because `rails.py` already does the analysis.
+2. **AFA third verdict.** DONE, committed in `702cf60`.
+3. **Bring-your-own-mandate sandbox on `/try`.** NOT STARTED. Judge types intent, it
+   compiles at `/v1/compile` and is enforced live. **Design decision already made:**
+   the judge's policy runs **unsigned in an ephemeral sandbox session**, clearly
+   labelled, and the page shows the offline CLI command that would sign it. Signing at
+   runtime would need the private key in the service, which breaks decision 2 and
+   fails `test_docker_image_ships_no_signing_key`. The gateway refusing to sign is
+   the feature, not a limitation.
+4. **Surface the AP2 export.** NOT STARTED, ~2 hours. `src/mandate/ap2/`,
+   `/v1/mandate/ap2` and `mandate ap2-export` all exist and are invisible on the site.
+
+### What landed in 702cf60
+
+`afa.required`, a tenth constraint and the gateway's third answer. Above Rs 15,000 it
+returns UNKNOWN, not DENY: the order is not forbidden, it is unauthorised so far.
+`combine` already ranks UNKNOWN correctly and `may_execute` already refuses it.
+
+`ApprovalStore` (`src/mandate/gateway/approval.py`) is keyed on the **canonical intent
+hash of the resolved action**, so approving one basket cannot release a different
+basket of the same value. The agent has no path to it. A gateway with no store
+escalates rather than allowing. Do not "simplify" this to an amount comparison.
+
+Verified rather than assumed that this cannot move a measured number: the largest
+authorised amount across all three live result sets is **Rs 1,826** against a
+Rs 15,000 threshold, so the clause never fires on the frozen corpus.
+
+**Provenance gained a third bucket, `regulatory`.** Neither heard from the user nor
+guessed by the compiler. The read-back prints "(required by law)" instead of
+"(I inferred this, is it right?)", because a statutory floor is not the user's to
+decline. `time.window` moved into it: three real compiles never emit that clause, so
+filing it as `stated` claimed the user said something no compiler hears. RBI requires
+every mandate to carry a validity period, so the clause is right to exist and was
+wrong to be attributed to the user. The other seven constraints reproduce byte-for-byte.
+
+### The model drift, and the correction
+
+**`GEMINI_MODEL` is the model every path uses unless a caller names one.** The sweeps
+pass `--model gemini-3.7-flash` explicitly. `mandate compile`, `/v1/compile` and
+`/v1/agent` pass nothing.
+
+Commit `0ca31a5` "docs: spec for the judge-testable hosted gateway", a **939-file**
+commit on 30 Aug, silently changed `GEMINI_MODEL` from `gemini-3.7-flash` to
+`gemini-3.6-flash`. So the live judge-facing console ran a different model from the
+one every document named, for three days, and no test went red. The GCP usage graph
+caught it, not the suite: 16.6M input tokens on 3.7 from the sweeps, 1.5M on 3.6 from
+the drifted default.
+
+Restored to `gemini-3.7-flash`. `tests/test_llm_defaults.py` pins it three ways, and
+`tests/test_llm.py` now tracks the constant instead of restating the literal, which is
+what let it drift silently in the first place.
+
+Separately, `fb53a28` "polish demo runner and DashScope message formatting" had set
+`policy.yaml`'s `compiler.model` to `qwen3.5:9b` with byte-identical constraints and no
+recompile behind it, while this file records that model as pulled but untested. The
+policy was really compiled at `9c94e82`, when the default was already 3.7, so the label
+is `gemini-3.7-flash` and a test now compares it against `GEMINI_MODEL`.
+
+**The compiler is flaky and this is worth saying out loud.** Three real compiles of the
+frozen `source_text` on Vertex: two produced a policy, one tripped the built-in
+two-reading determinism check and refused. At temperature 0. The check failing closed
+is the design working, and it is a better story told than discovered.
+
+### Uncommitted right now
+
+`policies/policy.yaml` (re-signed, `compiler.model` back to 3.7, hash
+`sha256:cb0a4c6b452ba676...`), `src/mandate/llm.py` (default restored + comment),
+`tests/test_llm.py` (tracks the constant), `web/src/data/evidence.json` (regenerated),
+and new `tests/test_llm_defaults.py`. Commit these before starting feature 1.
+
+### Next step
+
+Sweep for other stale `gemini-3.6-flash` literals in docs and web, commit the model
+fix, then build feature 1. Do not retype any number into a `.tsx`; regenerate
+`evidence.json` with `mandate evidence`.
+
+
 ## Running on Vertex AI
 
 The free-tier Gemini key pool caps at 20 requests/day/key, which cannot carry a
