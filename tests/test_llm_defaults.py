@@ -36,3 +36,13 @@ def test_a_provider_with_no_model_named_takes_the_documented_default():
 
     sig = inspect.signature(VertexGeminiProvider.__init__)
     assert sig.parameters["model"].default == DOCUMENTED_MODEL
+
+
+def test_the_harness_default_tracks_the_same_constant():
+    """`mandate evaluate` with no --model carried its own copy of the literal, and
+    it was still on 3.6 after llm.py was restored. The documented sweeps all pass
+    --model, so it never showed up in a result row, but a second hand-typed copy of
+    the same fact is how the first one drifted."""
+    from mandate.harness.runner import DEFAULT_MODEL
+
+    assert DEFAULT_MODEL == GEMINI_MODEL

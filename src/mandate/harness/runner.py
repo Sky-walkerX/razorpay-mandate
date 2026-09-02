@@ -20,6 +20,7 @@ from mandate.gateway.state import Verdict
 from mandate.harness import oracle
 from mandate.harness.agent import ShoppingAgent
 from mandate.harness.corpus import CorpusItem
+from mandate.llm import GEMINI_MODEL
 from mandate.money import Paise
 from mandate.policy.models import ConstraintId as C
 from mandate.policy.models import Policy
@@ -81,7 +82,9 @@ def _budget_of(policy: Policy) -> int:
     return int(policy.constraints.get(C.BUDGET_TOTAL, {}).get("max", 0))
 
 
-DEFAULT_MODEL = "gemini-3.6-flash"
+# Tracks GEMINI_MODEL rather than restating it. Restating the literal is what let
+# 0ca31a5 move the default from 3.7 to 3.6 for three days with nothing going red.
+DEFAULT_MODEL = GEMINI_MODEL
 
 
 def _result_path(out_dir: Path, arm: Arm, item: CorpusItem) -> Path:
