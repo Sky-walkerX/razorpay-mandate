@@ -65,11 +65,20 @@ class SessionManager:
         claims: TokenClaims,
         mode: Mode = Mode.ENFORCE,
         pricebook: PriceBook | None = None,
+        policy: Policy | None = None,
     ) -> Session:
         """Build a session. `mode` is a parameter so the console can run an
         unenforced control arm beside the enforced one; `pricebook` so a run
         against a hostile catalog resolves prices from that catalog rather than
-        the default one, which would fail closed on every unknown SKU."""
+        the default one, which would fail closed on every unknown SKU; `policy`
+        so a judge's freshly compiled sandbox mandate is enforced by this same
+        gateway rather than by a second code path built to look like it.
+
+        A sandbox policy is unsigned and carries the reserved sandbox mandate id.
+        Nothing is relaxed to accommodate it: `Gateway._verify_token` still
+        requires the bearer token to be bound to whatever policy this session
+        serves, which is why sandbox tokens are minted offline against that
+        reserved id. See `mandate.service.sandbox`."""
         with self._lock:
             self._evict_idle_locked()
 
@@ -82,7 +91,7 @@ class SessionManager:
             ledger = Ledger(session_dir / "ledger.jsonl")
 
             gw = Gateway(
-                policy=self.policy,
+                policy=policy if policy is not None else self.policy,
                 downstream=self.downstream,
                 audit=audit,
                 mode=mode,
@@ -97,7 +106,7 @@ class SessionManager:
             session = Session(
                 jti=claims.jti,
                 token=token,
-                mandate_id=claims.mandate_id,
+                mandate_id=gw.policy.mandate_id,
                 created_at=now,
                 last_active=now,
                 dir_path=session_dir,

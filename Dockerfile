@@ -32,6 +32,7 @@ COPY revocations.jsonl ./revocations.jsonl
 # issuer_private.key could mint itself a higher cap, which is the whole property
 # the offline issuer exists to provide.
 COPY .mandate/token_pool.json ./.mandate/token_pool.json
+COPY .mandate/sandbox_pool.json ./.mandate/sandbox_pool.json
 COPY .mandate/keys/issuer_public.key ./.mandate/keys/issuer_public.key
 
 # Copy built frontend assets from Stage 1

@@ -528,6 +528,12 @@ def mint_pool_cmd(
     key_file: Annotated[Path, typer.Option("--key-file")] = Path(".mandate/keys/issuer_private.key"),
     out: Annotated[Path, typer.Option("--out")] = Path(".mandate/token_pool.json"),
     hours: Annotated[int, typer.Option("--hours", help="Token lifetime in hours")] = 720,
+    jti_prefix: Annotated[str, typer.Option(
+        "--jti-prefix",
+        help="jti namespace. Two pools MUST NOT share one: SessionManager keys "
+             "sessions on jti and rmtree's the directory on create, so a "
+             "collision deletes a live session's audit chain.",
+    )] = "tok_pool",
 ) -> None:
     """Pre-mint a pool of signed agent tokens offline for judge sessions."""
     import json
@@ -542,7 +548,7 @@ def mint_pool_cmd(
     expires = (datetime.now(UTC) + timedelta(hours=hours)).isoformat()
     tokens = []
     for i in range(1, count + 1):
-        jti = f"tok_pool_{i:03d}"
+        jti = f"{jti_prefix}_{i:03d}"
         tok = mint_agent_token(
             mandate_id=mandate_id,
             private_key_hex=priv_key_hex,
@@ -553,7 +559,11 @@ def mint_pool_cmd(
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(tokens, indent=2))
-    typer.echo(f"Minted {len(tokens)} tokens to {out} (jti tok_pool_001..tok_pool_{count:03d}, expires {expires})")
+    typer.echo(
+        f"Minted {len(tokens)} tokens to {out} "
+        f"(jti {jti_prefix}_001..{jti_prefix}_{count:03d}, "
+        f"mandate {mandate_id}, expires {expires})"
+    )
 
 
 @app.command("ap2-export")
@@ -582,6 +592,11 @@ def serve_cmd(
     public_key: Annotated[Path, typer.Option("--public-key")] = Path(".mandate/keys/issuer_public.key"),
     revocations: Annotated[Path, typer.Option("--revocations")] = Path("revocations.jsonl"),
     token_pool: Annotated[Path, typer.Option("--token-pool")] = Path(".mandate/token_pool.json"),
+    sandbox_pool: Annotated[Path, typer.Option(
+        "--sandbox-pool",
+        help="Tokens bound to the reserved sandbox mandate. Absent, /v1/sandbox "
+             "reports unavailable rather than falling back to the signed mandate.",
+    )] = Path(".mandate/sandbox_pool.json"),
     capability_secret: Annotated[str | None, typer.Option("--capability-secret", envvar="MANDATE_CAPABILITY_SECRET")] = None,
     static_dir: Annotated[Path | None, typer.Option("--static-dir")] = Path("web/dist"),
     store: Annotated[Path | None, typer.Option("--store", envvar="MANDATE_STORE_PATH")] = None,
@@ -631,12 +646,15 @@ def serve_cmd(
         typer.echo("  Downstream : FakeDownstream (test mode)")
 
     pool = TokenPool.from_file(token_pool) if token_pool.exists() else TokenPool([])
+    sbx = TokenPool.from_file(sandbox_pool) if sandbox_pool.exists() else TokenPool([])
 
     typer.echo(f"Starting Mandate Gateway Daemon on http://{host}:{port}")
     typer.echo(f"  Policy     : {policy}")
     typer.echo(f"  Public Key : {public_key}")
     typer.echo(f"  Revocations: {revocations}")
     typer.echo(f"  Token Pool : {pool.available_count} available tokens")
+    typer.echo(f"  Sandbox    : {sbx.available_count} available tokens"
+               f"{'' if sbx.available_count else ' (/v1/sandbox disabled)'}")
     typer.echo(f"  Storefront : {store or '/tmp/mandate-store/orders.jsonl'}")
 
     app_instance = create_app(
@@ -647,6 +665,7 @@ def serve_cmd(
         pricebook=pricebook,
         downstream=downstream,
         token_pool=pool,
+        sandbox_pool=sbx,
         catalog=catalog,
         static_dir=static_dir if (static_dir and static_dir.exists()) else None,
         store_path=store or Path("/tmp/mandate-store/orders.jsonl"),

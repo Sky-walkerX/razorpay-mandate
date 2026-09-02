@@ -124,3 +124,34 @@ def test_no_tsx_claims_a_rail_holds_a_clause_it_does_not():
             overclaimed.append(f"part {part} ({key}) claims onRail, rails.py says {kind!r}")
 
     assert not overclaimed, "web claims a rail carries a clause it cannot:\n" + "\n".join(overclaimed)
+
+
+def test_the_web_has_exactly_one_api_base_and_it_is_not_hostname_sniffing():
+    """The judge console posted to the visitor's own laptop on the custom domain.
+
+    Three components each decided where the API lived, and they had drifted into
+    two different rules. `JudgeConsole.tsx` enumerated the hosts it knew —
+    port 8000, port 8811, `*.run.app` — and sent every other host to
+    `http://127.0.0.1:8000`. That is correct on Cloud Run's own URL and wrong the
+    moment a custom domain is put in front of it, which is exactly what happened:
+    the page rendered perfectly on mandate.namankhandelwal.dev while every /v1
+    call went to localhost. Nothing failed loudly enough to notice.
+
+    The rule now lives in `web/src/lib/api.ts` and keys off `import.meta.env.DEV`,
+    which knows nothing about hostnames. This test keeps it that way.
+    """
+    web_src = REPO_ROOT / "web" / "src"
+    api_module = web_src / "lib" / "api.ts"
+    assert api_module.exists(), "web/src/lib/api.ts is the single source for API_BASE"
+
+    offenders = []
+    for path in web_src.rglob("*.ts*"):
+        if path == api_module:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "const API_BASE" in text:
+            offenders.append(f"{path.relative_to(REPO_ROOT)}: defines its own API_BASE")
+        if "run.app" in text:
+            offenders.append(f"{path.relative_to(REPO_ROOT)}: branches on a hostname")
+
+    assert not offenders, "\n".join(offenders)

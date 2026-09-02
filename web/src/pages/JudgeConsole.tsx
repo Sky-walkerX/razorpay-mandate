@@ -9,6 +9,8 @@ import { rupees } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { SellerChip } from '@/components/v2/SellerMark';
 import { MandateLockup } from '@/components/brand/MandateLockup';
+import SandboxPanel from '@/components/v2/SandboxPanel';
+import { API_BASE } from '@/lib/api';
 
 /**
  * The live console: nine ways in, and a gateway that has to answer for itself.
@@ -240,12 +242,6 @@ const ATTACK_PRESETS: AttackPreset[] = [
   },
 ];
 
-const API_BASE =
-  window.location.port === '8000' ||
-  window.location.port === '8811' ||
-  window.location.hostname.includes('run.app')
-    ? ''
-    : import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 const EASE = [0.22, 0.61, 0.36, 1] as const;
 
@@ -276,11 +272,6 @@ export default function JudgeConsole() {
   const [currentDisplay, setCurrentDisplay] = useState<DecisionRecord | null>(null);
   const [clauseRowStates, setClauseRowStates] = useState<RowState[]>(PARTS.map(() => 'idle'));
 
-  const [promptText, setPromptText] = useState(
-    'Order weekly groceries from Zepto, Blinkit or Instamart under ₹2,000 total, max ₹1,000 per order, no alcohol or tobacco. Max 3 orders total.',
-  );
-  const [compiledResult, setCompiledResult] = useState<Record<string, unknown> | null>(null);
-  const [compiling, setCompiling] = useState(false);
 
   const [customMerchant, setCustomMerchant] = useState('blinkit');
   const [customSku, setCustomSku] = useState('sku_dal_toor_2kg');
@@ -538,27 +529,16 @@ export default function JudgeConsole() {
     initSession();
   };
 
-  const handleCompile = async () => {
-    setCompiling(true);
-    try {
-      const res = await fetch(`${API_BASE}/v1/compile`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: promptText }),
-      });
-      if (res.ok) setCompiledResult(await res.json());
-    } catch {
-      setCompiledResult(null);
-    } finally {
-      setCompiling(false);
-    }
-  };
 
   const spentPaise = headroom['budget.total']?.used_paise || 0;
   const totalBudgetPaise = headroom['budget.total']?.limit_paise || 200000;
   const remainingBudgetPaise = Math.max(0, totalBudgetPaise - spentPaise);
   const ordersUsed = headroom.velocity?.used_count ?? 0;
   const ordersCap = headroom.velocity?.limit_count ?? 3;
+
+  /** The sandbox tab enforces the visitor's policy, so the command bar's
+   *  house-session figures are not theirs and must not read as if they were. */
+  const onSandboxTab = activeTab === 'compiler';
 
   const ran = Object.keys(results).length;
   /**
@@ -602,8 +582,22 @@ export default function JudgeConsole() {
           <span className="inline-flex items-center gap-[6px] rounded-[5px] border border-pass-line bg-pass-soft px-2 py-[3px] font-mono text-[10px] text-pass max-lg:hidden">
             signed
           </span>
+          {/* Everything in this bar belongs to the signed mandate's session. On
+              the sandbox tab the judge's own caps are what refuse them, so the
+              bar is dimmed and named rather than left reading as their budget:
+              ₹2,000 lit beside their ₹800 clause is a number they will believe. */}
+          {onSandboxTab && (
+            <span className="font-mono text-[10px] uppercase tracking-[0.09em] text-ink-4 max-lg:hidden">
+              · other tabs
+            </span>
+          )}
 
-          <div className="ml-auto flex items-center gap-3">
+          <div
+            className={cn(
+              'ml-auto flex items-center gap-3 transition-opacity',
+              onSandboxTab && 'opacity-40',
+            )}
+          >
             <div className="flex items-center gap-[9px] max-md:hidden">
               <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3">
                 budget left
@@ -657,7 +651,8 @@ export default function JudgeConsole() {
             </h1>
             <p className="mt-[5px] text-[13.5px] leading-[1.5] text-ink-2">
               Nine ways in. Pick one and watch all nine clauses run. This tab calls no model. Live
-              agent and Compiler both call one, and each says so on its own panel.
+              agent and Your mandate both call one, and each says so on its own panel. On the
+              third, the clauses that refuse you are the ones your own sentence compiled to.
             </p>
           </div>
 
@@ -708,7 +703,7 @@ export default function JudgeConsole() {
                 ) : (
                   <FileCode2 className="size-[13px]" />
                 )}
-                {t === 'console' ? 'Console' : t === 'agent' ? 'Live agent' : 'Compiler'}
+                {t === 'console' ? 'Console' : t === 'agent' ? 'Live agent' : 'Your mandate'}
               </button>
             ))}
           </div>
@@ -1158,55 +1153,8 @@ export default function JudgeConsole() {
           </div>
         </div>
       ) : (
-        /* ── Compiler ────────────────────────────────────────────────── */
-        <div className="grid items-start gap-5 p-[26px] max-sm:px-4 lg:grid-cols-2">
-          <div className="overflow-hidden rounded-xl border border-rule bg-bond">
-            <div className="border-b border-rule bg-sheet px-5 py-[11px]">
-              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2">
-                say what you mean
-              </span>
-            </div>
-            <div className="flex flex-col gap-3 p-5">
-              <textarea
-                value={promptText}
-                onChange={(e) => setPromptText(e.target.value)}
-                rows={7}
-                className="w-full resize-none rounded-lg border border-rule bg-sheet p-3 text-[13.5px] leading-[1.6] text-ink outline-none focus:border-indigo"
-              />
-              <button
-                onClick={handleCompile}
-                disabled={compiling}
-                className="inline-flex h-[38px] items-center justify-center gap-[7px] self-start rounded-[8px] bg-indigo px-4 text-[13.5px] font-medium text-white transition-colors hover:bg-[#254ED0] disabled:opacity-50"
-              >
-                <FileCode2 className="size-[14px]" />
-                {compiling ? 'Compiling…' : 'Compile to a policy'}
-              </button>
-              <p className="text-[12.5px] leading-[1.55] text-ink-3">
-                A model reads this once, at temperature zero, and proposes constraints. You approve
-                the result. After that it never gets a vote on whether money moves.
-              </p>
-            </div>
-          </div>
-
-          <div className="overflow-hidden rounded-xl border border-rule bg-bond">
-            <div className="border-b border-rule bg-sheet px-5 py-[11px]">
-              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2">
-                what it compiled to
-              </span>
-            </div>
-            {!compiledResult ? (
-              <p className="px-5 py-10 text-center text-[13px] text-ink-3">
-                Nothing compiled yet. The result appears here with each clause marked{' '}
-                <b className="font-medium text-ink-2">heard</b> or{' '}
-                <b className="font-medium text-ink-2">inferred</b>.
-              </p>
-            ) : (
-              <pre className="overflow-x-auto px-5 py-4 font-mono text-[11.5px] leading-[1.7] text-ink-2">
-                {JSON.stringify(compiledResult, null, 2)}
-              </pre>
-            )}
-          </div>
-        </div>
+        /* ── Sandbox: the visitor's own mandate, compiled and enforced ── */
+        <SandboxPanel apiBase={API_BASE} />
       )}
     </div>
   );

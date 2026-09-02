@@ -52,6 +52,11 @@ from mandate.service.agent_runner import (
     run_agent_stream,
 )
 from mandate.service.order_store import OrderStore
+from mandate.service.sandbox import (
+    SANDBOX_MANDATE_ID,
+    SIGN_COMMAND,
+    to_sandbox_policy,
+)
 from mandate.service.session import SessionManager
 from mandate.service.token_pool import PoolExhausted, TokenPool
 
@@ -167,6 +172,7 @@ def create_app(
     downstream=None,
     capability_secret: str | None = None,
     token_pool: TokenPool | None = None,
+    sandbox_pool: TokenPool | None = None,
     catalog: Catalog | None = None,
     static_dir: Path | str | None = None,
     log_private_key_path: Path | str | None = Path(".mandate/keys/log_private.key"),
@@ -232,6 +238,16 @@ def create_app(
     # after a restart is handed a dead token.
     if pool.is_revoked is None:
         pool.is_revoked = revocations.is_revoked
+
+    # A second pool, bound offline to the reserved sandbox mandate rather than to
+    # the signed one. It is separate rather than mixed in because `claim_token`
+    # hands out whatever is next, and a sandbox session must not be opened on a
+    # token bound to the signed mandate — `Gateway._verify_token` would reject it,
+    # correctly, and the judge would see an authentication error instead of the
+    # feature. Empty pool means the sandbox is simply unavailable, not open.
+    sbx_pool = sandbox_pool if sandbox_pool is not None else TokenPool([])
+    if sbx_pool.is_revoked is None:
+        sbx_pool.is_revoked = revocations.is_revoked
 
     session_manager = SessionManager(
         policy=policy,
@@ -435,11 +451,16 @@ def create_app(
 
         rec = _audit_row_for(session, dec)
         rec_json = rec.model_dump(mode="json") if rec is not None else None
+        # The session's own policy, not the service's. A sandbox order filed
+        # under the signed mandate's id would make the order history claim the
+        # signed document authorised something a visitor typed.
         store.record(decision=dec, audit_record=rec, jti=claims.jti,
-                     mandate_id=policy.mandate_id, source="http")
+                     mandate_id=session.gateway.policy.mandate_id, source="http")
 
-        # Compute updated headroom
-        headroom = _compute_headroom(policy, session.gateway._state())
+        # Against the session's own policy. A sandbox session showing the house
+        # mandate's headroom would put the wrong limits on the visitor's meter
+        # while their clauses did the deciding — the same mismatch, one layer up.
+        headroom = _compute_headroom(session.gateway.policy, session.gateway._state())
 
         return JSONResponse({
             "decision": dec_json,
@@ -582,6 +603,115 @@ def create_app(
                 "fallback_reason": str(e),
                 "binding_policy_hash": pol_hash,
             })
+
+    async def create_sandbox(req: Request) -> JSONResponse:
+        """Compile a visitor's own intent and enforce it, unsigned, for one session.
+
+        The whole feature is that the clauses doing the refusing are the ones the
+        visitor's sentence compiled to. So nothing here rewrites what they asked
+        for, and nothing falls back to the signed policy when the compiler cannot
+        read them: `/v1/compile` does fall back, because its job is to render
+        something, and this one's job is to enforce something. Enforcing the
+        house mandate while a judge believes their own is being tested would be a
+        rigged demo.
+
+        The compiler refusing is a real outcome and is returned as one. It runs
+        two readings at temperature 0 and declines when they disagree, which is
+        the determinism check working rather than an error to paper over.
+        """
+        try:
+            body = await req.json()
+            prompt = (body.get("prompt") or "").strip()
+        except (ValueError, json.JSONDecodeError):
+            prompt = ""
+
+        if not prompt:
+            return JSONResponse(
+                {"error": "empty_prompt", "detail": "say what the agent may spend"},
+                status_code=400,
+            )
+
+        if not sbx_pool.available_count:
+            return JSONResponse({
+                "error": "sandbox_unavailable",
+                "detail": "no sandbox tokens remain. Sandbox tokens are minted "
+                          "offline (`mandate mint-pool --mandate-id "
+                          f"{SANDBOX_MANDATE_ID}`); the service cannot mint one, "
+                          "which is the same property that stops it signing a policy.",
+            }, status_code=503)
+
+        from datetime import timedelta
+
+        from mandate.compiler.compile import compile_intent
+        from mandate.llm import provider_for
+
+        try:
+            provider = provider_for()
+            exp = datetime.now(UTC) + timedelta(days=30)
+            res = await asyncio.wait_for(
+                asyncio.to_thread(
+                    compile_intent, prompt, "judge", "agt_shopper", exp, provider
+                ),
+                timeout=30.0,
+            )
+        except TimeoutError:
+            # `kind` separates the three ways this can come back empty, because
+            # they mean opposite things. A timeout says nothing about the intent
+            # and is worth retrying; a decline is the determinism check firing and
+            # retrying the same words will decline again. Collapsing them into one
+            # message had the page explain a slow network as a careful compiler.
+            return JSONResponse({
+                "compiled": False, "kind": "timeout",
+                "reason": "the compiler did not answer in time",
+            }, status_code=504)
+        except Exception as e:
+            return JSONResponse(
+                {"compiled": False, "kind": "error", "reason": str(e)}, status_code=502
+            )
+
+        if res.policy is None:
+            # Not an error. Two readings at temperature 0 disagreed, or the
+            # compiler needs something it was not told, and it declined rather
+            # than guessing at what someone may spend.
+            return JSONResponse({
+                "compiled": False,
+                "kind": "declined",
+                "reason": "the compiler would not commit to a single reading of that",
+                "questions": [q.model_dump(mode="json") for q in (res.questions or [])],
+            })
+
+        sbx_policy = to_sandbox_policy(res.policy)
+
+        try:
+            token, claims = sbx_pool.claim_token(pub_hex)
+        except PoolExhausted:
+            return JSONResponse(
+                {"error": "sandbox_unavailable", "detail": "no sandbox tokens remain"},
+                status_code=503,
+            )
+
+        session_manager.create_session(token, claims, policy=sbx_policy)
+
+        return JSONResponse({
+            "compiled": True,
+            "token": token,
+            "jti": claims.jti,
+            "mandate_id": sbx_policy.mandate_id,
+            "policy_hash": policy_hash(sbx_policy),
+            # Said plainly and in the payload, not only in the interface copy. A
+            # client reading this API has to be able to tell the two apart too.
+            "signed": False,
+            "signed_mandate_id": policy.mandate_id,
+            "sign_command": SIGN_COMMAND,
+            "source_text": sbx_policy.source_text,
+            "expires_at": claims.exp,
+            "constraints": [
+                {"id": str(cid), "spec": spec, "source": _source(cid, sbx_policy)}
+                for cid, spec in sbx_policy.constraints.items()
+            ],
+            "questions": [q.model_dump(mode="json") for q in (res.questions or [])],
+            "sandbox_tokens_remaining": sbx_pool.available_count,
+        })
 
     async def get_store_orders(req: Request) -> Response:
         """The customer's order history. Unauthenticated on purpose: it is the
@@ -934,6 +1064,7 @@ def create_app(
         Route("/v1/headroom", get_headroom, methods=["GET"]),
         Route("/v1/revoke", revoke_token, methods=["POST"]),
         Route("/v1/compile", compile_policy, methods=["POST"]),
+        Route("/v1/sandbox", create_sandbox, methods=["POST"]),
         Route("/v1/conformance", get_conformance, methods=["GET"]),
         Route("/v1/store/orders", get_store_orders, methods=["GET"]),
         Route("/v1/store/week", get_store_week, methods=["GET"]),

@@ -7,11 +7,8 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { API_BASE } from '@/lib/api';
 
-const API_BASE =
-  typeof window !== 'undefined' && window.location.port === '5173'
-    ? import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
-    : '';
 
 type Mode = 'enforce' | 'observe';
 

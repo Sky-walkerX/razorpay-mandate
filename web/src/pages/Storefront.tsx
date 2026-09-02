@@ -6,6 +6,7 @@ import { MandateLockup } from '@/components/brand/MandateLockup';
 import { SellerChip } from '@/components/v2/SellerMark';
 import { StatusBadge, type Tone } from '@/components/dashboard/StatusBadge';
 import { rupees, rupeesWhole } from '@/lib/money';
+import { API_BASE } from '@/lib/api';
 
 /**
  * The shop floor.
@@ -20,10 +21,6 @@ import { rupees, rupeesWhole } from '@/lib/money';
  * an MCP client someone pointed at /mcp, or a direct call to /v1/orders.
  */
 
-const API_BASE =
-  typeof window !== 'undefined' && window.location.port === '5173'
-    ? import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
-    : '';
 
 const POLL_INTERVAL_MS = 1500;
 const TOKEN_KEY = 'mandate_judge_token';
