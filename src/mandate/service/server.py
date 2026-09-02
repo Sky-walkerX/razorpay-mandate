@@ -256,6 +256,13 @@ def create_app(
         capability_secret=capability_secret,
         issuer_public_key=pub_hex,
         revocations=revocations,
+        # Sized so the token pools, not this cap, decide how many people can hold
+        # a session at once. House and sandbox sessions share one budget, and the
+        # cap evicts the least recently active when it is reached — so a cap below
+        # the mintable total would throw a judge out mid-demo because *other*
+        # people had claimed tokens, and they would see `session_not_found`. The
+        # 100 floor keeps the old behaviour when no pools are configured.
+        max_sessions=max(100, pool.total_count + sbx_pool.total_count),
     )
 
     def _extract_and_verify_token(req: Request) -> tuple[str | None, TokenClaims | None, JSONResponse | None]:
@@ -584,25 +591,40 @@ def create_app(
                         {"id": str(cid), "spec": spec, "source": _source(cid, compiled_pol)}
                         for cid, spec in compiled_pol.constraints.items()
                     ],
+                    "compiled": True,
                     "fallback": False,
                     "binding_policy_hash": pol_hash,
                 })
-            else:
-                raise ValueError("Compiler produced ambiguous readings or questions")
-        except Exception as e:
-            # Honest fallback
+            # The compiler declining is not an error and is reported as itself,
+            # the same way /v1/sandbox reports it.
             return JSONResponse({
                 "prompt": prompt,
-                "mandate_id": policy.mandate_id,
-                "policy_hash": pol_hash,
-                "constraints": [
-                    {"id": str(cid), "spec": spec, "source": _source(cid, policy)}
-                    for cid, spec in policy.constraints.items()
-                ],
-                "fallback": True,
-                "fallback_reason": str(e),
+                "compiled": False,
+                "kind": "declined",
+                "reason": "the compiler would not commit to a single reading of that",
+                "questions": [q.model_dump(mode="json") for q in (res.questions or [])],
                 "binding_policy_hash": pol_hash,
             })
+        except Exception as e:
+            # It used to answer with the signed policy's own clauses here, on the
+            # reasoning that this endpoint only renders and so a fallback was
+            # harmless. That was wrong, and provably: the deployed service had no
+            # Vertex project set and then no Vertex permission, so for days this
+            # returned the demo mandate's nine clauses to anyone who typed their
+            # own intent, labelled `fallback: true` and otherwise indistinguishable
+            # from a real compile. Nothing on the page read that flag. An endpoint
+            # that answers a question it could not answer is worse than one that
+            # fails, because the failure is what gets noticed and fixed.
+            #
+            # `constraints` is now absent rather than borrowed. `/v1/sandbox` makes
+            # the same choice for the same reason.
+            return JSONResponse({
+                "prompt": prompt,
+                "compiled": False,
+                "kind": "error",
+                "reason": str(e),
+                "binding_policy_hash": pol_hash,
+            }, status_code=502)
 
     async def create_sandbox(req: Request) -> JSONResponse:
         """Compile a visitor's own intent and enforce it, unsigned, for one session.

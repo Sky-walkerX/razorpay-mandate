@@ -66,7 +66,7 @@ class ScriptedCompiler:
         return json.dumps(self._reading)
 
 
-def _app(tmp_path, monkeypatch, provider=None, sandbox_tokens=2):
+def _app(tmp_path, monkeypatch, provider=None, sandbox_tokens=2, house_tokens=1):
     tmp_path.mkdir(parents=True, exist_ok=True)
     catalog = generate_catalog(seed=42)
     priv_hex, pub_hex = generate_keypair()
@@ -101,7 +101,8 @@ def _app(tmp_path, monkeypatch, provider=None, sandbox_tokens=2):
         for i in range(1, sandbox_tokens + 1)
     ])
     main = TokenPool([
-        mint_agent_token(pol.mandate_id, priv_hex, expires_iso=exp, jti="tok_pool_001")
+        mint_agent_token(pol.mandate_id, priv_hex, expires_iso=exp, jti=f"tok_pool_{i:03d}")
+        for i in range(1, house_tokens + 1)
     ])
 
     app = create_app(
@@ -307,3 +308,79 @@ def test_the_shipped_pools_are_disjoint_and_bound_to_different_mandates():
     assert not ({c["jti"] for c in main} & {c["jti"] for c in sbx})
     assert {c["mandate_id"] for c in sbx} == {SANDBOX_MANDATE_ID}
     assert SANDBOX_MANDATE_ID not in {c["mandate_id"] for c in main}
+
+
+class BrokenCompiler:
+    """Stands in for the compiler being unreachable, which is not hypothetical:
+    the deployed service ran for days with no Vertex project and then with no
+    Vertex permission."""
+
+    model = "scripted-test"
+
+    def next_text(self, system, history):
+        raise RuntimeError("403 PERMISSION_DENIED on aiplatform.endpoints.predict")
+
+
+def test_compile_does_not_answer_with_a_policy_it_did_not_compile(tmp_path, monkeypatch):
+    """`/v1/compile` used to return the signed policy's own clauses when the
+    compiler failed, flagged `fallback: true` and otherwise identical to a real
+    compile. Nothing read the flag, so a live outage looked like a working feature
+    for days. It must not borrow those clauses again.
+    """
+    client, pol, _, _ = _app(tmp_path, monkeypatch, provider=BrokenCompiler())
+    r = client.post("/v1/compile", json={"prompt": "under Rs 500 an order"})
+
+    assert r.status_code == 502
+    body = r.json()
+    assert body["compiled"] is False
+    assert body["reason"]
+    # The specific failure: no clause list, and not the signed mandate's identity.
+    assert "constraints" not in body
+    assert pol.mandate_id not in json.dumps(body.get("constraints", []))
+    assert body.get("mandate_id") != pol.mandate_id
+
+
+def test_compile_still_answers_normally_when_the_compiler_works(tmp_path, monkeypatch):
+    """The honest-failure change must not have broken the path that works."""
+    client, pol, _, _ = _app(tmp_path, monkeypatch)
+    body = client.post("/v1/compile", json={"prompt": "under Rs 300 an order"}).json()
+    assert body["compiled"] is True
+    assert body["fallback"] is False
+    assert {c["id"] for c in body["constraints"]} == set(JUDGE_READING["constraints"])
+    assert body["mandate_id"] != pol.mandate_id
+
+
+def _session_manager_of(app):
+    from mandate.service.session import SessionManager
+
+    managers = [
+        c.cell_contents
+        for route in app.routes
+        for c in (getattr(route.endpoint, "__closure__", None) or ())
+        if isinstance(c.cell_contents, SessionManager)
+    ]
+    assert managers, "no SessionManager reachable from the routes"
+    return managers[0]
+
+
+def test_the_session_cap_never_binds_before_the_token_pools_do(tmp_path, monkeypatch):
+    """House and sandbox sessions share one session budget, and the cap evicts the
+    least recently active when it is reached. A cap below the total mintable tokens
+    would throw a judge out mid-demo because *other* people had claimed tokens —
+    they would see `session_not_found` and read it as the gateway breaking.
+
+    The pools here deliberately exceed the 100 floor, so this exercises the sizing
+    rather than passing on the default.
+    """
+    client, _pol, _, _ = _app(tmp_path, monkeypatch, house_tokens=120, sandbox_tokens=60)
+    mgr = _session_manager_of(client.app)
+    assert mgr.max_sessions >= 180, (
+        f"cap {mgr.max_sessions} is below the 180 tokens that can be claimed"
+    )
+
+
+def test_the_floor_still_applies_when_no_pools_are_configured(tmp_path, monkeypatch):
+    """Sizing to the pools must not shrink the cap to zero for a service that runs
+    without them, which is how every test in this suite and the local daemon run."""
+    client, _pol, _, _ = _app(tmp_path, monkeypatch, house_tokens=1, sandbox_tokens=1)
+    assert _session_manager_of(client.app).max_sessions >= 100

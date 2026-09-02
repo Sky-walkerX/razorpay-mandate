@@ -466,17 +466,68 @@ meter while their clauses do the deciding, which is the exact mismatch the featu
 exists to disprove. Both read `session.gateway.policy` now. Worth checking any new
 handler for the same slip.
 
-**The endpoint does not fall back and `/v1/compile` does.** That difference is
-intentional. `/v1/compile` renders something, so falling back to the signed policy is
-harmless. `/v1/sandbox` enforces something, so falling back would enforce the house
-mandate while the page claimed to be testing the visitor's. With no sandbox pool it
-returns 503, and a test asserts the signed mandate's id appears nowhere in that
-response.
+**Neither endpoint falls back any more, and the reasoning that said one could was
+wrong.** This file used to argue that `/v1/compile` only renders, so answering with
+the signed policy's clauses was harmless. It was not: see "the live compile path had
+never worked" below. `/v1/compile` now returns 502 with a reason and **no**
+`constraints`, exactly as `/v1/sandbox` does. With no sandbox pool `/v1/sandbox`
+returns 503, and a test asserts the signed mandate's id appears nowhere in either
+failure response.
 
 **Refusals carry a `kind`.** `declined` (two readings at temperature 0 disagreed),
 `timeout`, `error`. The page explains each differently because they mean opposite
 things: a decline repeats on the same words, a timeout says nothing about the intent.
 The first version explained a slow network as a careful compiler.
+
+### Closed, 3 Sep: the live compile path had never worked, and said nothing
+
+Deploying feature 3 surfaced this within one call, which is the whole argument for
+building `/v1/sandbox` without a fallback.
+
+The Cloud Run service had **no `GEMINI_VERTEX_PROJECT`** and its service account
+(`214049084577-compute@developer.gserviceaccount.com`, the default compute SA) had
+**no `roles/aiplatform.user`**. So every model call from the deployed service failed.
+Both were pre-existing: the env block on revision `00006` was byte-identical to
+`00005`, so the deploy dropped nothing. This file's claim of "native IAM Vertex AI
+authentication" was never true.
+
+**What made it invisible for days is the interesting part.** `/v1/compile` caught the
+exception and answered with the *signed policy's own nine clauses*, flagged
+`fallback: true` and otherwise identical in shape to a real compile. Nothing on the
+page read the flag. A judge typing their own intent was shown the demo mandate and
+told it was theirs. `/v1/sandbox` refuses instead, so it reported
+`no Vertex project set` on the first request against production.
+
+Fixed in three parts:
+
+- `gcloud run services update --update-env-vars GEMINI_VERTEX_PROJECT=razorpay-mandate`.
+  **Use `--update-env-vars`, never `--set-env-vars`** — the latter replaces the whole
+  block and `MANDATE_CAPABILITY_SECRET` exists only in the deployed service.
+- `gcloud projects add-iam-policy-binding razorpay-mandate --member=serviceAccount:214049084577-compute@developer.gserviceaccount.com --role=roles/aiplatform.user`.
+  IAM takes a minute or two to propagate; a 403 straight after the grant means nothing.
+- `/v1/compile` no longer borrows clauses. It returns 502 with a reason, or
+  `kind: "declined"` when the compiler will not commit.
+  `test_compile_does_not_answer_with_a_policy_it_did_not_compile` is mutation-verified:
+  restoring the old fallback fails it.
+
+The general lesson, which has now cost this project twice in two days: **a component
+that answers a question it could not answer hides the outage**, and the API-base bug
+had the same shape — the page rendered perfectly while every call went nowhere. Prefer
+the loud failure.
+
+### Closed, 3 Sep: the session cap could evict a judge mid-demo
+
+`SessionManager` capped at 100 sessions (the constructor default; `create_app` passed
+nothing) and evicts the least recently active when full. House and sandbox sessions
+share that one budget, while the pools hold 200 + 100 tokens. So under load a judge
+could be thrown out because *other* people had claimed tokens, and would see
+`session_not_found` and read it as the gateway breaking.
+
+`create_app` now passes `max_sessions=max(100, pool.total_count + sbx_pool.total_count)`,
+so the pools are the only limit and eviction is by idle timeout alone. The 100 floor
+keeps the old behaviour when no pools are configured, which is how every test and the
+local daemon run. Both properties are tested, and the sizing test uses pools above the
+floor so it exercises the arithmetic rather than passing on the default.
 
 ### Closed, 2 Sep: the judge console was posting to the visitor's own laptop
 
