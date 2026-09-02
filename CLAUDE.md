@@ -292,12 +292,17 @@ same decision, recorded here so the baseline moving is a choice and not a drift.
 
 `dev` is pushed through `4c751f8`. Nothing uncommitted.
 
-**Cloud Run, as of the last thing actually observed:** revision
-`mandate-gateway-00007-tnb` is serving. `00006-s2c` was the four-features deploy;
-`00007-tnb` added `GEMINI_VERTEX_PROJECT`. A further deploy carrying `4c751f8`
-(the `/v1/compile` fix and the session cap) **was started and had not rolled over
-when this was written** — check the live revision before assuming those two are
-deployed, and re-run the verification below against whatever is actually serving.
+**Cloud Run: `mandate-gateway-00008-cx9` is serving and verified.** `00006-s2c`
+was the four-features deploy, `00007-tnb` added `GEMINI_VERTEX_PROJECT`, and
+`00008-cx9` carries `4c751f8` — the `/v1/compile` honest-failure fix and the
+pool-sized session cap.
+
+All six checks below pass against it on the custom domain: bundle clean of both
+`127.0.0.1:8000` and `run.app`; `/v1/compile` returns real clauses with
+`fallback: false`; `/v1/sandbox` compiles "Rs 300 an order, Rs 800 total, nothing
+alcoholic" and refuses ₹400 on the visitor's ₹300 with the headroom meter agreeing
+at 30000; `/rails` and `/v1/mandate/ap2` both 200; and a house session still
+allows ₹100 against its own ₹2,000 budget, so the sandbox changed nothing for it.
 
 ### Verifying a deploy, in the order that finds things
 
