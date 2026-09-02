@@ -185,9 +185,9 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
   const estimate = selected ? selected.unit_price * qty : 0;
 
   return (
-    <div className="grid items-start gap-5 p-[26px] max-sm:px-4 lg:grid-cols-2">
+    <div className="grid items-start gap-5 p-8 max-sm:px-[18px] lg:grid-cols-2">
       {/* ── write it ──────────────────────────────────────────────────── */}
-      <div className="overflow-hidden rounded-xl border border-rule bg-bond">
+      <div className="overflow-hidden rounded-panel border border-rule bg-bond">
         <div className="border-b border-rule bg-sheet px-5 py-[11px]">
           <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2">
             write your own mandate
@@ -215,7 +215,7 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
           <button
             onClick={compile}
             disabled={busy || !prompt.trim()}
-            className="inline-flex h-[38px] items-center justify-center gap-[7px] self-start rounded-[8px] bg-indigo px-4 text-[13.5px] font-medium text-white transition-colors hover:bg-[#254ED0] disabled:opacity-50"
+            className="inline-flex h-[38px] items-center justify-center gap-[7px] self-start rounded-lg bg-indigo px-4 text-[13.5px] font-medium text-white transition-colors hover:bg-[#254ED0] disabled:opacity-50"
           >
             <FileCode2 className="size-[14px]" />
             {busy ? 'Compiling…' : 'Compile it and enforce it'}
@@ -230,7 +230,7 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
       </div>
 
       {/* ── what happened to it ───────────────────────────────────────── */}
-      <div className="overflow-hidden rounded-xl border border-rule bg-bond">
+      <div className="overflow-hidden rounded-panel border border-rule bg-bond">
         <div className="border-b border-rule bg-sheet px-5 py-[11px]">
           <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2">
             {sandbox ? 'live, unsigned, yours' : 'what it compiled to'}
@@ -350,7 +350,7 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
                 <button
                   onClick={runProbe}
                   disabled={probing || !sku}
-                  className="inline-flex h-[34px] items-center gap-[6px] rounded-[8px] border border-rule bg-bond px-3 text-[13px] font-medium text-ink transition-colors hover:border-indigo disabled:opacity-50"
+                  className="inline-flex h-[34px] items-center gap-[6px] rounded-lg border border-rule bg-bond px-3 text-[13px] font-medium text-ink transition-colors hover:border-indigo disabled:opacity-50"
                 >
                   <Play aria-hidden className="size-[12px]" />
                   {probing ? 'Sending…' : 'Propose'}

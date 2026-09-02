@@ -573,13 +573,13 @@ export default function JudgeConsole() {
     <div data-v2 className="min-h-screen bg-sheet font-sans text-ink antialiased">
       {/* ── Command bar ───────────────────────────────────────────────── */}
       <div className="sticky top-0 z-40 border-b border-rule bg-bond/90 backdrop-blur-[12px]">
-        <div className="flex h-[56px] items-center gap-[18px] px-[26px] max-sm:px-4">
+        <div className="flex h-[60px] items-center gap-[18px] px-8 max-sm:px-[18px]">
           <Link to="/" aria-label="Mandate, by Razorpay">
             <MandateLockup size="sm" attribution={false} />
           </Link>
           <span aria-hidden className="h-5 w-px bg-rule max-lg:hidden" />
           <span className="font-mono text-[11px] text-ink-2 max-lg:hidden">mnd_groceries_01</span>
-          <span className="inline-flex items-center gap-[6px] rounded-[5px] border border-pass-line bg-pass-soft px-2 py-[3px] font-mono text-[10px] text-pass max-lg:hidden">
+          <span className="inline-flex items-center gap-[6px] rounded-full border border-pass-line bg-pass-soft px-2 py-[3px] font-mono text-[10px] text-pass max-lg:hidden">
             signed
           </span>
           {/* Everything in this bar belongs to the signed mandate's session. On
@@ -627,13 +627,13 @@ export default function JudgeConsole() {
             <button
               onClick={() => handleRevoke()}
               disabled={isRevoked || !session}
-              className="inline-flex h-[30px] items-center rounded-[7px] border border-halt-line bg-halt-soft px-3 text-[12.5px] text-halt transition-colors hover:bg-halt-soft/70 disabled:opacity-40"
+              className="inline-flex h-[30px] items-center rounded-lg border border-halt-line bg-halt-soft px-3 text-[12.5px] text-halt transition-colors hover:bg-halt-soft/70 disabled:opacity-40"
             >
               {isRevoked ? 'Revoked' : 'Revoke'}
             </button>
             <button
               onClick={handleReset}
-              className="inline-flex h-[30px] items-center gap-[6px] rounded-[7px] border border-rule bg-bond px-3 text-[12.5px] text-ink-2 transition-colors hover:bg-sheet"
+              className="inline-flex h-[30px] items-center gap-[6px] rounded-lg border border-rule bg-bond px-3 text-[12.5px] text-ink-2 transition-colors hover:bg-sheet"
             >
               <RotateCw className="size-[13px]" />
               Reset
@@ -644,7 +644,7 @@ export default function JudgeConsole() {
 
       {/* ── Scoreboard ────────────────────────────────────────────────── */}
       <div className="border-b border-rule bg-bond">
-        <div className="flex flex-wrap items-center gap-x-[26px] gap-y-5 px-[26px] py-[18px] max-sm:px-4">
+        <div className="flex flex-wrap items-center gap-x-[26px] gap-y-5 px-8 py-[18px] max-sm:px-[18px]">
           <div className="min-w-[18rem] flex-1">
             <h1 className="text-[25px] font-semibold leading-[1.1] tracking-[-0.042em]">
               Try to get money past it.
@@ -686,13 +686,13 @@ export default function JudgeConsole() {
             ))}
           </div>
 
-          <div className="flex gap-1 rounded-[9px] border border-rule bg-sheet p-1">
+          <div className="flex gap-1 rounded-lg border border-rule bg-sheet p-1">
             {(['console', 'agent', 'compiler'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setActiveTab(t)}
                 className={cn(
-                  'inline-flex h-[30px] items-center gap-[7px] rounded-[6px] px-3 text-[12.5px] transition-colors',
+                  'inline-flex h-[30px] items-center gap-[7px] rounded-md px-3 text-[12.5px] transition-colors',
                   activeTab === t ? 'bg-bond font-medium text-ink shadow-2xs' : 'text-ink-3',
                 )}
               >
@@ -710,7 +710,7 @@ export default function JudgeConsole() {
         </div>
 
         {anySimulated && (
-          <div className="flex items-center gap-[10px] border-t border-refer-line bg-refer-soft px-[26px] py-[9px] max-sm:px-4">
+          <div className="flex items-center gap-[10px] border-t border-refer-line bg-refer-soft px-8 py-[9px] max-sm:px-[18px]">
             <span aria-hidden className="size-[7px] rotate-45 bg-refer" />
             <p className="font-mono text-[11px] leading-[1.5] text-refer">
               the gateway at {API_BASE || 'this origin'} did not answer — outcomes marked{' '}
@@ -723,9 +723,9 @@ export default function JudgeConsole() {
       {activeTab === 'agent' ? (
         <LiveAgentPanel token={session?.token ?? null} />
       ) : activeTab === 'console' ? (
-        <div className="grid items-start gap-5 p-[26px] max-sm:px-4 lg:grid-cols-[372px_minmax(0,1fr)]">
+        <div className="grid items-start gap-5 p-8 max-sm:px-[18px] lg:grid-cols-[372px_minmax(0,1fr)]">
           {/* ── Attacks ───────────────────────────────────────────────── */}
-          <div className="overflow-hidden rounded-xl border border-rule bg-bond">
+          <div className="overflow-hidden rounded-panel border border-rule bg-bond">
             <div className="flex items-center justify-between border-b border-rule bg-sheet px-4 py-3">
               <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2">
                 nine ways in
@@ -760,7 +760,7 @@ export default function JudgeConsole() {
                         <input
                           value={f.value}
                           onChange={(e) => f.set(e.target.value)}
-                          className="h-[32px] rounded-[7px] border border-rule bg-bond px-[10px] font-mono text-[12px] text-ink outline-none focus:border-indigo"
+                          className="h-[32px] rounded-lg border border-rule bg-bond px-[10px] font-mono text-[12px] text-ink outline-none focus:border-indigo"
                         />
                       </label>
                     ))}
@@ -773,7 +773,7 @@ export default function JudgeConsole() {
                         min={1}
                         value={customQty}
                         onChange={(e) => setCustomQty(Math.max(1, Number(e.target.value) || 1))}
-                        className="h-[32px] rounded-[7px] border border-rule bg-bond px-[10px] font-mono text-[12px] text-ink outline-none focus:border-indigo"
+                        className="h-[32px] rounded-lg border border-rule bg-bond px-[10px] font-mono text-[12px] text-ink outline-none focus:border-indigo"
                       />
                     </label>
                     <button
@@ -784,7 +784,7 @@ export default function JudgeConsole() {
                         })
                       }
                       disabled={loading || !session}
-                      className="inline-flex h-[34px] items-center justify-center gap-[7px] rounded-[7px] bg-indigo text-[13px] font-medium text-white transition-colors hover:bg-[#254ED0] disabled:opacity-50"
+                      className="inline-flex h-[34px] items-center justify-center gap-[7px] rounded-lg bg-indigo text-[13px] font-medium text-white transition-colors hover:bg-[#254ED0] disabled:opacity-50"
                     >
                       <Send className="size-[13px]" />
                       Send it
@@ -822,7 +822,7 @@ export default function JudgeConsole() {
                       {chip ? (
                         <span
                           className={cn(
-                            'rounded-[4px] px-[7px] py-[2px] font-mono text-[9.5px] uppercase tracking-[0.08em]',
+                            'rounded-full px-[7px] py-[2px] font-mono text-[9.5px] uppercase tracking-[0.08em]',
                             chip.cls,
                           )}
                         >
@@ -857,7 +857,7 @@ export default function JudgeConsole() {
 
           {/* ── The run ───────────────────────────────────────────────── */}
           <div className="flex flex-col gap-4">
-            <div className="overflow-hidden rounded-xl border border-rule bg-bond shadow-sheet">
+            <div className="overflow-hidden rounded-panel border border-rule bg-bond shadow-sheet">
               <div className="flex h-[44px] items-center gap-[10px] border-b border-rule bg-sheet px-5">
                 <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2">
                   the run
@@ -912,7 +912,7 @@ export default function JudgeConsole() {
                         {currentDisplay.hostile_text ? (
                           <>
                             {currentDisplay.payload_text?.split(currentDisplay.hostile_text)[0]}
-                            <span className="rounded-[2px] bg-halt-soft font-medium text-halt">
+                            <span className="rounded-sm bg-halt-soft font-medium text-halt">
                               {currentDisplay.hostile_text}
                             </span>
                             {currentDisplay.payload_text?.split(currentDisplay.hostile_text)[1]}
@@ -1054,7 +1054,7 @@ export default function JudgeConsole() {
                         : currentDisplay.message}
                     </span>
                     {!currentDisplay.live && (
-                      <span className="rounded-[4px] border border-refer-line bg-bond px-[7px] py-[2px] font-mono text-[9.5px] uppercase tracking-[0.08em] text-refer">
+                      <span className="rounded-full border border-refer-line bg-bond px-[7px] py-[2px] font-mono text-[9.5px] uppercase tracking-[0.08em] text-refer">
                         simulated
                       </span>
                     )}
@@ -1078,7 +1078,7 @@ export default function JudgeConsole() {
             </div>
 
             {/* ── Audit chain ─────────────────────────────────────────── */}
-            <div className="overflow-hidden rounded-xl border border-rule bg-bond">
+            <div className="overflow-hidden rounded-panel border border-rule bg-bond">
               <div className="flex items-center justify-between border-b border-rule bg-sheet px-5 py-[11px]">
                 <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2">
                   audit chain

@@ -52,14 +52,18 @@ export default function Dashboard() {
           </span>
 
           <div className="ml-auto flex items-center gap-3">
+            {/* Icon-only below sm. With both labels the bar was 65px wider than a
+                390px viewport and the whole page scrolled sideways — the primary
+                action here is "Try it live", so this is the label that gives way. */}
             <Button
               variant="outline"
               size="sm"
               onClick={exportEvidence}
-              className="h-[38px] gap-[7px] rounded-lg px-3.5 text-[13px]"
+              aria-label="Export evidence"
+              className="h-[38px] gap-[7px] rounded-lg px-3.5 text-[13px] max-sm:w-[38px] max-sm:gap-0 max-sm:px-0"
             >
               <Download className="size-[14px]" />
-              Export evidence
+              <span className="max-sm:hidden">Export evidence</span>
             </Button>
             <Button asChild size="sm" className="h-[38px] rounded-lg px-4 text-[13.5px]">
               <Link to="/try">Try it live →</Link>

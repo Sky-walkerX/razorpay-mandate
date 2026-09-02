@@ -56,6 +56,11 @@ function Chip({ style }: { style: { label: string; cls: string; Icon: typeof Che
       className={cn(
         'inline-flex shrink-0 items-center gap-[5px] rounded-full border py-[3px] pl-[7px] pr-[9px]',
         'font-mono text-[9.5px] uppercase tracking-[0.08em]',
+        // Fixed box, so the note beside it starts at the same x on every row.
+        // Without it the chip is only as wide as its label — "NOWHERE" against
+        // "ON THE RAIL" — and the note column acquires a 26px ragged left edge
+        // that reads as sloppiness rather than as the deliberate table it is.
+        'min-w-[104px]',
         cls,
       )}
     >
@@ -93,7 +98,7 @@ function Tally({
         {Array.from({ length: total }, (_, i) => (
           <motion.span
             key={i}
-            className={cn('h-[6px] flex-1 rounded-[2px]', i < held ? 'bg-indigo' : 'bg-rule')}
+            className={cn('h-[6px] flex-1 rounded-sm', i < held ? 'bg-indigo' : 'bg-rule')}
             initial={reduced ? false : { opacity: 0, scaleY: 0.3 }}
             whileInView={{ opacity: 1, scaleY: 1 }}
             viewport={{ once: true }}
@@ -127,7 +132,7 @@ export default function Alignment() {
   return (
     <div data-v2 className="min-h-screen bg-bond font-sans text-ink">
       <nav className="sticky top-0 z-50 border-b border-rule bg-bond/85 backdrop-blur-[12px]">
-        <div className="mx-auto flex h-[60px] max-w-[1220px] items-center gap-[26px] px-8 max-sm:px-[18px]">
+        <div className="mx-auto flex h-[60px] max-w-[1100px] items-center gap-[26px] px-8 max-sm:px-[18px]">
           <Link to="/" aria-label="Mandate, by Razorpay">
             <MandateLockup />
           </Link>
@@ -147,7 +152,10 @@ export default function Alignment() {
         </div>
       </nav>
 
-      <main className="mx-auto max-w-[1220px] px-8 pb-24 max-sm:px-[18px]">
+      {/* 1100 is the frame /store and /dashboard already use, so the lockup and
+          the content edge do not move when you navigate between them. The home
+          page sits at 1220 and is left alone. */}
+      <main className="mx-auto max-w-[1100px] px-8 pb-24 max-sm:px-[18px]">
         {/* ── the claim ─────────────────────────────────────────────────── */}
         <header className="border-b border-rule py-14 max-sm:py-10">
           <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-ink-3">
@@ -441,7 +449,7 @@ export default function Alignment() {
         </section>
       </main>
 
-      <footer className="mx-auto flex max-w-[1220px] flex-wrap items-center justify-between gap-4 border-t border-rule px-8 py-7 text-[12.5px] text-ink-3 max-sm:px-[18px]">
+      <footer className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-between gap-4 border-t border-rule px-8 py-7 text-[12.5px] text-ink-3 max-sm:px-[18px]">
         <span>Mandate · rails and regulation, computed from the signed policy</span>
         <span>Citations checked {rbi.checked}. Statuses are code, not marketing.</span>
       </footer>
