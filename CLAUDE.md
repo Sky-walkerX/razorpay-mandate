@@ -1,6 +1,6 @@
 # Mandate: working context
 
-Last updated 2026-08-31. This file records where the evaluation stands, what has
+Last updated 2026-09-03. This file records where the evaluation stands, what has
 been verified, and what is still open. Read it before touching the harness.
 
 ## What this project is
@@ -278,19 +278,58 @@ Hostile merchant or rail beyond the capture binding. Multi-tenancy, hosted
 deployment, production observability. Rail-side verification of the mandate.
 Turning `money_at_risk()` into a real instrument (worth doing, not now).
 
-## 2 Sep: four x-factor features, all four landed
+## 2-3 Sep: four x-factor features, all four landed and deployed
 
 Session handoff. Read this first if picking the work back up.
 
 ### State right now
 
-All four x-factor features have landed. 476 tests pass, conformance 9/9 blocked
+All four x-factor features have landed. **480 tests pass**, conformance 9/9 blocked
 and 0 vacuous, ruff at **12** — one more than the long-standing 11, and it is the
 same deliberate best-effort catch as the others: a compiler failure inside
 `/v1/sandbox` has to become an honest response rather than a 500. Same reasoning,
 same decision, recorded here so the baseline moving is a choice and not a drift.
 
-Cloud Run is redeployed and current: revision `mandate-gateway-00005-dzk`.
+`dev` is pushed through `4c751f8`. Nothing uncommitted.
+
+**Cloud Run, as of the last thing actually observed:** revision
+`mandate-gateway-00007-tnb` is serving. `00006-s2c` was the four-features deploy;
+`00007-tnb` added `GEMINI_VERTEX_PROJECT`. A further deploy carrying `4c751f8`
+(the `/v1/compile` fix and the session cap) **was started and had not rolled over
+when this was written** — check the live revision before assuming those two are
+deployed, and re-run the verification below against whatever is actually serving.
+
+### Verifying a deploy, in the order that finds things
+
+Learned the hard way twice. Both live bugs this session rendered a perfect page
+while nothing underneath worked, so **loading the site is not a check**.
+
+1. **On the custom domain, not the run.app URL.** That habit hid the API-base bug.
+2. `curl -s $D/health` — liveness and the policy hash.
+3. **Grep the deployed bundle**, which is the only way to catch a build-time
+   constant going wrong:
+   `curl -s $D/ | grep -oE '/assets/index-[A-Za-z0-9_-]+\.js'` then
+   `curl -s $D/<that> | grep -c "127.0.0.1:8000"` — must be 0.
+4. `POST /v1/compile` — `fallback` must be **false**. It is the canary for the
+   whole Vertex path, and it used to lie about this.
+5. `POST /v1/sandbox` then `POST /v1/orders` with the returned token — the
+   refusal must quote the **visitor's** cap, not the house's ₹1,000.
+6. `/rails` 200 and `/v1/mandate/ap2` 200.
+
+### The service needs two things GCP-side that are not in the repo
+
+Neither is in any file here, both were missing in production for days, and a
+`--source` deploy does not supply either:
+
+- **`GEMINI_VERTEX_PROJECT=razorpay-mandate` as a service env var.** Set it with
+  `gcloud run services update --update-env-vars`. **Never `--set-env-vars`** —
+  that replaces the whole block, and `MANDATE_CAPABILITY_SECRET` exists only in
+  the deployed service, not in this repo.
+- **`roles/aiplatform.user` on the runtime service account**
+  (`214049084577-compute@developer.gserviceaccount.com`, the project default
+  compute SA). Without it every model call is
+  `403 PERMISSION_DENIED on aiplatform.endpoints.predict`. IAM takes a minute or
+  two to propagate, so a 403 immediately after granting means nothing.
 
 ### The custom domain is live
 
