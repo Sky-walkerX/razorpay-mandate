@@ -8,7 +8,11 @@
     "dry": "node record.mjs --dry",
     "fast": "node record.mjs --dry --skip-model",
     "record": "node record.mjs",
-    "post": "node post.mjs"
+    "post": "node post.mjs",
+    "voices": "node voice.mjs list",
+    "audition": "node voice.mjs audition",
+    "vo": "node voice.mjs render",
+    "vo:mux": "node voice.mjs mux"
   },
   "dependencies": {
     "playwright": "^1.49.0"
