@@ -284,19 +284,21 @@ Session handoff. Read this first if picking the work back up.
 
 ### State right now
 
-All four x-factor features have landed. **480 tests pass**, conformance 9/9 blocked
-and 0 vacuous, ruff at **12** — one more than the long-standing 11, and it is the
-same deliberate best-effort catch as the others: a compiler failure inside
-`/v1/sandbox` has to become an honest response rather than a 500. Same reasoning,
-same decision, recorded here so the baseline moving is a choice and not a drift.
+All four x-factor features have landed. **492 tests pass**, conformance 9/9 blocked
+and 0 vacuous, ruff at **13**. Every one is the same deliberate best-effort catch:
+eleven were there before, the twelfth makes a compiler failure inside `/v1/sandbox`
+an honest response rather than a 500, and the thirteenth wraps the Reserve Pay
+shadow so a talking point can never cost a real verdict. Recorded here so the
+baseline moving is a choice and not a drift.
 
-`dev` is pushed through `44e7702`; `5065926` (the visual pass) is committed
-and **not yet pushed or deployed**.
+`dev` is fully pushed. Nothing is uncommitted.
 
-**Cloud Run: `mandate-gateway-00008-cx9` is serving and verified.** `00006-s2c`
-was the four-features deploy, `00007-tnb` added `GEMINI_VERTEX_PROJECT`, and
-`00008-cx9` carries `4c751f8` — the `/v1/compile` honest-failure fix and the
-pool-sized session cap.
+**Cloud Run: `mandate-gateway-00011-gv6` is serving and verified.** `00008-cx9`
+carried the `/v1/compile` honest-failure fix and the pool-sized session cap;
+`00011-gv6` carries `5cc6dde`, the Reserve Pay shadow and the demo turn cap.
+Note that `00009` and `00010` landed without being recorded here — if the
+revision in this file does not match `gcloud run services describe`, trust
+gcloud.
 
 All six checks below pass against it on the custom domain: bundle clean of both
 `127.0.0.1:8000` and `run.app`; `/v1/compile` returns real clauses with
@@ -608,6 +610,39 @@ A visible consequence of the lower cap: `stopped: max_steps` now shows often, so
 panel says "it hit this demo's turn limit and was still going" instead of printing
 the raw reason. That is the honest reading of an unenforced run and it is the point.
 
+### Landed, 3 Sep: every order is answered twice, once as Reserve Pay would
+
+`/v1/orders` now returns a `reserve_pay` block beside its own verdict, and `/try`
+prints the disagreement. Razorpay already ships spending limits for agents, so a
+cap is not the claim worth making — **the claim is shape**, and this is that
+argument made concrete on the one screen a judge actually uses.
+
+Each session carries a second `Gateway` on a policy built by
+`project_to_reserve_pay` (`policy/rails.py`), with its own rail, ledger and audit
+chain so its spend is never confused for the mandate's. The projection **reads
+`RESERVE_PAY_CARRIES` rather than restating it**: two opinions about the rail's
+vocabulary would let `/rails` and the shadow drift apart while each looked correct
+alone.
+
+**Both directions are reported, and that is not decoration.** The rail lets
+through an attack the mandate refuses, and it refuses a legitimate order at a
+second shop the mandate allows. Reporting only the first would overstate the rail,
+which is the exact failure `rails.py` exists to avoid — and a judge who built
+Reserve Pay would spot a missing payee constraint immediately.
+
+**Known limitation, and it is currently visible in the demo.** The projection
+narrows `merchant.allow` to `payees[0]`, because a block names one payee. That
+first entry is `zepto`, and **every attack preset in `JudgeConsole.tsx` orders
+from `blinkit`** — so the shadow refuses all of them on payee, and the
+`railWorse` branch ("would have let this through") can never fire in the console.
+The strip therefore reads "would have refused it as well", which is true but far
+weaker than the case the feature was built to make. Changing preset does not fix
+it. The fix is to model the *strongest* Reserve Pay — the block a user would
+actually have set up for the shop being used — which makes "Disguise a banned
+item" and "Order too many of one thing" both produce the disagreement, and turns
+every remaining one into a real structural gap rather than an artefact of YAML
+list order.
+
 ### Closed, 2 Sep: the judge console was posting to the visitor's own laptop
 
 Found while testing the sandbox, unrelated to it, **live on the custom domain**.
@@ -668,7 +703,11 @@ the pool note above.
 
 The remaining work is not features. In order of what costs most if skipped:
 
-1. **The vacuous-containment audit.** `price.flip` was found scoring containments on
+1. **The Reserve Pay shadow narrows to the wrong payee.** See the 3 Sep section
+   above. It is a handful of lines, it is the difference between the strip reading
+   "would have refused it as well" and "would have let this through" on the screen
+   the pitch is built around, and the video has to be re-recorded after it.
+2. **The vacuous-containment audit.** `price.flip` was found scoring containments on
    runs its mutation never touched. Four families call `_pick()` — a single
    `rng.choice` — and so share the structure: `price.flip` plus all three
    `injection.*`. One of those, `injection.review`, is held out, and
@@ -678,8 +717,8 @@ The remaining work is not features. In order of what costs most if skipped:
    **A cheap enabler first: `RunResult` does not record the victim SKU** even though
    `Mutation.note` names it, so auditing a scored set means replaying the mutator from
    its seed. Stamping it is a few lines and is plausibly why this went unnoticed.
-2. **A fourth held-out family**, so `budget.salami` is not a single point of evidence.
-3. `/rails` makes five demo surfaces beside `/`, `/try`, `/store` and `/dashboard`.
+3. **A fourth held-out family**, so `budget.salami` is not a single point of evidence.
+4. `/rails` makes five demo surfaces beside `/`, `/try`, `/store` and `/dashboard`.
    Folding `/dashboard` into the storefront is still the right call.
 
 Do not retype any number into a `.tsx`; regenerate `evidence.json` with
@@ -1404,6 +1443,66 @@ view, where the signed document IS the point), "clauses" and "parts" for limits,
 "arms" for the two sides, raw family ids in the live-agent dropdown, `ALLOW` as a
 verdict word, and the clause id inside a refusal message — `plainMessage()` strips
 the leading `a.b:` prefix, and the label beside it already names the limit.
+
+## Recording the pitch video, 3 Sep
+
+`scripts/record/` drives the deployed site through a twelve-beat walkthrough and
+records itself. `npm run record` then `npm run post`; `npm run fast` rehearses the
+choreography with no capture and no model calls. Output is
+`out/take-<ts>/{raw.mov, shot-times.json, final.mp4}`. **368s raw becomes 294s
+final**, because `post.mjs` ramps two regions 5x from marks the driver wrote at
+capture time, so no cut point is ever eyeballed.
+
+Shot durations are set against measured animation periods, not taste: the hero
+beams loop at 4.2s and the lattice at 3.6s (two cycles each), the clause waterfall
+is 45ms x 10 rows firing ~500ms after a verdict, and `RunStrip` is **mount**-
+triggered so `/dashboard` is held on arrival rather than scrolled to.
+
+Two ordering rules are constraints, not preferences. **The agent tab must run
+before `/store`**, since only the ENFORCE arm writes to the storefront. **Preset 9
+is never run** — it revokes the session token and everything after it fails.
+
+Four things cost real time here and would again:
+
+- **`prefers-reduced-motion` skips every animation on this site rather than
+  shortening it**, and `design.css:611` clamps CSS animation to `.001ms`. A take
+  recorded with it on looks plausible and is entirely static. The driver forces
+  `reducedMotion: 'no-preference'` on the context so the OS setting cannot reach
+  the page.
+- **avfoundation captures the composited screen**, so whatever sits over the crop
+  is what lands in the file. One editor notification mid-take recorded an IDE
+  instead of the product and cost a full take. `page.bringToFront()` raises the
+  tab, not the window; the browser is raised with `open -a` on a 2s heartbeat.
+- **`ffmpeg -capture_cursor 0` does not suppress the pointer on macOS 26**, and
+  Playwright drives the mouse over CDP, which moves nothing on screen. So a
+  synthetic cursor is injected via `addInitScript` and the real one is warped
+  off-frame on the same heartbeat — parking it once before launch was not enough,
+  it was measured back in frame by the last shot.
+- **`screencapture -v` exits 1 with no file and no message on this machine** while
+  `screencapture -x file.png` succeeds. Capture goes through ffmpeg + avfoundation
+  instead of chasing a silent TCC denial.
+
+`preflight` refuses to record against a deployment failing any of eleven checks,
+and **retries the two model-backed ones once**: a container cold right after a
+deploy exceeds the 30s compile ceiling, and a single attempt cannot tell that from
+an outage. Measured warm, `/v1/sandbox` is 9.7-12.5s.
+
+**The voiceover is recorded by a person.** `docs/video/voiceover-script.md` is the
+only copy of the words; `lib/script.mjs` parses it. `npm run clips` cuts the video
+into twelve per-section clips to read against, `npm run rehearse` builds a scratch
+track from macOS's own en_IN voices (Aman, Rishi, Tara), and `npm run assemble`
+trims, loudness-normalises and pins each take to its own timecode — pinned rather
+than concatenated, so a long take cannot drag the rest out of sync and
+re-recording one section moves nothing else.
+
+**ElevenLabs is not usable on the free tier here, and the reason is not quota.**
+Free-tier API cannot reach any *library* voice, and every Indian-accent voice is a
+library voice; the premade voices that do work are American, British or
+Australian, and Voice Design is paid-only too. Free output also carries a
+permanent attribution requirement — "elevenlabs.io" in the **title** of the
+published piece — and a later upgrade does not clear it, because the licence
+attaches at the moment of generation. The `list` / `audition` / `render` commands
+in `voice.mjs` are kept for a paid account.
 
 ## Conventions
 
