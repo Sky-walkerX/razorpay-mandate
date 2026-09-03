@@ -1,0 +1,16 @@
+{
+  "name": "mandate-record",
+  "private": true,
+  "type": "module",
+  "description": "Drives the Mandate site through a scripted 5-minute walkthrough and records it.",
+  "scripts": {
+    "preflight": "node record.mjs --preflight-only",
+    "dry": "node record.mjs --dry",
+    "fast": "node record.mjs --dry --skip-model",
+    "record": "node record.mjs",
+    "post": "node post.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}
