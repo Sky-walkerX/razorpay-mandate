@@ -2,12 +2,16 @@
 /**
  * Voiceover generation against ElevenLabs.
  *
- *   node voice.mjs list                    what this account can use, Indian accents first
- *   node voice.mjs audition                short clip per candidate, from the real script
- *   node voice.mjs audition --voices a,b   only these
+ * Recording it yourself (the path we took):
+ *   node voice.mjs clips                   cut the video into 12 per-section clips
+ *   node voice.mjs assemble --from <dir>   lay 01..12 takes onto the timeline and mux
+ *
+ * Synthesising it instead (needs a paid ElevenLabs plan -- the free tier cannot
+ * reach any library voice over the API, and every Indian-accent voice is one):
+ *   node voice.mjs list                    what this account can use
+ *   node voice.mjs audition --voices a,b   short clip per candidate, from the real script
  *   node voice.mjs render --voice <id>     all 12 sections as separate files
- *   node voice.mjs build --voice <id>      render, then lay out to a timeline-aligned track
- *   node voice.mjs mux --voice <id>        build, then mux into final.mp4
+ *   node voice.mjs mux --voice <id>        render, lay out, and mux
  *
  * Sections are generated separately and placed at their own timecode rather than
  * concatenated. That is what keeps the audio locked to the picture: a section
@@ -49,7 +53,8 @@ function apiKey() {
   process.exit(1);
 }
 
-const KEY = apiKey();
+const NEEDS_KEY = new Set(['list', 'add', 'audition', 'render']);
+const KEY = NEEDS_KEY.has(cmd) ? apiKey() : null;
 const api = async (path, init = {}) => {
   const r = await fetch(`https://api.elevenlabs.io${path}`, {
     ...init,
@@ -276,6 +281,146 @@ async function cmdMux() {
   console.log(`  done: ${out}  (${dur(out).toFixed(1)}s, voice ${voice})\n`);
 }
 
-const cmds = { list: cmdList, add: cmdAdd, audition: cmdAudition, render: cmdRender, build: cmdBuild, mux: cmdMux };
+/** Newest take that has a final.mp4. */
+function latestFinal() {
+  const takes = readdirSync(join(HERE, 'out'))
+    .filter((d) => d.startsWith('take-') && existsSync(join(HERE, 'out', d, 'final.mp4')))
+    .map((d) => ({ d, t: statSync(join(HERE, 'out', d)).mtimeMs }))
+    .sort((a, b) => b.t - a.t);
+  if (!takes.length) { console.error('  no take with a final.mp4'); process.exit(1); }
+  return join(HERE, 'out', takes[0].d);
+}
+
+/**
+ * Cut the video into one clip per section.
+ *
+ * Reading to picture is much easier than reading to a stopwatch: you can see
+ * the refusal land, or the beam finish its sweep, and your pace follows it
+ * without having to think about seconds at all.
+ */
+async function cmdClips() {
+  const script = loadScript(SCRIPT);
+  const take = latestFinal();
+  const video = join(take, 'final.mp4');
+  const dir = join(take, 'sections');
+  mkdirSync(dir, { recursive: true });
+  console.log(`\n  cutting ${video}\n`);
+  for (const s of script) {
+    const out = join(dir, `${String(s.index).padStart(2, '0')}-${s.id}.mp4`);
+    const r = spawnSync('ffmpeg', [
+      '-y', '-ss', String(s.start), '-t', String(s.window), '-i', video,
+      '-c', 'copy', out,
+    ], { stdio: ['ignore', 'ignore', 'pipe'] });
+    if (r.status !== 0) { console.error(r.stderr.toString().split('\n').slice(-8).join('\n')); process.exit(1); }
+    console.log(`    ${String(s.index).padStart(2)} ${s.id.padEnd(24)} ${String(s.window).padStart(3)}s  ${s.words} words`);
+  }
+  console.log(`\n  clips: ${dir}`);
+  console.log('  play a clip while you read that section, then save takes as 01.wav .. 12.wav\n');
+}
+
+/**
+ * Lay human takes onto the timeline and mux.
+ *
+ * Each take is trimmed of its leading and trailing silence first, so you can
+ * breathe before and after a line without it pushing the words off their mark,
+ * and every section is pinned to its own timecode rather than concatenated --
+ * a long take cannot drag everything after it out of sync.
+ */
+async function cmdAssemble() {
+  const from = val('--from');
+  if (!from) { console.error('need --from <dir of 01.wav .. 12.wav>'); process.exit(1); }
+  const script = loadScript(SCRIPT);
+  const take = latestFinal();
+  const work = join(take, 'vo-trimmed');
+  mkdirSync(work, { recursive: true });
+
+  const found = [];
+  for (const s of script) {
+    const n = String(s.index).padStart(2, '0');
+    const hit = readdirSync(from).find((f) => new RegExp(`^${n}\\b|^${n}[-_. ]|^${s.index}\\.`).test(f));
+    if (!hit) { console.log(`    ${n} ${s.id.padEnd(24)} \x1b[33mno take found — will be silent\x1b[0m`); continue; }
+    const src = join(from, hit);
+    const out = join(work, `${n}.wav`);
+    // Trim silence from both ends, then normalise loudness so sections recorded
+    // on different days sit at the same level.
+    const r = spawnSync('ffmpeg', ['-y', '-i', src, '-af',
+      'silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.1,' +
+      'areverse,silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.1,areverse,' +
+      'loudnorm=I=-18:TP=-1.5:LRA=11',
+      '-ar', '48000', '-ac', '2', out], { stdio: ['ignore', 'ignore', 'pipe'] });
+    if (r.status !== 0) { console.error(`    ${n} failed:\n` + r.stderr.toString().split('\n').slice(-8).join('\n')); continue; }
+    found.push({ s, f: out, d: dur(out) });
+  }
+  if (!found.length) { console.error('\n  no takes matched 01..12 in that folder\n'); process.exit(1); }
+
+  console.log();
+  let over = 0;
+  for (const { s, f, d } of found) {
+    const fits = d <= s.window + 0.35;
+    if (!fits) over++;
+    console.log(
+      `    ${String(s.index).padStart(2)} ${s.id.padEnd(24)} ${d.toFixed(1)}s / ${s.window}s ` +
+      (fits ? '\x1b[32mfits\x1b[0m' : `\x1b[31mOVER by ${(d - s.window).toFixed(1)}s\x1b[0m`),
+    );
+  }
+
+  const total = Math.max(...found.map(({ s, d }) => s.start + d), dur(join(take, 'final.mp4'))) + 0.5;
+  const inputs = found.flatMap(({ f }) => ['-i', f]);
+  const chains = found.map(({ s }, i) => `[${i}:a]adelay=${Math.round(s.start * 1000)}|${Math.round(s.start * 1000)}[d${i}]`);
+  const mixIn = found.map((_, i) => `[d${i}]`).join('');
+  const filter = chains.join(';') +
+    `;${mixIn}amix=inputs=${found.length}:dropout_transition=0:normalize=0[mix];` +
+    `[mix]apad=whole_dur=${total.toFixed(2)},alimiter=limit=0.95[out]`;
+
+  const vo = join(take, 'vo.wav');
+  let r = spawnSync('ffmpeg', ['-y', ...inputs, '-filter_complex', filter, '-map', '[out]',
+    '-ar', '48000', '-ac', '2', vo], { stdio: ['ignore', 'ignore', 'pipe'] });
+  if (r.status !== 0) { console.error(r.stderr.toString().split('\n').slice(-20).join('\n')); process.exit(1); }
+
+  const out = join(take, 'pitch-with-vo.mp4');
+  r = spawnSync('ffmpeg', ['-y', '-i', join(take, 'final.mp4'), '-i', vo,
+    '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest',
+    '-movflags', '+faststart', out], { stdio: ['ignore', 'ignore', 'pipe'] });
+  if (r.status !== 0) { console.error(r.stderr.toString().split('\n').slice(-20).join('\n')); process.exit(1); }
+
+  console.log(`\n  track: ${vo}`);
+  console.log(`  video: ${out}  (${dur(out).toFixed(1)}s)`);
+  if (over) console.log(`\n  \x1b[33m${over} section(s) run long — re-record those and run assemble again.\x1b[0m`);
+  console.log();
+}
+
+/**
+ * A scratch narration from macOS's built-in Indian-English voices.
+ *
+ * Not the final audio -- it is flatter than a person and it is meant to be.
+ * Its job is to let you watch the whole thing narrated before you record a
+ * single word, so pacing problems show up while they are still free to fix.
+ * Free, offline, no licence and no attribution, unlike anything synthesised.
+ */
+async function cmdRehearse() {
+  const voice = val('--voice', 'Aman');       // Aman, Rishi or Tara are en_IN
+  const rate = val('--rate', '150');
+  const script = loadScript(SCRIPT);
+  const take = latestFinal();
+  const dir = join(take, 'rehearsal');
+  mkdirSync(dir, { recursive: true });
+
+  console.log(`\n  macOS voice "${voice}" at ${rate} wpm\n`);
+  for (const s of script) {
+    const aiff = join(dir, `${String(s.index).padStart(2, '0')}.aiff`);
+    const wav = join(dir, `${String(s.index).padStart(2, '0')}.wav`);
+    let r = spawnSync('say', ['-v', voice, '-r', rate, '-o', aiff, s.text],
+      { stdio: ['ignore', 'ignore', 'pipe'] });
+    if (r.status !== 0) { console.error('  say failed: ' + r.stderr.toString().slice(0, 200)); process.exit(1); }
+    spawnSync('ffmpeg', ['-y', '-i', aiff, '-ar', '48000', '-ac', '2', wav], { stdio: 'ignore' });
+    const d = dur(wav);
+    const fits = d <= s.window;
+    console.log(`    ${String(s.index).padStart(2)} ${s.id.padEnd(24)} ${d.toFixed(1)}s / ${s.window}s ` +
+      (fits ? '\x1b[32mfits\x1b[0m' : `\x1b[31mOVER by ${(d - s.window).toFixed(1)}s\x1b[0m`));
+  }
+  console.log(`\n  now assemble it:  node voice.mjs assemble --from ${dir}\n`);
+}
+
+const cmds = { rehearse: cmdRehearse, list: cmdList, add: cmdAdd, audition: cmdAudition, render: cmdRender, build: cmdBuild, mux: cmdMux, clips: cmdClips, assemble: cmdAssemble };
 if (!cmds[cmd]) { console.error(`unknown command "${cmd}". one of: ${Object.keys(cmds).join(', ')}`); process.exit(1); }
 cmds[cmd]().catch((e) => { console.error('\n  ' + e.message + '\n'); process.exit(1); });

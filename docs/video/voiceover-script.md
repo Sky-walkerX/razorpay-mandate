@@ -14,9 +14,9 @@ and deliberately so. Total is 703 words against 294 seconds, and the per-section
 balanced so no stretch runs dry or has to be rushed. Do not speed up to
 fill it.
 
-Every number is spelled out and every acronym is hyphenated, because this is
-going through text-to-speech. Do not "tidy" `A-P-two` back into `AP2` — it gets
-read as "app two".
+Numbers are spelled out and acronyms hyphenated so you read them the way you
+would say them, not the way they are written. `A-P-two` is "ay-pee-two".
+`UPI` is "you-pee-eye". `dal` is "daal".
 
 Replace **Naman** in the first line if someone else is narrating.
 
@@ -182,15 +182,37 @@ Replace **Naman** in the first line if someone else is narrating.
 
 ---
 
-## Notes for generation
+## How to record this
 
-- **Section joins are the seams.** Every section starts on a visual cut, so any
-  one can be regenerated and dropped back in without touching the rest. Generate
-  per section, not as one block.
+**Record section by section, not in one pass.** Every section starts on a visual
+cut, so a bad take costs you one section and nothing else. Twelve short takes
+you are happy with beat one long take you are tired of fixing.
+
+    cd scripts/record
+    node voice.mjs clips        # cuts the video into 12 per-section clips
+
+Play a section's clip while you read that section. Matching your pace to the
+picture is far easier than matching it to a stopwatch, and it is the whole
+reason the timings are printed above each block.
+
+**Save takes as `01.wav` … `12.wav`** in one folder — any format ffmpeg reads is
+fine, including a phone voice memo. Then:
+
+    node voice.mjs assemble --from ~/path/to/takes
+
+That trims the silence off each end, reports any section that runs past its
+window, lays every take at its own timecode, and muxes the result into the
+video. Re-record one file and run it again; nothing else moves.
+
+**Practical notes:**
+
+- Leave a second of silence at the start and end of each take. It gets trimmed
+  automatically, and it stops the first syllable being clipped.
+- A wired headset in a small soft room beats a good mic in a bare one. Duvet,
+  wardrobe, car — anything that kills reflections.
+- Read standing up, and slightly slower than feels natural. The timings already
+  have room in them; you do not need to hurry.
 - **Two deliberate beats**: after "look at this closely" at 1:00, and before the
-  first line at 3:55 while the RunStrip finishes.
-- **Check `UPI` on the first render.** It should come out "you-pee-eye". If the
-  voice runs it together as a word, change it to `U-P-I`.
-- **Check `dal`.** It should be "daal", not rhyming with "pal".
-- Mux the finished audio with:
-  `ffmpeg -i final.mp4 -i vo.wav -c:v copy -c:a aac -shortest out.mp4`
+  first line at 3:55 while the RunStrip finishes rising.
+- If you fluff a line, stop, breathe, and say the whole sentence again. Editing
+  a whole sentence out is clean; editing three words out is not.
