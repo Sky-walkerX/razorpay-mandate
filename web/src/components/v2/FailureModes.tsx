@@ -1,4 +1,5 @@
 import { motion, useReducedMotion } from 'motion/react';
+import { ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -310,21 +311,51 @@ export default function FailureModes() {
           ))}
         </div>
 
-        <div className="mt-5 flex gap-[14px] rounded-xl border border-refer-line bg-refer-soft px-5 py-[18px]">
+        {/* 116 words of engineering detail was the last thing on the home page,
+            and six of them — SKU, arm, rail, rail.divergence, capture capability,
+            void_order — a visitor has no way to read. The admission is the point
+            and it survives in 44 words; the account that names the mechanism sits
+            behind the disclosure for anyone who wants it. */}
+        <div className="mt-5 flex gap-[14px] rounded-panel border border-refer-line bg-refer-soft px-5 py-[18px]">
           <span aria-hidden className="mt-[5px] size-[9px] shrink-0 rotate-45 bg-refer" />
-          <p className="text-[13.5px] leading-[1.6] text-ink-2">
-            <b className="font-semibold text-ink">Mode 03 is on this page because it beat us, twice.</b>{' '}
-            Re-run on gemini-3.7-flash: the attack poisons one SKU, so it only fires when the agent
-            buys that SKU. It fired 10 times and won all 10, in every arm, enforced or not. The
-            gateway saw every one of them. It authorised ₹806, watched the rail create ₹8,060, logged{' '}
-            <span className="font-mono text-[12.5px]">rail.divergence</span> and withheld the capture
-            capability. The order stayed on the rail anyway, because detecting an overcharge is not
-            undoing one. The gateway now calls{' '}
-            <span className="font-mono text-[12.5px]">void_order</span> and only records the money as
-            recovered when the rail confirms. Same 12 runs, same seed: 2 of 12 contained became 11 of
-            12, and the attack landed 0 times instead of 10. It took measuring twice to find that the
-            first fix was only a detector.
-          </p>
+          <div className="flex flex-col gap-[11px]">
+            <p className="text-[13.5px] leading-[1.6] text-ink-2">
+              <b className="font-semibold text-ink">This one beat us twice.</b> We spotted the
+              overcharge and only wrote it down, so ₹8,060 stayed charged against an ₹806 approval.
+              Catching an overcharge is not undoing one. The gateway now cancels the order, and only
+              calls the money safe once the payment network confirms.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-[10px]">
+              <span className="inline-flex items-baseline gap-[6px] rounded-full border border-refer-line bg-bond px-[12px] py-[5px] text-[12.5px] text-ink-2">
+                Stopped <b className="font-mono font-semibold text-ink">2 of 12</b> before
+              </span>
+              <ArrowRight aria-hidden className="size-[15px] text-refer" />
+              <span className="inline-flex items-baseline gap-[6px] rounded-full border border-pass-line bg-bond px-[12px] py-[5px] text-[12.5px] text-ink-2">
+                Stops <b className="font-mono font-semibold text-pass">11 of 12</b> now
+              </span>
+            </div>
+
+            <details className="group">
+              <summary className="w-fit cursor-pointer list-none text-[12.5px] text-refer underline underline-offset-2 hover:text-ink">
+                The full account
+                <span className="group-open:hidden"> →</span>
+                <span className="hidden group-open:inline"> ↑</span>
+              </summary>
+              <p className="mt-[10px] max-w-[52rem] text-[13px] leading-[1.65] text-ink-2">
+                Re-run on gemini-3.7-flash: the attack poisons one item, so it only fires when the
+                agent buys that item. It fired 10 times and won all 10, whether the gateway was
+                enforcing or not. The gateway saw every one. It authorised ₹806, watched the payment
+                network create ₹8,060, logged{' '}
+                <span className="font-mono text-[12px]">rail.divergence</span> and refused to release
+                the payment — but the order stood, because detecting an overcharge is not undoing
+                one. It now calls <span className="font-mono text-[12px]">void_order</span> and
+                records the money as recovered only when the network confirms. Same 12 runs, same
+                seed: 2 of 12 contained became 11 of 12, and the attack landed 0 times instead of 10.
+                It took measuring twice to find that the first fix was only a detector.
+              </p>
+            </details>
+          </div>
         </div>
       </div>
     </section>

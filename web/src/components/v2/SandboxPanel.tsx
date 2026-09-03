@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 /**
  * Bring your own mandate: a visitor writes an intent, it compiles, and the same
- * gateway enforces *their* clauses for one ephemeral session.
+ * gateway enforces *their* limits for one ephemeral session.
  *
  * Two things about this panel are deliberate and should not be "tidied".
  *
@@ -189,9 +189,12 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
       {/* ── write it ──────────────────────────────────────────────────── */}
       <div className="overflow-hidden rounded-panel border border-rule bg-bond">
         <div className="border-b border-rule bg-sheet px-5 py-[11px]">
-          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2">
-            write your own mandate
-          </span>
+          <div className="flex flex-col gap-[2px]">
+            <span className="text-[13.5px] font-semibold text-ink">Say what you would allow</span>
+            <span className="text-[12px] text-ink-3">
+              Plain English. Amounts, shops, things you never want bought.
+            </span>
+          </div>
         </div>
         <div className="flex flex-col gap-3 p-5">
           <textarea
@@ -218,13 +221,17 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
             className="inline-flex h-[38px] items-center justify-center gap-[7px] self-start rounded-lg bg-indigo px-4 text-[13.5px] font-medium text-white transition-colors hover:bg-[#254ED0] disabled:opacity-50"
           >
             <FileCode2 className="size-[14px]" />
-            {busy ? 'Compiling…' : 'Compile it and enforce it'}
+            {busy ? 'Reading it…' : 'Turn this into real limits'}
           </button>
           <p className="text-[12.5px] leading-[1.55] text-ink-3">
-            A model reads this twice at temperature zero and refuses if the two readings
-            disagree. What it produces is then enforced by the same gateway every other
-            tab uses — your limits, not ours. Write caps well under the demo mandate's
-            ₹1,000 per order, or you will not be able to tell whose numbers refused you.
+            <span className="mr-[6px] inline-flex items-center gap-[6px] whitespace-nowrap rounded-full bg-indigo-soft px-[9px] py-[2px] text-[11px] font-medium text-indigo align-[1px]">
+              <span aria-hidden className="size-[7px] rounded-full bg-indigo" />
+              Uses AI
+            </span>
+            An AI reads your sentence twice and refuses if the two readings disagree, rather than
+            guessing at what you meant. What comes out is enforced by the same gateway every other
+            tab uses, and enforcing it involves no AI. Keep your caps well under the demo's ₹1,000
+            an order, or you will not be able to tell whose number refused you.
           </p>
         </div>
       </div>
@@ -232,9 +239,16 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
       {/* ── what happened to it ───────────────────────────────────────── */}
       <div className="overflow-hidden rounded-panel border border-rule bg-bond">
         <div className="border-b border-rule bg-sheet px-5 py-[11px]">
-          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2">
-            {sandbox ? 'live, unsigned, yours' : 'what it compiled to'}
-          </span>
+          <div className="flex flex-col gap-[2px]">
+            <span className="text-[13.5px] font-semibold text-ink">
+              {sandbox ? 'Your limits, now being enforced' : 'What it understood'}
+            </span>
+            <span className="text-[12px] text-ink-3">
+              {sandbox
+                ? 'Live for this visit only, and not signed.'
+                : 'Your sentence, turned into limits the gateway can check.'}
+            </span>
+          </div>
         </div>
 
         {refusal && (
@@ -259,9 +273,9 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
 
         {!sandbox && !refusal && (
           <p className="px-5 py-10 text-center text-[13px] text-ink-3">
-            Nothing compiled yet. Your clauses appear here, each marked{' '}
-            <b className="font-medium text-ink-2">heard</b> or{' '}
-            <b className="font-medium text-ink-2">inferred</b>, and then you can try to
+            Nothing read yet. Your limits appear here, each marked{' '}
+            <b className="font-medium text-ink-2">you said this</b> or{' '}
+            <b className="font-medium text-ink-2">we guessed</b>, and then you can try to
             get an order past them.
           </p>
         )}
@@ -276,17 +290,15 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
             <div className="border-b border-refer-line bg-refer-soft px-5 py-4">
               <div className="flex items-center gap-2">
                 <ShieldOff aria-hidden className="size-[13px] text-refer" strokeWidth={2.2} />
-                <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-refer">
-                  unsigned · ephemeral · {sandbox.mandate_id}
+                <span className="text-[12px] font-medium text-refer">
+                  Not signed, and gone when you leave
                 </span>
               </div>
               <p className="mt-2 text-[12.5px] leading-[1.55] text-ink-2">
-                This gateway cannot sign your policy, and that is the point: signing needs
-                the issuer's private key, which is offline and is not in the deployed
-                image. Your mandate is enforced for this session only and carries a
-                reserved id, so no order under it can be confused with{' '}
-                <span className="font-mono text-[11.5px]">{sandbox.signed_mandate_id}</span>,
-                the signed one.
+                We cannot sign your rules here, and that is deliberate: signing needs a
+                private key that is kept offline and is not on this server. Your rules are
+                enforced for this visit only, and orders made under them are filed
+                separately from the demo mandate so the two can never be confused.
               </p>
               <div className="mt-2.5 flex items-start gap-2 overflow-x-auto rounded-md border border-rule bg-bond px-2.5 py-2">
                 <Lock aria-hidden className="mt-[2px] size-[11px] shrink-0 text-ink-3" />
@@ -296,7 +308,7 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
               </div>
             </div>
 
-            {/* Their clauses. */}
+            {/* Their limits. */}
             <ul className="divide-y divide-hair">
               {sandbox.constraints.map((c) => (
                 <li key={c.id} className="flex items-center justify-between gap-3 px-5 py-[10px]">
@@ -381,14 +393,13 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
                       probe.executed ? 'text-pass' : 'text-halt',
                     )}
                   >
-                    {probe.executed ? 'executed' : 'refused'}
-                    {probe.clause_id ? ` · ${probe.clause_id}` : ''}
+                    {probe.executed ? 'Went through' : 'Refused'}
                   </div>
                   <p className="mt-1.5 text-[13px] leading-[1.5] text-ink">{probe.message}</p>
                   <p className="mt-1.5 text-[12px] leading-[1.5] text-ink-2">
                     {probe.executed
-                      ? 'Inside every clause you wrote, so it went to the rail.'
-                      : 'Your clause, your number, the same gateway that serves the signed mandate.'}
+                      ? 'Inside every limit you wrote, so the payment went through.'
+                      : 'Your limit, your number, and the same gateway the demo runs on.'}
                   </p>
                 </motion.div>
               )}

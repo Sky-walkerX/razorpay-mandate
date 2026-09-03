@@ -147,7 +147,7 @@ export function LimitCard({ part, index }: LimitCardProps) {
 }
 
 /**
- * The nine parts, as one joined surface rather than nine cards.
+ * The parts, as one joined surface rather than a card each.
  *
  * The shared hairlines are the point: a closed set should look like a closed
  * set, so the cells butt against each other inside a single rounded border and

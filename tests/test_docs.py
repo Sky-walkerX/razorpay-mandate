@@ -155,3 +155,45 @@ def test_the_web_has_exactly_one_api_base_and_it_is_not_hostname_sniffing():
             offenders.append(f"{path.relative_to(REPO_ROOT)}: branches on a hostname")
 
     assert not offenders, "\n".join(offenders)
+
+
+def test_no_tsx_spells_out_how_many_limits_the_policy_carries():
+    """The web said "nine" in eight places while rendering ten cards.
+
+    Both numbers are real and they mean different things. `PART_LABELS` carries
+    the ten constraint kinds the gateway implements, and this mandate sets nine
+    of them — `item.deny_recent` is `source: "unset"`. So a screen that renders
+    a card per kind shows ten while the prose beside it says nine, and a visitor
+    counting the cards concludes the copy is wrong.
+
+    Neither number may be typed. Both are one `.filter` off `PARTS`, which is
+    already derived from `evidence.json`, so a policy that switches
+    `item.deny_recent` on moves the prose without anyone editing a component.
+    This is the same rule as the bounds: nothing about the signed policy is
+    retyped into a `.tsx`.
+    """
+    import re
+
+    web_src = REPO_ROOT / "web" / "src"
+
+    # `(?<![\w-])` keeps "forty-nine more" — a run's own arithmetic, not a claim
+    # about the policy — out of the net.
+    noun = re.compile(
+        r"(?<![\w-])(nine|ten)\b[^.<>{}]{0,24}?\b(clause|part|limit|kind)s?\b",
+        re.IGNORECASE,
+    )
+    bare = re.compile(r"(?<![\w-])\b(all|the)\s+(nine|ten)\b(?!\s*[-\w]*\s*(more|of))", re.IGNORECASE)
+
+    offenders = []
+    for path in sorted(web_src.rglob("*.tsx")):
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            hit = noun.search(line) or bare.search(line)
+            if hit:
+                rel = path.relative_to(REPO_ROOT)
+                offenders.append(f"{rel}:{line_no}: {hit.group(0)!r}")
+
+    assert not offenders, (
+        "a component states how many limits the policy has instead of counting them.\n"
+        "Use PARTS.length (kinds the gateway checks) and the count of parts whose\n"
+        "source is not 'unset' (kinds this mandate sets):\n" + "\n".join(offenders)
+    )

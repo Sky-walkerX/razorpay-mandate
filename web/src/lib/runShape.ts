@@ -1,5 +1,9 @@
 import { COUNTS, DECISIONS, type Decision } from '@/data/decisions';
 import { PARTS, type Part } from '@/data/policy';
+import { spell } from '@/lib/spell';
+
+// Re-exported so `ChainSection` keeps its one import site.
+export { spell };
 
 /**
  * The shape of one replayed run, derived rather than described.
@@ -14,25 +18,6 @@ import { PARTS, type Part } from '@/data/policy';
  * Nothing here reads a figure that is not in `evidence.json`.
  */
 
-const ONES = [
-  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine',
-  'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen',
-  'seventeen', 'eighteen', 'nineteen',
-];
-const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
-
-/**
- * Small integers as words, because "Three orders went through" is a sentence
- * and "3 orders went through" is a log line. Anything past 99 stays a numeral,
- * which is the point at which a count stops reading as prose anyway.
- */
-export function spell(n: number): string {
-  if (!Number.isInteger(n) || n < 0 || n > 99) return String(n);
-  if (n < 20) return ONES[n];
-  const t = TENS[Math.floor(n / 10)];
-  const o = n % 10;
-  return o === 0 ? t : `${t}-${ONES[o]}`;
-}
 
 function sentenceCase(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);

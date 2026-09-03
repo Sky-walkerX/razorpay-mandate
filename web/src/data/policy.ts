@@ -1,7 +1,8 @@
 import evidence from './evidence.json';
+import { spell, Spell } from '@/lib/spell';
 
 /**
- * The nine constraint types, in the order the gateway evaluates them.
+ * The constraint types, in the order the gateway evaluates them.
  *
  * Every bound, date and provenance flag here is read from `evidence.json`,
  * which `mandate evidence` writes from the signed `policies/policy.yaml`.
@@ -66,6 +67,29 @@ export const PARTS: Part[] = evidence.policy.parts.map((p) => ({
   against: p.against,
   source: SOURCE[p.source as keyof typeof SOURCE],
 }));
+
+/**
+ * Two counts, and they are different numbers on purpose.
+ *
+ * `PART_COUNT` is how many kinds of limit the gateway implements and evaluates
+ * on every order — ten. `SET_PART_COUNT` is how many of them this mandate
+ * actually sets — nine, because `item.deny_recent` carries `source: 'unset'`.
+ *
+ * The web used to say "nine" in twenty-five places while rendering ten cards,
+ * so a visitor who counted the cards concluded the copy was lying. Both numbers
+ * are now counted rather than typed, which means a policy that switches
+ * `item.deny_recent` on moves every sentence without anyone editing a
+ * component. `test_no_tsx_spells_out_how_many_limits_the_policy_carries`
+ * keeps it that way.
+ */
+export const PART_COUNT = PARTS.length;
+export const SET_PART_COUNT = PARTS.filter((p) => p.source !== 'unset').length;
+
+/** The same two counts as words, for prose. `Part…Word` leads a sentence. */
+export const PART_COUNT_TEXT = spell(PART_COUNT);
+export const PART_COUNT_TEXT_CAP = Spell(PART_COUNT);
+export const SET_PART_COUNT_TEXT = spell(SET_PART_COUNT);
+export const SET_PART_COUNT_TEXT_CAP = Spell(SET_PART_COUNT);
 
 export const LIMITS = PARTS.filter((p) => p.kind === 'limit');
 export const RULES = PARTS.filter((p) => p.kind === 'rule');

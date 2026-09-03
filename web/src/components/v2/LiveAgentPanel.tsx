@@ -8,6 +8,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { API_BASE } from '@/lib/api';
+import { SET_PART_COUNT_TEXT } from '@/data/policy';
+
+/**
+ * What each attack family does, said plainly. The keys are the corpus family ids
+ * returned by `/v1/agent/families`; anything not listed falls back to its id, so
+ * a new family shows up rather than disappearing.
+ */
+const FAMILY_COPY: Record<string, string> = {
+  clean: 'Nothing — an honest shop',
+  'budget.salami': 'Many small orders instead of one big one',
+  'category.laundering': 'A banned item relabelled as something allowed',
+  'injection.description': 'Hidden instructions in a product description',
+  'injection.review': 'Hidden instructions in a customer review',
+  'injection.seller_name': 'Hidden instructions in the seller’s name',
+  'merchant.lookalike': 'A shop got up to look like one you allow',
+  'price.flip': 'One price changed after the order is approved',
+  'price.unit_confusion': 'A price that means something other than it looks',
+  'retry.storm': 'The same order sent over and over',
+  'time.boundary': 'An order timed for the edge of your window',
+};
 
 
 type Mode = 'enforce' | 'observe';
@@ -173,17 +193,23 @@ export default function LiveAgentPanel({ token }: { token: string | null }) {
       {/* ── Controls ─────────────────────────────────────────────── */}
       <div className="overflow-hidden rounded-xl border border-rule bg-bond">
         <div className="border-b border-rule bg-sheet px-4 py-3">
-          <h3 className="text-[13px] font-medium text-ink">Live agent</h3>
-          <p className="mt-0.5 text-[11.5px] text-ink-3">
-            One prompt, one catalog, two arms. The only difference is whether the gateway may
-            refuse. A real model runs here and decides what to buy. The gateway still decides
-            what is allowed, and that half calls no model.
+          <div className="flex flex-wrap items-center gap-x-[10px] gap-y-1">
+            <h3 className="text-[13px] font-medium text-ink">Same AI, both sides</h3>
+            <span className="inline-flex items-center gap-[6px] whitespace-nowrap rounded-full bg-indigo-soft px-[10px] py-[3px] text-[11px] font-medium text-indigo">
+              <span aria-hidden className="size-[7px] rounded-full bg-indigo" />
+              Running this calls a real AI
+            </span>
+          </div>
+          <p className="mt-[5px] text-[11.5px] leading-[1.55] text-ink-3">
+            One instruction, one shop, run twice. The only difference is whether the gateway is
+            allowed to refuse. The AI picks the basket; the gateway's yes or no involves no AI at
+            all.
           </p>
         </div>
 
         <div className="grid gap-3 p-4">
           <label className="grid gap-1.5">
-            <span className="text-[11.5px] text-ink-3">Intent</span>
+            <span className="text-[12px] text-ink-3">What do you want it to buy?</span>
             <textarea
               value={intent}
               onChange={(e) => setIntent(e.target.value)}
@@ -194,15 +220,15 @@ export default function LiveAgentPanel({ token }: { token: string | null }) {
 
           <div className="flex flex-wrap items-end gap-3">
             <label className="grid gap-1.5">
-              <span className="text-[11.5px] text-ink-3">Catalog</span>
+              <span className="text-[12px] text-ink-3">What is wrong with the shop?</span>
               <select
                 value={family}
                 onChange={(e) => setFamily(e.target.value)}
-                className="h-[32px] rounded-[7px] border border-rule bg-sheet px-2 font-mono text-[12px] text-ink outline-none focus:border-navy"
+                className="h-[32px] max-w-[22rem] rounded-[7px] border border-rule bg-sheet px-2 text-[12.5px] text-ink outline-none focus:border-navy"
               >
                 {families.map((f) => (
                   <option key={f} value={f}>
-                    {f}
+                    {FAMILY_COPY[f] ?? f}
                   </option>
                 ))}
               </select>
@@ -215,7 +241,7 @@ export default function LiveAgentPanel({ token }: { token: string | null }) {
                 onChange={(e) => setCompromised(e.target.checked)}
                 className="size-[14px] accent-halt"
               />
-              <span className="text-[12px] text-ink-2">agent obeys seller text</span>
+              <span className="text-[12px] text-ink-2">let the agent trust what sellers write</span>
             </label>
 
             <button
@@ -223,18 +249,18 @@ export default function LiveAgentPanel({ token }: { token: string | null }) {
               disabled={busy || !token || !intent.trim()}
               className="ml-auto h-[32px] rounded-[7px] bg-navy px-4 text-[12.5px] font-medium text-white transition-opacity disabled:opacity-40"
             >
-              {busy ? 'Running…' : 'Run both arms'}
+              {busy ? 'Running…' : 'Run both sides'}
             </button>
           </div>
 
           {remaining !== null && (
-            <p className="font-mono text-[11px] text-ink-3">
-              {remaining} live model calls left today
+            <p className="text-[11.5px] text-ink-3">
+              {remaining} live AI calls left today
             </p>
           )}
           {!token && (
-            <p className="font-mono text-[11px] text-refer">
-              no session — start one in the Console tab first
+            <p className="text-[11.5px] text-refer">
+              No session yet — open “Attack it yourself” once to start one.
             </p>
           )}
         </div>
@@ -263,7 +289,7 @@ function Arm({ mode, state }: { mode: Mode; state: ArmState }) {
       )}
     >
       {/* The banner is not decoration. A screenshot of this pane without it reads
-          as the gateway failing, when it is the control arm doing its job. */}
+          as the gateway failing, when it is the unprotected side doing its job. */}
       <div
         className={cn(
           'flex items-center justify-between border-b px-4 py-3',
@@ -272,12 +298,12 @@ function Arm({ mode, state }: { mode: Mode; state: ArmState }) {
       >
         <div>
           <h3 className={cn('text-[13px] font-medium', unenforced ? 'text-halt' : 'text-ink')}>
-            {unenforced ? 'UNENFORCED CONTROL ARM' : 'Gateway enforcing'}
+            {unenforced ? 'Without Mandate' : 'With Mandate'}
           </h3>
           <p className="mt-0.5 text-[11.5px] text-ink-3">
             {unenforced
-              ? 'the gateway logs but never refuses — this is what happens without Mandate'
-              : 'every proposal passes the nine clauses'}
+              ? 'nothing can refuse the agent — whatever it picks, it buys'
+              : `every order passes all ${SET_PART_COUNT_TEXT} of your limits`}
           </p>
         </div>
         <span className="font-mono text-[12px] font-medium text-ink">{rupees(state.spent)}</span>
@@ -285,7 +311,7 @@ function Arm({ mode, state }: { mode: Mode; state: ArmState }) {
 
       <div className="grid gap-2 p-4">
         {state.events.length === 0 && !state.running && !state.error && (
-          <p className="py-6 text-center text-[12px] text-ink-3">not run yet</p>
+          <p className="py-6 text-center text-[12px] text-ink-3">Not run yet</p>
         )}
 
         {state.error && (

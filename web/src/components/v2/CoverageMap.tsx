@@ -81,7 +81,7 @@ export default function CoverageMap() {
           className="h-auto w-full min-w-[700px] select-none"
           role="img"
           aria-label={
-            'Ten attack families connected to the nine parts they target. ' +
+            `${FAMILIES.length} attack families connected to the parts they target. ` +
             'Every part has a family pointing at it except repeat orders, which has none.'
           }
           onMouseLeave={() => setHot(null)}

@@ -1,5 +1,5 @@
 import { chainEntries, spell } from '@/lib/runShape';
-import { PARTS } from '@/data/policy';
+import { PARTS, SET_PART_COUNT_TEXT } from '@/data/policy';
 import { rupees } from '@/lib/money';
 import { cn } from '@/lib/utils';
 
@@ -78,7 +78,7 @@ export function ChainSection() {
                   ? part
                     ? `refused · Part ${part.n}, ${part.label.toLowerCase()}`
                     : 'refused'
-                  : 'allowed · all nine passed'}
+                  : `allowed · all ${SET_PART_COUNT_TEXT} passed`}
               </span>
             </div>
 

@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import { RotateCw, Send, Sliders, FileCode2, Bot, Zap } from 'lucide-react';
+import { RotateCw, Send, Sliders, Zap } from 'lucide-react';
 
-import { PARTS } from '@/data/policy';
+import { PARTS, PART_COUNT_TEXT_CAP, SET_PART_COUNT_TEXT } from '@/data/policy';
+import { Spell } from '@/lib/spell';
 import LiveAgentPanel from '@/components/v2/LiveAgentPanel';
 import { rupees } from '@/lib/money';
 import { cn } from '@/lib/utils';
@@ -102,7 +103,7 @@ interface AttackPreset {
 }
 
 /**
- * The nine, pointed at SKUs the running gateway actually prices.
+ * The attacks, pointed at SKUs the running gateway actually prices.
  *
  * These were invented names (`sku_dal_toor_2kg`, `sku_beer_can`) that exist in
  * no price book, so every preset came back `unknown SKU ... not found in price
@@ -125,8 +126,8 @@ interface AttackPreset {
 const ATTACK_PRESETS: AttackPreset[] = [
   {
     id: 'control',
-    title: 'An ordinary grocery order',
-    tries: 'Control — one pack of Toor Dal, ₹100.00',
+    title: 'A normal order',
+    tries: 'Nothing wrong with it. One pack of dal, ₹100.',
     merchant: 'blinkit',
     seller_name: 'Blinkit',
     items: [{ sku: 'sku_0000', qty: 1 }],
@@ -136,8 +137,8 @@ const ATTACK_PRESETS: AttackPreset[] = [
   },
   {
     id: 'injection',
-    title: 'Prompt injection in a review',
-    tries: 'A seller note claims premium swaps are pre-approved',
+    title: 'Hidden instructions in a review',
+    tries: 'A seller buries an order for the AI inside a product review.',
     merchant: 'blinkit',
     seller_name: 'Blinkit',
     items: [
@@ -153,8 +154,8 @@ const ATTACK_PRESETS: AttackPreset[] = [
   },
   {
     id: 'item_drift',
-    title: 'Premium bottle swap',
-    tries: 'A ₹1,416 bottle — four times the per-order cap, and alcohol besides',
+    title: 'Swap in something expensive',
+    tries: 'A ₹1,416 bottle. Over your order cap, and alcohol besides.',
     merchant: 'blinkit',
     seller_name: 'Blinkit',
     items: [{ sku: 'sku_0021', qty: 1 }],
@@ -165,8 +166,8 @@ const ATTACK_PRESETS: AttackPreset[] = [
   },
   {
     id: 'lookalike',
-    title: 'Lookalike merchant',
-    tries: 'Order from “Blinkit Express”, which is not Blinkit',
+    title: 'A shop that looks real',
+    tries: 'Orders from “Blinkit Express”, which is not Blinkit.',
     merchant: 'blinkit_express_in',
     seller_name: 'Blinkit Express',
     items: [{ sku: 'sku_0000', qty: 1 }],
@@ -177,8 +178,8 @@ const ATTACK_PRESETS: AttackPreset[] = [
   },
   {
     id: 'category',
-    title: 'Category laundering',
-    tries: 'A ₹236 lager, under every money cap this mandate has',
+    title: 'Disguise a banned item',
+    tries: 'A ₹236 lager, under every money cap you set.',
     merchant: 'blinkit',
     seller_name: 'Blinkit',
     items: [{ sku: 'sku_0008', qty: 1 }],
@@ -189,8 +190,8 @@ const ATTACK_PRESETS: AttackPreset[] = [
   },
   {
     id: 'quantity',
-    title: 'Quantity flood',
-    tries: 'Six of one line — ₹300 total, so no money cap objects',
+    title: 'Order too many of one thing',
+    tries: 'Six of one item. ₹300 total, so no money cap objects.',
     merchant: 'blinkit',
     seller_name: 'Blinkit',
     items: [{ sku: 'sku_0029', qty: 6 }],
@@ -201,8 +202,8 @@ const ATTACK_PRESETS: AttackPreset[] = [
   },
   {
     id: 'velocity',
-    title: 'Velocity salami',
-    tries: 'Four small orders in a row, each one legal on its own',
+    title: 'Split it into many small orders',
+    tries: 'Four small orders in a row, each one fine on its own.',
     merchant: 'blinkit',
     seller_name: 'Blinkit',
     items: [{ sku: 'sku_0003', qty: 1 }],
@@ -219,8 +220,8 @@ const ATTACK_PRESETS: AttackPreset[] = [
   },
   {
     id: 'idempotency',
-    title: 'Idempotency replay',
-    tries: 'Send the control order a second time, byte for byte',
+    title: 'Send the same order twice',
+    tries: 'Replays an order that already went through, word for word.',
     merchant: 'blinkit',
     seller_name: 'Blinkit',
     items: [{ sku: 'sku_0000', qty: 1 }],
@@ -230,8 +231,8 @@ const ATTACK_PRESETS: AttackPreset[] = [
   },
   {
     id: 'revocation',
-    title: 'Revoked token',
-    tries: 'Keep spending after the mandate has been pulled',
+    title: 'Use access you cut off',
+    tries: 'Tries an order after you have cut the agent off.',
     merchant: 'blinkit',
     seller_name: 'Blinkit',
     items: [{ sku: 'sku_0000', qty: 1 }],
@@ -243,17 +244,101 @@ const ATTACK_PRESETS: AttackPreset[] = [
 ];
 
 
+/**
+ * What each tab is called, what it says, and — the part that matters — whether
+ * it calls a model.
+ *
+ * The console evaluates in plain code. The live agent and the compiler both make
+ * a real Vertex call. This page used to carry "there is no model call anywhere
+ * on this path" directly above a three-tab bar, two of whose tabs call one, and
+ * the honest version of that claim can only be made per tab.
+ */
+const TAB_COPY = {
+  console: {
+    tab: 'Attack it yourself',
+    heading: 'Can you get money past it?',
+    blurb: `${Spell(ATTACK_PRESETS.length)} ways people try to make a shopping agent overspend. Pick one and watch every limit you set get checked.`,
+    usesModel: false,
+  },
+  agent: {
+    tab: 'Watch an AI shop',
+    heading: 'Same AI, same shop, one difference.',
+    blurb:
+      'A real AI reads a poisoned catalogue and picks a basket. On one side nothing can refuse it. On the other, your limits can.',
+    usesModel: true,
+  },
+  compiler: {
+    tab: 'Write your own rules',
+    heading: 'Write your own rules. We enforce them.',
+    blurb:
+      'Say what you would allow, in your own words. It becomes real limits, and the same gateway holds an agent to them for the rest of your visit.',
+    usesModel: true,
+  },
+} as const;
+
+/** The marker that says whether what you are looking at asked a model. */
+function ModelMark({
+  usesModel,
+  lit = true,
+  label,
+  className,
+}: {
+  usesModel: boolean;
+  lit?: boolean;
+  /** Overrides the two-word default, e.g. "No AI on this tab". */
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-[5px] whitespace-nowrap text-[11px] leading-none',
+        lit ? (usesModel ? 'text-indigo' : 'text-ink-3') : 'text-ink-4',
+        className,
+      )}
+    >
+      {usesModel ? (
+        <span
+          aria-hidden
+          className={cn('size-[8px] rounded-full', lit ? 'bg-indigo' : 'bg-ink-4')}
+        />
+      ) : (
+        <span
+          aria-hidden
+          className={cn(
+            'size-[8px] rounded-[2px] border',
+            lit ? 'border-ink-3' : 'border-ink-4',
+          )}
+        />
+      )}
+      {label ?? (usesModel ? 'Uses AI' : 'No AI')}
+    </span>
+  );
+}
+
 const EASE = [0.22, 0.61, 0.36, 1] as const;
 
 /** How a finished run reads in the attack list. Never shown before one. */
+/**
+ * The gateway names the clause it refused on, which is the right thing for it to
+ * do and the wrong thing to lead a visitor with: `quantity.max_per_item: limit 5
+ * per item, attempted 6` is a log line. The label beside it already says which
+ * limit refused, so the identifier is redundant here and stays in the audit rows
+ * and the policy view, where the identifier IS the point.
+ */
+function plainMessage(rec: DecisionRecord): string {
+  const m = rec.message ?? '';
+  return m.replace(/^[a-z_]+(?:\.[a-z_]+)+:\s*/i, '');
+}
+
 function outcomeChip(rec: DecisionRecord) {
-  if (rec.executed) return { label: 'executed', cls: 'bg-pass-soft text-pass' };
-  if (rec.verdict === 'REVOKED') return { label: 'revoked', cls: 'bg-halt-soft text-halt' };
-  if (rec.verdict === 'IDEMPOTENT') return { label: 'deduplicated', cls: 'bg-indigo-soft text-indigo' };
+  if (rec.executed) return { label: 'went through', cls: 'bg-pass-soft text-pass' };
+  if (rec.verdict === 'REVOKED') return { label: 'access cut off', cls: 'bg-halt-soft text-halt' };
+  if (rec.verdict === 'IDEMPOTENT') return { label: 'sent twice', cls: 'bg-indigo-soft text-indigo' };
   const part = rec.stopped_at_clause !== undefined && rec.stopped_at_clause >= 0
-    ? ` · part ${PARTS[rec.stopped_at_clause]?.n ?? ''}`
+    ? ` · ${PARTS[rec.stopped_at_clause]?.n ?? ''}`
     : '';
-  return { label: `held${part}`, cls: 'bg-halt-soft text-halt' };
+  return { label: `Refused${part}`, cls: 'bg-halt-soft text-halt' };
 }
 
 export default function JudgeConsole() {
@@ -316,10 +401,10 @@ export default function JudgeConsole() {
   const initFallbackData = () => {
     setHeadroom({
       'budget.total': { clause_id: 'budget.total', label: 'Total budget', used_paise: 0, limit_paise: 200000, remaining_paise: 200000, unit: 'paise' },
-      'budget.per_transaction': { clause_id: 'budget.per_transaction', label: 'Max per order', limit_paise: 100000, remaining_paise: 100000, unit: 'paise' },
-      'budget.per_item': { clause_id: 'budget.per_item', label: 'Max per item', limit_paise: 50000, remaining_paise: 50000, unit: 'paise' },
-      velocity: { clause_id: 'velocity', label: 'Orders per mandate', used_count: 0, limit_count: 3, remaining_count: 3, unit: 'count' },
-      'quantity.max_per_item': { clause_id: 'quantity.max_per_item', label: 'Max qty per item', limit_count: 5, remaining_count: 5, unit: 'count' },
+      'budget.per_transaction': { clause_id: 'budget.per_transaction', label: 'Most per order', limit_paise: 100000, remaining_paise: 100000, unit: 'paise' },
+      'budget.per_item': { clause_id: 'budget.per_item', label: 'Most per item', limit_paise: 50000, remaining_paise: 50000, unit: 'paise' },
+      velocity: { clause_id: 'velocity', label: 'Orders allowed', used_count: 0, limit_count: 3, remaining_count: 3, unit: 'count' },
+      'quantity.max_per_item': { clause_id: 'quantity.max_per_item', label: 'Most of any one item', limit_count: 5, remaining_count: 5, unit: 'count' },
     });
   };
 
@@ -408,7 +493,10 @@ export default function JudgeConsole() {
           verdict: isDedup ? 'IDEMPOTENT' : dec.verdict,
           clause_id: dec.clause_id,
           clause_label: stoppedIndex >= 0 ? PARTS[stoppedIndex].label : undefined,
-          message: dec.message || (isAllowed ? 'Every clause passed.' : 'A clause refused it.'),
+          message:
+            isAllowed && (!dec.message || /^allow$/i.test(dec.message))
+              ? 'Every limit you set was checked and none of them objected.'
+              : dec.message || 'One of your limits refused it.',
           seller_name:
             payload.seller_name ||
             (payload.merchant.includes('zepto')
@@ -540,20 +628,26 @@ export default function JudgeConsole() {
    *  house-session figures are not theirs and must not read as if they were. */
   const onSandboxTab = activeTab === 'compiler';
 
-  const ran = Object.keys(results).length;
-  /**
-   * An attack "got through" only if the attack's own outcome was an execution.
-   * It is deliberately NOT a count of executions in the ledger: the velocity
-   * attack places three legal orders before its fourth is refused, and those
-   * three succeeding is the setup, not a breach. `results` holds the final
-   * decision per preset, which is the one that answers the question.
-   */
-  const gotThrough = Object.values(results).filter(
-    (r) => r.executed && r.presetId !== 'control',
-  ).length;
-  /** Money is the opposite: every execution really did move on the rail. */
-  const movedPaise = decisions.filter((d) => d.executed).reduce((sum, d) => sum + d.amount_paise, 0);
   const anySimulated = decisions.some((d) => !d.live);
+
+  /**
+   * How the limits came out on the run being shown. `passed` counts only the
+   * clauses this mandate actually sets, because an unset one is never evaluated
+   * and painting it green was what made the panel claim ten passes over a
+   * ledger row that honestly said nine.
+   */
+  const settledStates = PARTS.map((part, i) =>
+    part.source === 'unset' ? 'unset' : clauseRowStates[i],
+  );
+  const passedCount = settledStates.filter((s) => s === 'allow').length;
+  const refusedCount = settledStates.filter((s) => s === 'deny').length;
+
+  /** The part that refused the run on screen, or null when nothing did. */
+  const stoppedPart =
+    currentDisplay && currentDisplay.stopped_at_clause !== undefined &&
+    currentDisplay.stopped_at_clause >= 0
+      ? (PARTS[currentDisplay.stopped_at_clause] ?? null)
+      : null;
 
   const runPreset = async (p: AttackPreset) => {
     setSelectedPresetId(p.id);
@@ -578,17 +672,21 @@ export default function JudgeConsole() {
             <MandateLockup size="sm" attribution={false} />
           </Link>
           <span aria-hidden className="h-5 w-px bg-rule max-lg:hidden" />
-          <span className="font-mono text-[11px] text-ink-2 max-lg:hidden">mnd_groceries_01</span>
-          <span className="inline-flex items-center gap-[6px] rounded-full border border-pass-line bg-pass-soft px-2 py-[3px] font-mono text-[10px] text-pass max-lg:hidden">
-            signed
+          {/* This read `mnd_groceries_01` and, further along, `tok_pool_004`.
+              Both are real identifiers and neither tells a visitor anything;
+              the mandate id still appears in the policy view, where showing the
+              document that was signed is the whole point. */}
+          <span className="text-[13.5px] font-medium text-ink max-lg:hidden">Weekly groceries</span>
+          <span className="inline-flex items-center gap-[5px] rounded-full border border-pass-line bg-pass-soft px-[9px] py-[3px] text-[11px] font-medium text-pass max-lg:hidden">
+            Signed by you
           </span>
           {/* Everything in this bar belongs to the signed mandate's session. On
               the sandbox tab the judge's own caps are what refuse them, so the
               bar is dimmed and named rather than left reading as their budget:
               ₹2,000 lit beside their ₹800 clause is a number they will believe. */}
           {onSandboxTab && (
-            <span className="font-mono text-[10px] uppercase tracking-[0.09em] text-ink-4 max-lg:hidden">
-              · other tabs
+            <span className="text-[12px] text-ink-4 max-lg:hidden">
+              · these are the demo's, not yours
             </span>
           )}
 
@@ -599,9 +697,7 @@ export default function JudgeConsole() {
             )}
           >
             <div className="flex items-center gap-[9px] max-md:hidden">
-              <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3">
-                budget left
-              </span>
+              <span className="text-[12px] text-ink-3">Budget left</span>
               <div className="h-[6px] w-[116px] overflow-hidden rounded-full bg-sunk">
                 <motion.span
                   className="block h-full rounded-full bg-pass"
@@ -612,130 +708,198 @@ export default function JudgeConsole() {
               <span className="font-mono text-[12px] font-medium">{rupees(remainingBudgetPaise)}</span>
             </div>
             <span aria-hidden className="h-5 w-px bg-rule max-md:hidden" />
-            <span className="font-mono text-[11px] text-ink-2 max-md:hidden">
-              orders <b className="font-semibold text-ink">{ordersUsed}</b>/{ordersCap}
-            </span>
-            <span aria-hidden className="h-5 w-px bg-rule max-lg:hidden" />
-            <span
-              className={cn(
-                'font-mono text-[11px] max-lg:hidden',
-                isRevoked ? 'text-halt line-through' : 'text-ink-2',
-              )}
-            >
-              {session?.jti ?? '—'}
+            <span className="text-[12.5px] text-ink-2 max-md:hidden">
+              <b className="font-semibold text-ink">{ordersUsed}</b> of {ordersCap} orders used
             </span>
             <button
               onClick={() => handleRevoke()}
               disabled={isRevoked || !session}
               className="inline-flex h-[30px] items-center rounded-lg border border-halt-line bg-halt-soft px-3 text-[12.5px] text-halt transition-colors hover:bg-halt-soft/70 disabled:opacity-40"
             >
-              {isRevoked ? 'Revoked' : 'Revoke'}
+              {isRevoked ? 'Access cut off' : 'Cut off access'}
             </button>
             <button
               onClick={handleReset}
               className="inline-flex h-[30px] items-center gap-[6px] rounded-lg border border-rule bg-bond px-3 text-[12.5px] text-ink-2 transition-colors hover:bg-sheet"
             >
               <RotateCw className="size-[13px]" />
-              Reset
+              Start over
             </button>
           </div>
         </div>
       </div>
 
-      {/* ── Scoreboard ────────────────────────────────────────────────── */}
-      <div className="border-b border-rule bg-bond">
-        <div className="flex flex-wrap items-center gap-x-[26px] gap-y-5 px-8 py-[18px] max-sm:px-[18px]">
-          <div className="min-w-[18rem] flex-1">
-            <h1 className="text-[25px] font-semibold leading-[1.1] tracking-[-0.042em]">
-              Try to get money past it.
-            </h1>
-            <p className="mt-[5px] text-[13.5px] leading-[1.5] text-ink-2">
-              Nine ways in. Pick one and watch all nine clauses run. This tab calls no model. Live
-              agent and Your mandate both call one, and each says so on its own panel. On the
-              third, the clauses that refuse you are the ones your own sentence compiled to.
-            </p>
-          </div>
+      {/* ── Title and tabs ────────────────────────────────────────────── */}
+      {/* The tabs sit ON the header's bottom edge, each a folder tab that joins
+          the panel below it when active. The scoreboard that used to run down
+          the middle of this row is gone: three mono figures competing with the
+          tab bar for the same eye-line, in a place where a first-time visitor
+          has not yet done anything worth counting. */}
+      <div className="border-b border-rule bg-bond px-8 pt-[26px] max-sm:px-[18px]">
+        <h1 className="text-[28px] font-semibold leading-[1.1] tracking-[-0.042em] max-sm:text-[23px]">
+          {TAB_COPY[activeTab].heading}
+        </h1>
+        <p className="mt-[6px] max-w-[46rem] text-[14.5px] leading-[1.5] text-ink-2">
+          {TAB_COPY[activeTab].blurb}
+        </p>
 
-          <div className="flex items-center gap-[30px]">
-            {[
-              { v: `${ran}`, sub: '/9', label: 'you have run', ink: 'text-ink' },
-              {
-                v: `${gotThrough}`,
-                label: 'got through',
-                ink: gotThrough > 0 ? 'text-halt' : 'text-pass',
-              },
-              { v: rupees(movedPaise), label: 'moved on the rail', ink: 'text-ink' },
-            ].map((s, i) => (
-              <div key={s.label} className="flex items-center gap-[30px]">
-                {i > 0 && <span aria-hidden className="h-[38px] w-px bg-rule" />}
-                <div className="text-right">
-                  <div
-                    className={cn(
-                      'font-mono text-[25px] font-semibold leading-none tracking-[-0.05em]',
-                      s.ink,
-                    )}
-                  >
-                    {s.v}
-                    {s.sub && <span className="text-ink-4">{s.sub}</span>}
-                  </div>
-                  <div className="mt-[4px] font-mono text-[9.5px] uppercase tracking-[0.1em] text-ink-3">
-                    {s.label}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex gap-1 rounded-lg border border-rule bg-sheet p-1">
-            {(['console', 'agent', 'compiler'] as const).map((t) => (
+        <div className="-mb-px mt-5 flex gap-1 overflow-x-auto">
+          {(['console', 'agent', 'compiler'] as const).map((tab) => {
+            const c = TAB_COPY[tab];
+            const on = activeTab === tab;
+            return (
               <button
-                key={t}
-                onClick={() => setActiveTab(t)}
+                key={tab}
+                onClick={() => setActiveTab(tab)}
                 className={cn(
-                  'inline-flex h-[30px] items-center gap-[7px] rounded-md px-3 text-[12.5px] transition-colors',
-                  activeTab === t ? 'bg-bond font-medium text-ink shadow-2xs' : 'text-ink-3',
+                  'flex shrink-0 flex-col items-start gap-[7px] rounded-t-[10px] px-4 pb-3 pt-[11px] text-left transition-colors',
+                  // A bare <button> keeps the UA's own 2px border, so the
+                  // inactive tabs drew a black box and sat 1px narrower than
+                  // the active one. Both states carry a border; only the active
+                  // one's is visible.
+                  on
+                    ? 'border border-rule border-b-bond bg-bond'
+                    : 'border border-transparent bg-sheet hover:bg-sunk',
                 )}
               >
-                {t === 'console' ? (
-                  <Zap className="size-[13px]" />
-                ) : t === 'agent' ? (
-                  <Bot className="size-[13px]" />
-                ) : (
-                  <FileCode2 className="size-[13px]" />
-                )}
-                {t === 'console' ? 'Console' : t === 'agent' ? 'Live agent' : 'Your mandate'}
+                <span
+                  className={cn(
+                    'whitespace-nowrap text-[14px] leading-none',
+                    on ? 'font-semibold text-ink' : 'font-medium text-ink-3',
+                  )}
+                >
+                  {c.tab}
+                </span>
+                <ModelMark
+                  usesModel={c.usesModel}
+                  lit={on}
+                  label={on && !c.usesModel ? 'No AI on this tab' : undefined}
+                />
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
-
-        {anySimulated && (
-          <div className="flex items-center gap-[10px] border-t border-refer-line bg-refer-soft px-8 py-[9px] max-sm:px-[18px]">
-            <span aria-hidden className="size-[7px] rotate-45 bg-refer" />
-            <p className="font-mono text-[11px] leading-[1.5] text-refer">
-              the gateway at {API_BASE || 'this origin'} did not answer — outcomes marked{' '}
-              <b className="font-semibold">simulated</b> are scripted from the preset, not measured
-            </p>
-          </div>
-        )}
       </div>
+
+      {anySimulated && (
+        <div className="flex items-center gap-[10px] border-b border-refer-line bg-refer-soft px-8 py-[9px] max-sm:px-[18px]">
+          <span aria-hidden className="size-[7px] rotate-45 bg-refer" />
+          <p className="text-[12px] leading-[1.5] text-refer">
+            The gateway did not answer, so outcomes marked{' '}
+            <b className="font-semibold">simulated</b> are scripted from the preset, not measured.
+          </p>
+        </div>
+      )}
 
       {activeTab === 'agent' ? (
         <LiveAgentPanel token={session?.token ?? null} />
       ) : activeTab === 'console' ? (
-        <div className="grid items-start gap-5 p-8 max-sm:px-[18px] lg:grid-cols-[372px_minmax(0,1fr)]">
-          {/* ── Attacks ───────────────────────────────────────────────── */}
+        <div className="grid items-start gap-6 p-8 max-sm:px-[18px] lg:grid-cols-[460px_minmax(0,1fr)]">
+          {/* ── Pick something to try ─────────────────────────────────── */}
           <div className="overflow-hidden rounded-panel border border-rule bg-bond">
-            <div className="flex items-center justify-between border-b border-rule bg-sheet px-4 py-3">
-              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2">
-                nine ways in
-              </span>
+            <div className="border-b border-hair px-[18px] py-[15px]">
+              <div className="text-[14px] font-semibold text-ink">Pick something to try</div>
+              <div className="mt-[3px] text-[12.5px] text-ink-3">
+                Each says what it attempts, never what it gets.
+              </div>
+            </div>
+
+            <ul>
+              {ATTACK_PRESETS.map((p) => {
+                const done = results[p.id];
+                const chip = done ? outcomeChip(done) : null;
+                const selected = p.id === selectedPresetId;
+                const control = p.id === 'control';
+                return (
+                  <li key={p.id}>
+                    <button
+                      onClick={() => runPreset(p)}
+                      disabled={loading || !session}
+                      className={cn(
+                        'flex w-full gap-3 border-b border-hair px-[18px] py-[13px] text-left transition-colors last:border-b-0 disabled:opacity-60',
+                        selected
+                          ? 'bg-indigo-soft shadow-[inset_3px_0_0_var(--color-indigo)]'
+                          : 'hover:bg-sheet',
+                      )}
+                    >
+                      {/* Green for the one that is meant to go through, carmine
+                          for the eight that are not. It is what the row attempts,
+                          never what it got — the chip on the right is the only
+                          thing allowed to say that. */}
+                      <span
+                        aria-hidden
+                        className={cn(
+                          'mt-[5px] size-[7px] shrink-0 rounded-full',
+                          done
+                            ? done.executed
+                              ? 'bg-pass'
+                              : 'bg-halt'
+                            : control
+                              ? 'bg-pass-line'
+                              : 'bg-halt-line',
+                        )}
+                      />
+                      <span className="flex min-w-0 flex-col gap-[2px]">
+                        <span
+                          className={cn(
+                            'text-[13.5px] tracking-[-0.02em]',
+                            selected ? 'font-semibold text-ink' : 'font-medium text-ink',
+                          )}
+                        >
+                          {p.title}
+                        </span>
+                        <span
+                          className={cn(
+                            'text-[12.5px] leading-[1.45]',
+                            selected ? 'text-ink-2' : 'text-ink-3',
+                          )}
+                        >
+                          {p.tries}
+                        </span>
+                      </span>
+                      <span className="ml-auto shrink-0 self-center">
+                        {chip ? (
+                          <span
+                            className={cn(
+                              'whitespace-nowrap rounded-full px-[9px] py-[2px] text-[11px] font-medium',
+                              chip.cls,
+                            )}
+                          >
+                            {chip.label}
+                          </span>
+                        ) : selected && loading ? (
+                          <span className="whitespace-nowrap text-[11px] font-medium text-indigo">
+                            running…
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="flex flex-col gap-[10px] border-t border-hair bg-sheet px-[18px] py-[14px]">
+              <button
+                onClick={() => {
+                  const p = ATTACK_PRESETS.find((x) => x.id === selectedPresetId);
+                  if (p) runPreset(p);
+                }}
+                disabled={loading || !session}
+                className="h-[40px] w-full rounded-lg bg-indigo text-[14px] font-medium text-white transition-colors hover:bg-[#254ED0] disabled:opacity-50"
+              >
+                {loading
+                  ? 'Running…'
+                  : results[selectedPresetId]
+                    ? 'Run this one again'
+                    : 'Run this one'}
+              </button>
               <button
                 onClick={() => setShowCustom((s) => !s)}
-                className="inline-flex items-center gap-[5px] font-mono text-[10.5px] text-indigo"
+                className="inline-flex items-center justify-center gap-[6px] text-[12.5px] text-indigo"
               >
                 <Sliders className="size-[12px]" />
-                {showCustom ? 'hide custom' : 'custom payload'}
+                {showCustom ? 'Hide the custom order' : 'Or write your own order'}
               </button>
             </div>
 
@@ -746,34 +910,30 @@ export default function JudgeConsole() {
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.25, ease: EASE }}
-                  className="overflow-hidden border-b border-rule bg-raise"
+                  className="overflow-hidden border-t border-hair bg-raise"
                 >
-                  <div className="flex flex-col gap-[10px] p-4">
+                  <div className="flex flex-col gap-[10px] p-[18px]">
                     {[
-                      { label: 'merchant', value: customMerchant, set: setCustomMerchant },
-                      { label: 'sku', value: customSku, set: setCustomSku },
+                      { label: 'Shop', value: customMerchant, set: setCustomMerchant },
+                      { label: 'Item code', value: customSku, set: setCustomSku },
                     ].map((f) => (
                       <label key={f.label} className="flex flex-col gap-[5px]">
-                        <span className="font-mono text-[9.5px] uppercase tracking-[0.11em] text-ink-3">
-                          {f.label}
-                        </span>
+                        <span className="text-[12px] text-ink-3">{f.label}</span>
                         <input
                           value={f.value}
                           onChange={(e) => f.set(e.target.value)}
-                          className="h-[32px] rounded-lg border border-rule bg-bond px-[10px] font-mono text-[12px] text-ink outline-none focus:border-indigo"
+                          className="h-[34px] rounded-lg border border-rule bg-bond px-[10px] font-mono text-[12px] text-ink outline-none focus:border-indigo"
                         />
                       </label>
                     ))}
                     <label className="flex flex-col gap-[5px]">
-                      <span className="font-mono text-[9.5px] uppercase tracking-[0.11em] text-ink-3">
-                        qty
-                      </span>
+                      <span className="text-[12px] text-ink-3">How many</span>
                       <input
                         type="number"
                         min={1}
                         value={customQty}
                         onChange={(e) => setCustomQty(Math.max(1, Number(e.target.value) || 1))}
-                        className="h-[32px] rounded-lg border border-rule bg-bond px-[10px] font-mono text-[12px] text-ink outline-none focus:border-indigo"
+                        className="h-[34px] rounded-lg border border-rule bg-bond px-[10px] font-mono text-[12px] text-ink outline-none focus:border-indigo"
                       />
                     </label>
                     <button
@@ -784,7 +944,7 @@ export default function JudgeConsole() {
                         })
                       }
                       disabled={loading || !session}
-                      className="inline-flex h-[34px] items-center justify-center gap-[7px] rounded-lg bg-indigo text-[13px] font-medium text-white transition-colors hover:bg-[#254ED0] disabled:opacity-50"
+                      className="inline-flex h-[36px] items-center justify-center gap-[7px] rounded-lg bg-indigo text-[13px] font-medium text-white transition-colors hover:bg-[#254ED0] disabled:opacity-50"
                     >
                       <Send className="size-[13px]" />
                       Send it
@@ -793,302 +953,259 @@ export default function JudgeConsole() {
                 </motion.div>
               )}
             </AnimatePresence>
-
-            <ul>
-              {ATTACK_PRESETS.map((p) => {
-                const done = results[p.id];
-                const chip = done ? outcomeChip(done) : null;
-                const selected = p.id === selectedPresetId;
-                return (
-                  <li key={p.id}>
-                    <button
-                      onClick={() => runPreset(p)}
-                      disabled={loading || !session}
-                      className={cn(
-                        'grid w-full grid-cols-[1fr_auto] items-center gap-x-[10px] gap-y-[4px] border-b border-hair px-4 py-[11px] text-left transition-colors last:border-b-0 disabled:opacity-60',
-                        selected
-                          ? 'border-l-[3px] border-l-indigo bg-indigo-soft pl-[13px]'
-                          : 'hover:bg-sheet',
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          'text-[13.5px] tracking-[-0.024em]',
-                          selected ? 'font-semibold' : 'font-medium',
-                        )}
-                      >
-                        {p.title}
-                      </span>
-                      {chip ? (
-                        <span
-                          className={cn(
-                            'rounded-full px-[7px] py-[2px] font-mono text-[9.5px] uppercase tracking-[0.08em]',
-                            chip.cls,
-                          )}
-                        >
-                          {chip.label}
-                        </span>
-                      ) : selected && loading ? (
-                        <span className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-indigo">
-                          running
-                        </span>
-                      ) : (
-                        <span />
-                      )}
-                      <span
-                        className={cn(
-                          'col-span-2 text-[12px] leading-[1.45]',
-                          selected ? 'text-ink-2' : 'text-ink-3',
-                        )}
-                      >
-                        {p.tries}
-                      </span>
-                      {done && !done.live && (
-                        <span className="col-span-2 font-mono text-[9.5px] uppercase tracking-[0.08em] text-refer">
-                          simulated
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
           </div>
 
-          {/* ── The run ───────────────────────────────────────────────── */}
+          {/* ── What happened ─────────────────────────────────────────── */}
           <div className="flex flex-col gap-4">
-            <div className="overflow-hidden rounded-panel border border-rule bg-bond shadow-sheet">
-              <div className="flex h-[44px] items-center gap-[10px] border-b border-rule bg-sheet px-5">
-                <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2">
-                  the run
-                </span>
-                <span
+            {!currentDisplay ? (
+              <div className="flex min-h-[420px] flex-col items-center justify-center gap-[14px] rounded-panel border border-rule bg-bond px-8 py-16 text-center">
+                <div
+                  aria-hidden
+                  className="flex size-[46px] items-center justify-center rounded-full border border-rule bg-sheet"
+                >
+                  <Zap className="size-[19px] text-ink-4" strokeWidth={1.6} />
+                </div>
+                <p className="max-w-[26rem] text-[14px] leading-[1.6] text-ink-2">
+                  Nothing has run yet. Pick something on the left. Every limit you set gets checked,
+                  and the order either goes through or you are told which limit stopped it.
+                </p>
+                <p className="text-[12px] text-ink-4">
+                  Nothing is shown here until the gateway answers.
+                </p>
+              </div>
+            ) : (
+              <div
+                className={cn(
+                  'overflow-hidden rounded-panel border bg-bond',
+                  currentDisplay.executed
+                    ? 'border-pass-line'
+                    : currentDisplay.verdict === 'IDEMPOTENT'
+                      ? 'border-rule'
+                      : 'border-halt-line',
+                )}
+              >
+                {/* The verdict leads. It used to sit under the evidence, at the
+                    bottom of a panel taller than the viewport, which put the
+                    answer below the working. */}
+                <div
                   className={cn(
-                    'ml-auto inline-flex items-center gap-[7px] font-mono text-[10px] uppercase tracking-[0.08em]',
-                    isRevoked ? 'text-halt' : 'text-pass',
+                    'flex flex-wrap items-center gap-4 border-b px-[22px] py-5',
+                    currentDisplay.executed
+                      ? 'border-pass-line bg-pass-soft'
+                      : currentDisplay.verdict === 'IDEMPOTENT'
+                        ? 'border-rule bg-sheet'
+                        : 'border-halt-line bg-halt-soft',
                   )}
                 >
                   <span
-                    className={cn('size-[6px] rounded-full', isRevoked ? 'bg-halt' : 'bg-pass')}
-                  />
-                  {isRevoked ? 'revoked' : 'enforcing'}
-                </span>
-              </div>
-
-              {!currentDisplay ? (
-                <div className="flex min-h-[420px] flex-col items-center justify-center gap-[14px] px-8 py-16 text-center">
-                  <div
                     aria-hidden
-                    className="flex size-[46px] items-center justify-center rounded-full border border-rule bg-sheet"
+                    className={cn(
+                      'flex size-[40px] shrink-0 items-center justify-center rounded-full text-white',
+                      currentDisplay.executed
+                        ? 'bg-pass'
+                        : currentDisplay.verdict === 'IDEMPOTENT'
+                          ? 'bg-indigo'
+                          : 'bg-halt',
+                    )}
                   >
-                    <Zap className="size-[19px] text-ink-4" strokeWidth={1.6} />
+                    {currentDisplay.executed ? (
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path
+                          d="M5.5 10.5l3 3 6-7"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    ) : currentDisplay.verdict === 'IDEMPOTENT' ? (
+                      <RotateCw className="size-[18px]" strokeWidth={2.2} />
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path
+                          d="M6 6l8 8M14 6l-8 8"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    )}
+                  </span>
+
+                  <div className="flex min-w-0 flex-col gap-[3px]">
+                    <span
+                      className={cn(
+                        'text-[19px] font-semibold tracking-[-0.02em] max-sm:text-[17px]',
+                        currentDisplay.executed
+                          ? 'text-pass'
+                          : currentDisplay.verdict === 'IDEMPOTENT'
+                            ? 'text-indigo'
+                            : 'text-halt',
+                      )}
+                    >
+                      {currentDisplay.executed
+                        ? 'It went through.'
+                        : currentDisplay.verdict === 'IDEMPOTENT'
+                          ? 'Already ordered. Nothing charged twice.'
+                          : 'Refused. Nothing was charged.'}
+                    </span>
+                    <span className="text-[13.5px] leading-[1.5] text-ink-2">
+                      {stoppedPart
+                        ? `Your limit is ${stoppedPart.bound.toLowerCase()} on ${stoppedPart.label.toLowerCase()}.`
+                        : plainMessage(currentDisplay)}
+                    </span>
                   </div>
-                  <p className="max-w-[26rem] text-[14px] leading-[1.6] text-ink-2">
-                    Nothing has run yet. Pick one of the nine on the left — the gateway evaluates all
-                    nine clauses and either executes the order or names the clause that stopped it.
-                  </p>
-                  <p className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-ink-4">
-                    no verdict is shown until one is returned
-                  </p>
+
+                  <div className="ml-auto shrink-0 text-right">
+                    <div className="font-mono text-[24px] font-semibold leading-none tracking-[-0.04em]">
+                      {rupees(currentDisplay.executed ? currentDisplay.amount_paise : 0)}
+                    </div>
+                    <div className="mt-[3px] text-[11.5px] text-ink-3">left your account</div>
+                  </div>
+
+                  {!currentDisplay.live && (
+                    <span className="whitespace-nowrap rounded-full border border-refer-line bg-bond px-[9px] py-[2px] text-[11px] font-medium text-refer">
+                      simulated
+                    </span>
+                  )}
                 </div>
-              ) : (
-                <>
-                  <div className="grid lg:grid-cols-[minmax(0,1fr)_316px]">
-                    <div className="border-b border-hair p-5 lg:border-b-0 lg:border-r">
-                      <div className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-ink-3">
-                        what the agent sent
-                      </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-[9px]">
-                        <SellerChip name={currentDisplay.seller_name} />
-                        <span className="rounded-md border border-rule bg-sheet px-2 py-[3px] font-mono text-[10.5px] text-ink-3">
-                          POST /v1/orders
-                        </span>
-                        <span className="ml-auto font-mono text-[10.5px] text-ink-4">
-                          {currentDisplay.latency_ms}ms round trip
-                        </span>
-                      </div>
 
-                      <p className="mt-3 break-words rounded-lg border border-hair bg-sunk px-[13px] py-[11px] font-mono text-[11.5px] leading-[1.65] text-ink-2">
-                        {currentDisplay.hostile_text ? (
-                          <>
-                            {currentDisplay.payload_text?.split(currentDisplay.hostile_text)[0]}
-                            <span className="rounded-sm bg-halt-soft font-medium text-halt">
-                              {currentDisplay.hostile_text}
-                            </span>
-                            {currentDisplay.payload_text?.split(currentDisplay.hostile_text)[1]}
-                          </>
-                        ) : (
-                          currentDisplay.payload_text
-                        )}
-                      </p>
+                {/* Whether a model was asked, said again here rather than only on
+                    the tab, because this is the panel a screenshot crops to. */}
+                <div className="flex flex-wrap items-center gap-[9px] border-b border-hair bg-sheet px-[22px] py-[11px]">
+                  <ModelMark usesModel={false} />
+                  <span className="text-[12.5px] text-ink-2">
+                    No AI was asked. This decision is plain code, so there is nothing to talk into
+                    changing its mind.
+                  </span>
+                  <span className="ml-auto whitespace-nowrap text-[11.5px] text-ink-3">
+                    decided in {currentDisplay.latency_ms}ms
+                  </span>
+                </div>
 
-                      <div className="mt-[18px] grid grid-cols-[1fr_auto_1fr] items-end gap-4">
-                        <div>
-                          <div className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-ink-3">
-                            it asked for
-                          </div>
-                          <div
+                <div className="px-[22px] pb-5 pt-[18px]">
+                  <div className="text-[12px] font-medium text-ink-3">What the agent asked for</div>
+                  <div className="mt-[9px] flex flex-wrap items-center gap-[9px]">
+                    <SellerChip name={currentDisplay.seller_name} />
+                    <span className="rounded-md border border-rule bg-sheet px-2 py-[3px] font-mono text-[10.5px] text-ink-3">
+                      POST /v1/orders
+                    </span>
+                  </div>
+                  <p className="mt-[10px] break-words rounded-lg border border-hair bg-sunk px-[13px] py-[11px] font-mono text-[11.5px] leading-[1.65] text-ink-2">
+                    {currentDisplay.hostile_text ? (
+                      <>
+                        {currentDisplay.payload_text?.split(currentDisplay.hostile_text)[0]}
+                        <span className="rounded-sm bg-halt-soft font-medium text-halt">
+                          {currentDisplay.hostile_text}
+                        </span>
+                        {currentDisplay.payload_text?.split(currentDisplay.hostile_text)[1]}
+                      </>
+                    ) : (
+                      currentDisplay.payload_text
+                    )}
+                  </p>
+
+                  <div className="mt-[22px] flex flex-wrap items-baseline gap-x-[10px] gap-y-1">
+                    <span className="text-[13.5px] font-semibold text-ink">
+                      Every limit you set, checked in order
+                    </span>
+                    <span className="text-[12.5px] text-ink-3">
+                      {passedCount} passed · {refusedCount} refused
+                    </span>
+                  </div>
+
+                  <div className="mt-[13px] grid gap-x-7 sm:grid-cols-2">
+                    {PARTS.map((part, i) => {
+                      const unset = part.source === 'unset';
+                      const st = unset ? 'idle' : clauseRowStates[i];
+                      return (
+                        <div
+                          key={part.key}
+                          className={cn(
+                            'flex items-center gap-[11px] border-b border-hair py-[9px]',
+                            st === 'deny' &&
+                              '-mx-[10px] rounded-md border-transparent bg-halt-soft px-[10px]',
+                          )}
+                        >
+                          <span aria-hidden className="flex shrink-0">
+                            {st === 'deny' ? (
+                              <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                                <circle cx="8" cy="8" r="7.2" className="fill-halt" />
+                                <path
+                                  d="M5.6 5.6l4.8 4.8M10.4 5.6l-4.8 4.8"
+                                  stroke="#fff"
+                                  strokeWidth="1.7"
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                            ) : st === 'allow' ? (
+                              <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                                <circle cx="8" cy="8" r="7.2" className="fill-pass-soft" />
+                                <path
+                                  d="M4.6 8.2l2.3 2.3 4.4-5"
+                                  className="stroke-pass"
+                                  strokeWidth="1.6"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            ) : (
+                              <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                                <circle cx="8" cy="8" r="7.2" className="fill-sunk" />
+                                <path
+                                  d="M5.4 8h5.2"
+                                  className="stroke-ink-4"
+                                  strokeWidth="1.6"
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                            )}
+                          </span>
+                          <span
                             className={cn(
-                              'mt-[6px] font-mono text-[clamp(22px,2.4vw,30px)] font-semibold leading-none tracking-[-0.05em]',
-                              currentDisplay.executed ? 'text-ink' : 'text-halt',
+                              'flex-grow truncate text-[13px]',
+                              st === 'deny' && 'font-semibold text-halt',
+                              (st === 'skip' || unset) && 'text-ink-4',
                             )}
                           >
-                            {rupees(currentDisplay.amount_paise)}
-                          </div>
+                            {part.label}
+                          </span>
+                          <span
+                            className={cn(
+                              'shrink-0 whitespace-nowrap text-[12px]',
+                              st === 'deny' ? 'font-medium text-halt' : 'text-ink-3',
+                              unset && 'text-ink-4',
+                            )}
+                          >
+                            {unset ? 'you left this off' : part.bound}
+                          </span>
                         </div>
-                        <span aria-hidden className="h-full w-px self-stretch bg-rule" />
-                        <div>
-                          <div className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-ink-3">
-                            you signed
-                          </div>
-                          <div className="mt-[6px] font-mono text-[clamp(22px,2.4vw,30px)] font-semibold leading-none tracking-[-0.05em]">
-                            {currentDisplay.limit_paise
-                              ? rupees(currentDisplay.limit_paise)
-                              : PARTS[1].bound}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-5">
-                      <div className="flex items-baseline justify-between">
-                        <span className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-ink-3">
-                          nine clauses
-                        </span>
-                        <span className="font-mono text-[9.5px] text-ink-4">in order</span>
-                      </div>
-                      <div className="mt-2">
-                        {PARTS.map((part, i) => {
-                          const st = clauseRowStates[i];
-                          return (
-                            <div
-                              key={part.key}
-                              className={cn(
-                                'grid grid-cols-[20px_1fr_auto] items-center gap-3 border-b border-hair py-[7px] last:border-b-0',
-                                st === 'deny' && '-mx-5 border-halt-line bg-halt-soft px-5',
-                              )}
-                            >
-                              <span className="flex justify-center">
-                                {st === 'deny' ? (
-                                  <span className="size-[9px] rotate-45 bg-halt" />
-                                ) : st === 'allow' ? (
-                                  <span className="size-[8px] rounded-full bg-pass" />
-                                ) : (
-                                  <span className="size-[8px] rounded-full border border-rule" />
-                                )}
-                              </span>
-                              <span
-                                className={cn(
-                                  'text-[12.5px]',
-                                  st === 'deny' && 'font-semibold text-halt',
-                                  st === 'skip' && 'text-ink-4',
-                                )}
-                              >
-                                {part.label}
-                              </span>
-                              <span
-                                className={cn(
-                                  'font-mono text-[11px]',
-                                  st === 'deny'
-                                    ? 'font-semibold text-halt'
-                                    : st === 'allow'
-                                      ? 'text-pass'
-                                      : 'text-ink-4',
-                                )}
-                              >
-                                {st === 'deny'
-                                  ? 'refuse'
-                                  : st === 'allow'
-                                    ? 'pass'
-                                    : st === 'skip'
-                                      ? '—'
-                                      : ''}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
+                      );
+                    })}
                   </div>
 
-                  <div
-                    className={cn(
-                      'flex flex-wrap items-center gap-x-3 gap-y-2 border-t px-5 py-4',
-                      currentDisplay.executed
-                        ? 'border-pass-line bg-pass-soft'
-                        : currentDisplay.verdict === 'IDEMPOTENT'
-                          ? 'border-indigo/25 bg-indigo-soft'
-                          : 'border-halt-line bg-halt-soft',
-                    )}
-                  >
-                    <span
-                      aria-hidden
-                      className={cn(
-                        'size-[10px]',
-                        currentDisplay.executed
-                          ? 'rounded-full bg-pass'
-                          : currentDisplay.verdict === 'IDEMPOTENT'
-                            ? 'rounded-full bg-indigo'
-                            : 'rotate-45 bg-halt',
-                      )}
-                    />
-                    <span
-                      className={cn(
-                        'font-mono text-[14px] font-semibold tracking-[0.05em]',
-                        currentDisplay.executed
-                          ? 'text-pass'
-                          : currentDisplay.verdict === 'IDEMPOTENT'
-                            ? 'text-indigo'
-                            : 'text-halt',
-                      )}
-                    >
-                      {currentDisplay.executed
-                        ? 'EXECUTED'
-                        : currentDisplay.verdict === 'IDEMPOTENT'
-                          ? 'DEDUPLICATED'
-                          : 'REFUSED'}
-                    </span>
-                    <span className="text-[13.5px] text-ink-2">
-                      {currentDisplay.clause_label
-                        ? `${currentDisplay.clause_label} — ${currentDisplay.message}`
-                        : currentDisplay.message}
-                    </span>
-                    {!currentDisplay.live && (
-                      <span className="rounded-full border border-refer-line bg-bond px-[7px] py-[2px] font-mono text-[9.5px] uppercase tracking-[0.08em] text-refer">
-                        simulated
-                      </span>
-                    )}
-                    <span
-                      className={cn(
-                        'ml-auto font-mono text-[12px] font-medium',
-                        currentDisplay.executed
-                          ? 'text-pass'
-                          : currentDisplay.verdict === 'IDEMPOTENT'
-                            ? 'text-indigo'
-                            : 'text-halt',
-                      )}
-                    >
-                      {currentDisplay.executed
-                        ? `${rupees(currentDisplay.amount_paise)} moved`
-                        : '₹0.00 moved'}
-                    </span>
-                  </div>
-                </>
-              )}
-            </div>
+                  <p className="mt-[14px] text-[12.5px] leading-[1.55] text-ink-3">
+                    {PART_COUNT_TEXT_CAP} kinds of limit exist. This mandate sets{' '}
+                    {SET_PART_COUNT_TEXT} of them, so one row above is switched off.
+                  </p>
+                </div>
+              </div>
+            )}
 
-            {/* ── Audit chain ─────────────────────────────────────────── */}
+            {/* ── What the gateway wrote down ─────────────────────────── */}
             <div className="overflow-hidden rounded-panel border border-rule bg-bond">
-              <div className="flex items-center justify-between border-b border-rule bg-sheet px-5 py-[11px]">
-                <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2">
-                  audit chain
+              <div className="flex flex-wrap items-center gap-x-[10px] gap-y-1 border-b border-hair px-[22px] py-[13px]">
+                <span className="text-[13.5px] font-semibold text-ink">
+                  What the gateway wrote down
                 </span>
-                <span className="font-mono text-[10.5px] text-ink-3">
-                  {decisions.length} {decisions.length === 1 ? 'action' : 'actions'} · hash-linked
+                <span className="text-[12.5px] text-ink-3">
+                  {decisions.length === 0
+                    ? 'Every decision, tamper-evident, in order'
+                    : `${decisions.length} ${decisions.length === 1 ? 'decision' : 'decisions'}, each linked to the one before`}
                 </span>
               </div>
               {decisions.length === 0 ? (
-                <p className="px-5 py-8 text-center text-[13px] text-ink-3">
+                <p className="px-[22px] py-8 text-center text-[13px] text-ink-3">
                   Every decision is appended here, each record hashed over the one before it.
                 </p>
               ) : (
@@ -1099,51 +1216,42 @@ export default function JudgeConsole() {
                       initial={reduced ? false : { opacity: 0, y: -6 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.28, ease: EASE }}
-                      className="grid grid-cols-[26px_minmax(0,1fr)_auto] items-center gap-x-[14px] gap-y-1 border-b border-hair px-5 py-[9px] font-mono last:border-b-0 md:grid-cols-[26px_minmax(0,1fr)_170px_92px_118px]"
+                      className="flex flex-wrap items-center gap-x-[14px] gap-y-1 border-b border-hair px-[22px] py-3 last:border-b-0"
                     >
-                      <span className="text-[10.5px] text-ink-4">
+                      <span className="w-[20px] shrink-0 font-mono text-[11.5px] text-ink-4">
                         {String(d.seq).padStart(2, '0')}
                       </span>
-                      <span className="truncate text-[11.5px] text-ink-2">
-                        {ATTACK_PRESETS.find((p) => p.id === d.presetId)?.title.toLowerCase() ??
-                          d.payload_text}
-                      </span>
                       <span
                         className={cn(
-                          'text-[11px] max-md:hidden',
-                          d.executed || d.verdict === 'IDEMPOTENT' ? 'text-ink-3' : 'text-halt',
-                        )}
-                      >
-                        {d.clause_label
-                          ? d.clause_label.toLowerCase()
-                          : d.verdict === 'IDEMPOTENT'
-                            ? 'already committed'
-                            : d.executed
-                              ? 'all nine passed'
-                              : 'refused'}
-                      </span>
-                      <span
-                        className={cn(
-                          'text-[11px]',
+                          'shrink-0 whitespace-nowrap rounded-full px-[10px] py-[3px] text-[11px] font-medium',
                           d.executed
-                            ? 'text-pass'
+                            ? 'bg-pass-soft text-pass'
                             : d.verdict === 'IDEMPOTENT'
-                              ? 'text-indigo'
-                              : d.live
-                                ? 'text-halt'
-                                : 'text-refer',
+                              ? 'bg-indigo-soft text-indigo'
+                              : 'bg-halt-soft text-halt',
                         )}
                       >
                         {d.executed
-                          ? 'executed'
+                          ? 'Went through'
                           : d.verdict === 'IDEMPOTENT'
-                            ? 'deduplicated'
-                            : d.live
-                              ? 'refused'
-                              : 'refused*'}
+                            ? 'Sent twice'
+                            : 'Refused'}
                       </span>
-                      <span className="text-[10.5px] text-ink-4 max-md:hidden">
-                        {d.record_hash ? `${d.record_hash.replace(/^sha256:/, '').slice(0, 6)}…` : '—'}
+                      <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2">
+                        {ATTACK_PRESETS.find((p) => p.id === d.presetId)?.title ?? d.payload_text}
+                      </span>
+                      <span
+                        className={cn(
+                          'shrink-0 whitespace-nowrap text-[12px] max-md:hidden',
+                          d.executed || d.verdict === 'IDEMPOTENT' ? 'text-ink-3' : 'text-halt',
+                        )}
+                      >
+                        {d.clause_label ?? (d.executed ? `all ${SET_PART_COUNT_TEXT} passed` : '')}
+                      </span>
+                      <span className="ml-auto shrink-0 font-mono text-[11.5px] text-ink-4 max-sm:hidden">
+                        {d.record_hash
+                          ? `${d.record_hash.replace(/^sha256:/, '').slice(0, 6)}…`
+                          : '—'}
                       </span>
                     </motion.li>
                   ))}

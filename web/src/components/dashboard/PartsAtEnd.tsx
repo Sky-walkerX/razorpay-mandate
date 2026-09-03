@@ -5,7 +5,7 @@ import { StatusBadge } from './StatusBadge';
 import { cn } from '@/lib/utils';
 
 /**
- * The nine parts as they stood when the run ended.
+ * The parts as they stood when the run ended.
  *
  * One joined surface with shared hairlines rather than nine cards, matching
  * `PartsGrid` on the landing page: a closed set should look like a closed set.

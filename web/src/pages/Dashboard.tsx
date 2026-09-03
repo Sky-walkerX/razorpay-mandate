@@ -7,7 +7,7 @@ import { RunStrip } from '@/components/dashboard/RunStrip';
 import { PartsAtEnd } from '@/components/dashboard/PartsAtEnd';
 import { ChainSection } from '@/components/dashboard/ChainSection';
 import { COUNTS, FEED_RUN, SCOREBOARD, SOURCE } from '@/data/decisions';
-import { MANDATE } from '@/data/policy';
+import { MANDATE, SET_PART_COUNT_TEXT } from '@/data/policy';
 import { bindingPart, headline } from '@/lib/runShape';
 import { exportEvidence } from '@/lib/exportEvidence';
 
@@ -111,14 +111,14 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* ── The nine parts ────────────────────────────────────────────── */}
+      {/* ── The parts ─────────────────────────────────────────────────── */}
       <section className="border-b border-rule">
         <div className="mx-auto max-w-[1100px] px-8 py-[46px] max-sm:px-[18px] max-md:py-9">
           <div className="mb-[22px] flex flex-col justify-between gap-4 md:flex-row md:items-end">
             <div>
               <span className="inline-flex items-center gap-2 rounded-full border border-rule bg-bond px-[13px] py-[6px] font-mono text-[10.5px] uppercase tracking-[0.1em] text-ink-3">
                 <span className="size-[6px] rotate-45 bg-pass" />
-                the nine parts, at the end of the run
+                the {SET_PART_COUNT_TEXT} parts, at the end of the run
               </span>
               <h2 className="mt-[14px] text-balance text-[clamp(1.35rem,2.4vw,1.75rem)] font-semibold leading-[1.1] tracking-[-0.04em]">
                 {binding ? (
@@ -127,7 +127,7 @@ export default function Dashboard() {
                   </>
                 ) : (
                   <>
-                    All nine were evaluated.{' '}
+                    All {SET_PART_COUNT_TEXT} were evaluated.{' '}
                     <span className="text-ink-3">On every attempt.</span>
                   </>
                 )}

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { Sparkles, PenTool, Cpu, Database, Lock, AlertTriangle, XOctagon, CheckSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { MANDATE } from '@/data/policy';
+import { MANDATE, PART_COUNT_TEXT, SET_PART_COUNT_TEXT } from '@/data/policy';
 
 type LatticeVerdict = 'allow' | 'unknown' | 'deny';
 
@@ -12,7 +12,7 @@ const STAGES = [
     title: 'Compile',
     subtitle: 'Model · temp 0',
     icon: Sparkles,
-    body: 'What you said becomes a fixed set of limits. The compiler marks what it heard against what it proposed, and refuses rather than approximating an intent that does not fit the nine types.',
+    body: `What you said becomes a fixed set of limits. The compiler marks what it heard against what it proposed, and refuses rather than approximating an intent that does not fit the ${PART_COUNT_TEXT} types.`,
     note: 'runs once · never asked again',
     actor: 'gemini-3.7-flash',
     isModel: true,
@@ -38,7 +38,7 @@ const STAGES = [
     title: 'Enforce',
     subtitle: 'Pure deterministic code',
     icon: Cpu,
-    body: 'Every proposed order goes through the nine parts in pure functions with no I/O and no model. Allow and pay, refuse and say which limit, or escalate when unresolved.',
+    body: `Every proposed order goes through the ${SET_PART_COUNT_TEXT} parts this mandate sets, in pure functions with no I/O and no model. Allow and pay, refuse and say which limit, or escalate when unresolved.`,
     note: '0.0075 ms · no LLMs in payment path',
     actor: 'deterministic gateway',
     isModel: false,
@@ -366,7 +366,7 @@ export default function HowItHolds() {
                     <span className="size-2 rounded-full bg-pass" /> Constant-time termination O(1)
                   </span>
                   {/* Measured, not asserted: 2,000 warm calls of `Gateway.propose()`
-                      against `FakeDownstream`, 31 Aug. The nine clauses are the
+                      against `FakeDownstream`, 31 Aug. Clause evaluation is the
                       0.0075 ms; the rest of the median is audit persistence and the
                       downstream call. The tile said "< 0.38ms" before, which was the
                       third invented latency to reach this interface after the README
@@ -387,7 +387,7 @@ export default function HowItHolds() {
                   A refusal stops everything. An unknown comes to you.
                 </h3>
                 <p className="mt-3 text-[14.5px] leading-relaxed text-ink-2">
-                  Each of the nine parts answers <b>allow</b>, <b>refuse</b> or <b>unknown</b>. They combine
+                  Each part answers <b>allow</b>, <b>refuse</b> or <b>unknown</b>. They combine
                   on a strict mathematical lattice rather than a probabilistic score.
                 </p>
                 <p className="mt-2 text-[14.5px] font-medium leading-relaxed text-ink">

@@ -23,23 +23,23 @@ from mandate.policy.loader import load as load_policy
 PART_LABELS: list[dict[str, Any]] = [
     {"key": "budget.total", "label": "Total budget", "kind": "limit",
      "shape": "{max: paise}", "against": "everything committed so far"},
-    {"key": "budget.per_transaction", "label": "Max per order", "kind": "limit",
+    {"key": "budget.per_transaction", "label": "Most per order", "kind": "limit",
      "shape": "{max: paise}", "against": "the amount of this order"},
-    {"key": "budget.per_item", "label": "Max per item", "kind": "limit",
+    {"key": "budget.per_item", "label": "Most per item", "kind": "limit",
      "shape": "{max: paise}", "against": "the dearest line item"},
-    {"key": "velocity", "label": "Orders per mandate", "kind": "limit",
+    {"key": "velocity", "label": "Orders allowed", "kind": "limit",
      "shape": "{max_actions, window}", "against": "orders already committed"},
-    {"key": "quantity.max_per_item", "label": "Max qty per item", "kind": "limit",
+    {"key": "quantity.max_per_item", "label": "Most of any one item", "kind": "limit",
      "shape": "{max: int}", "against": "the quantity on each line"},
-    {"key": "merchant.allow", "label": "Allowed sellers", "kind": "rule",
+    {"key": "merchant.allow", "label": "Shops you allow", "kind": "rule",
      "shape": "[merchant_id]", "against": "the seller this order resolves to"},
-    {"key": "category.deny", "label": "Blocked categories", "kind": "rule",
+    {"key": "category.deny", "label": "Never buy", "kind": "rule",
      "shape": "[category]", "against": "the category each item resolves to"},
-    {"key": "time.window", "label": "Valid until", "kind": "rule",
+    {"key": "time.window", "label": "Rules expire", "kind": "rule",
      "shape": "{before, after}", "against": "the gateway's clock"},
     {"key": "item.deny_recent", "label": "Repeat orders", "kind": "rule",
      "shape": "{window_days, source}", "against": "your recent order history"},
-    {"key": "afa.required", "label": "Ask me above", "kind": "limit",
+    {"key": "afa.required", "label": "Ask me first above", "kind": "limit",
      "shape": "{threshold: paise}", "against": "the amount of this order"},
 ]
 
@@ -60,7 +60,13 @@ def _bound(key: str, spec: dict | list | None) -> str:
     if spec is None:
         return "Not set"
     if key == "velocity":
-        return f"{spec['max_actions']} per {spec.get('window', 'mandate')}"
+        # `window: mandate` is the policy's word for "over the whole mandate",
+        # and printing it made the chip read "3 per mandate" on a page whose
+        # whole job is to avoid saying "mandate" at a stranger.
+        window = spec.get("window", "mandate")
+        if window == "mandate":
+            return f"{spec['max_actions']} orders"
+        return f"{spec['max_actions']} per {window}"
     if key == "quantity.max_per_item":
         return f"{spec['max']} per item"
     if key.startswith("budget."):

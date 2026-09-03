@@ -9,13 +9,14 @@ import {
 } from '@/data/alignment';
 import type { Fate, Status } from '@/data/alignment';
 import { cn } from '@/lib/utils';
+import { PART_COUNT } from '@/data/policy';
 
 /**
  * Section: where this policy lives on the rails, and under the regulation.
  *
  * The argument the page makes, in order:
  *
- *   1. A person states more than a rail can hold. Nine clauses go in; AP2 keeps
+ *   1. A person states more than a rail can hold. Every clause goes in; AP2 keeps
  *      five structurally, Reserve Pay keeps three. The remainder does not
  *      disappear, it becomes prose in a description nothing evaluates.
  *   2. That subtraction is concrete, not rhetorical: three allowed merchants
@@ -293,9 +294,10 @@ export default function Alignment() {
           <p className="mt-3 max-w-[820px] text-[12.5px] leading-[1.5] text-ink-3">
             AP2 is richer than an amount plus an expiry and this page says so. Overstating
             the gap would be the same failure the project exists to catch. The table covers
-            the {RAILS.totalClauses} clauses this mandate carries; the gateway implements a
-            tenth, <span className="font-mono">item.deny_recent</span>, which this policy
-            does not set, which is why the loader counts ten parts and this page nine.
+            the {RAILS.totalClauses} clauses this mandate carries. The gateway implements{' '}
+            {PART_COUNT} kinds in total; <span className="font-mono">item.deny_recent</span>{' '}
+            is the one this policy does not set, which is why the loader counts {PART_COUNT}{' '}
+            and this page {RAILS.totalClauses}.
           </p>
         </section>
 

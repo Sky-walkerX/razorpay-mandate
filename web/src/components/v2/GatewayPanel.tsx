@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { RotateCw } from 'lucide-react';
-import { PARTS } from '@/data/policy';
+import { PARTS, PART_COUNT } from '@/data/policy';
 import { SCENARIOS } from '@/data/scenarios';
 import { CAP_AT, fillPercent, readoutFor } from '@/lib/headroom';
 import { rupees } from '@/lib/money';
@@ -489,7 +489,7 @@ export default function GatewayPanel() {
 
         {/* Summary */}
         <p className="mt-1.5 text-[13px] tracking-[-0.015em] text-ink-2">
-          {settled ? sc.summary : 'nine parts, in order'}
+          {settled ? sc.summary : `${PART_COUNT} parts, in order`}
         </p>
 
         {/* Air Gap — the visual proof that money stayed or moved */}

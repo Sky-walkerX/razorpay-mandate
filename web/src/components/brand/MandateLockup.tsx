@@ -35,10 +35,18 @@ export function MandateLockup({
       >
         Mandate
       </span>
+      {/* The credit is the first thing to go when the bar is tight — which is
+          what the prop above already says, except a phone cannot pass a prop.
+          At 390 the home bar was 2px wider than the viewport with this in it. */}
       {attribution && (
         <>
-          <span aria-hidden className="h-[13px] w-px bg-rule" />
-          <span className={cn('text-ink-3', sm ? 'text-[11.5px]' : 'text-[12.5px]')}>
+          <span aria-hidden className="h-[13px] w-px bg-rule max-sm:hidden" />
+          <span
+            className={cn(
+              'text-ink-3 max-sm:hidden',
+              sm ? 'text-[11.5px]' : 'text-[12.5px]',
+            )}
+          >
             by Razorpay
           </span>
         </>

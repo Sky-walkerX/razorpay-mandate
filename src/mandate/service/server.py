@@ -88,7 +88,7 @@ def _compute_headroom(policy: Policy, state: AccumulatedState) -> list[dict[str,
         lim = int(c[C.BUDGET_PER_TRANSACTION]["max"])
         headroom.append({
             "clause_id": "budget.per_transaction",
-            "label": "Max per order",
+            "label": "Most per order",
             "used_paise": 0,
             "limit_paise": lim,
             "remaining_paise": lim,
@@ -100,7 +100,7 @@ def _compute_headroom(policy: Policy, state: AccumulatedState) -> list[dict[str,
         lim = int(c[C.BUDGET_PER_ITEM]["max"])
         headroom.append({
             "clause_id": "budget.per_item",
-            "label": "Max per item",
+            "label": "Most per item",
             "used_paise": 0,
             "limit_paise": lim,
             "remaining_paise": lim,
@@ -113,7 +113,7 @@ def _compute_headroom(policy: Policy, state: AccumulatedState) -> list[dict[str,
         used = int(state.action_count)
         headroom.append({
             "clause_id": "velocity",
-            "label": "Orders per mandate",
+            "label": "Orders allowed",
             "used_count": used,
             "limit_count": lim,
             "remaining_count": max(0, lim - used),
@@ -125,7 +125,7 @@ def _compute_headroom(policy: Policy, state: AccumulatedState) -> list[dict[str,
         lim = int(c[C.QUANTITY_MAX_PER_ITEM]["max"])
         headroom.append({
             "clause_id": "quantity.max_per_item",
-            "label": "Max qty per item",
+            "label": "Most of any one item",
             "used_count": 0,
             "limit_count": lim,
             "remaining_count": lim,
@@ -357,7 +357,7 @@ def create_app(
             val = c[C.BUDGET_PER_TRANSACTION]
             lim = int(val["max"]) if "max" in val else 100000
             parts.append({
-                "n": 2, "key": "budget.per_transaction", "label": "Max per order",
+                "n": 2, "key": "budget.per_transaction", "label": "Most per order",
                 "kind": "limit", "bound": f"₹{lim/100:,.2f}", "max": lim,
                 "source": _source(C.BUDGET_PER_TRANSACTION, policy),
             })
@@ -366,7 +366,7 @@ def create_app(
             val = c[C.BUDGET_PER_ITEM]
             lim = int(val["max"]) if "max" in val else 50000
             parts.append({
-                "n": 3, "key": "budget.per_item", "label": "Max per item",
+                "n": 3, "key": "budget.per_item", "label": "Most per item",
                 "kind": "limit", "bound": f"₹{lim/100:,.2f}", "max": lim,
                 "source": _source(C.BUDGET_PER_ITEM, policy),
             })
@@ -375,7 +375,7 @@ def create_app(
             val = c[C.VELOCITY]
             lim = int(val["max_actions"]) if "max_actions" in val else 3
             parts.append({
-                "n": 4, "key": "velocity", "label": "Orders per mandate",
+                "n": 4, "key": "velocity", "label": "Orders allowed",
                 "kind": "limit", "bound": f"{lim} per mandate", "max": lim,
                 "source": _source(C.VELOCITY, policy),
             })
@@ -384,7 +384,7 @@ def create_app(
             val = c[C.QUANTITY_MAX_PER_ITEM]
             lim = int(val["max"]) if "max" in val else 5
             parts.append({
-                "n": 5, "key": "quantity.max_per_item", "label": "Max qty per item",
+                "n": 5, "key": "quantity.max_per_item", "label": "Most of any one item",
                 "kind": "limit", "bound": f"{lim} per item", "max": lim,
                 "source": _source(C.QUANTITY_MAX_PER_ITEM, policy),
             })
@@ -392,7 +392,7 @@ def create_app(
         if C.MERCHANT_ALLOW in c:
             sellers = c[C.MERCHANT_ALLOW]
             parts.append({
-                "n": 6, "key": "merchant.allow", "label": "Allowed sellers",
+                "n": 6, "key": "merchant.allow", "label": "Shops you allow",
                 "kind": "rule", "bound": ", ".join(s.title() for s in sellers), "max": None,
                 "source": _source(C.MERCHANT_ALLOW, policy),
             })
@@ -400,14 +400,14 @@ def create_app(
         if C.CATEGORY_DENY in c:
             cats = c[C.CATEGORY_DENY]
             parts.append({
-                "n": 7, "key": "category.deny", "label": "Blocked categories",
+                "n": 7, "key": "category.deny", "label": "Never buy",
                 "kind": "rule", "bound": ", ".join(ct.title() for ct in cats), "max": None,
                 "source": _source(C.CATEGORY_DENY, policy),
             })
         # 8. Valid until
         if C.TIME_WINDOW in c or policy.expires:
             parts.append({
-                "n": 8, "key": "time_window", "label": "Valid until",
+                "n": 8, "key": "time_window", "label": "Rules expire",
                 "kind": "rule", "bound": policy.expires.strftime("%-d %b %Y") if policy.expires else "Session", "max": None,
                 "source": _source(C.TIME_WINDOW, policy),
             })

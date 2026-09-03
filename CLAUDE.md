@@ -1280,6 +1280,97 @@ also reported none *before* this pass, which is the point worth remembering: a
 clean scan says nothing about frame, rhythm or alignment. Those came from measuring
 geometry in the page.
 
+## The plain-language pass, 3 Sep
+
+`/try`, the home nav and the Mode 03 note, rewritten for someone who has never
+heard of this project. Read this before "improving" any of it back.
+
+**The navbar was cut to two links and the badge now says what it means.** Six
+links, a badge and two buttons shared one 1220px row with nothing stopping a
+label from breaking, so four wrapped and the bar grew past its own 60px. The
+four that went — The gap, Failure modes, How it holds, Your limits — all scrolled
+to sections of the page they sat on, so scrolling reaches them anyway. Every
+remaining label carries `whitespace-nowrap`. `Enforcement · No Model Call` became
+**`Approvals run without AI`**: the first named the mechanism to someone who
+already knew the product.
+
+**`MandateLockup`'s attribution now hides below `sm`.** Its own docstring already
+said the credit goes "off in tight chrome — a mobile bar"; a phone cannot pass a
+prop. At 390 the home bar was 2px wider than the viewport with "by Razorpay" in
+it. All five routes measure **0px horizontal overflow at 390**.
+
+### The count was wrong in twenty-five places, and both numbers are real
+
+The web said "nine" while rendering ten cards. Both numbers are true and they
+mean different things: **the gateway implements ten kinds of limit, and this
+mandate sets nine of them** — `item.deny_recent` is `source: "unset"`.
+
+`data/policy.ts` now exports `PART_COUNT`, `SET_PART_COUNT` and word forms of
+each, all counted off `PARTS`, which `evidence.json` already fills from the signed
+policy. `test_no_tsx_spells_out_how_many_limits_the_policy_carries` fails on any
+`.tsx` that types either number. It found 25 sites across 11 files, not the 8 a
+grep suggested.
+
+**`GapAndParts` was staler than the count.** It said "Five compare a number…
+Four test a list… there is no tenth" and chipped "5 numerical limits · 4
+deterministic rules". The real split is **6 and 4**, and has been since
+`afa.required` landed in `702cf60`. All of it is derived now.
+
+**`spell()` moved to `web/src/lib/spell.ts`.** `data/policy.ts` needed it and
+cannot import from `runShape`, which imports from policy. A second copy of the
+word list is how the max-quantity-4-against-a-policy-that-says-5 bug happened.
+
+### Two live bugs the rewrite surfaced
+
+**A count was being rendered as money.** The run panel showed `rupees(limit_paise)`
+where `limit_paise` is `PARTS[i].max` — integer paise for the budget clauses and a
+plain **count** for velocity and quantity. So a quantity refusal displayed its
+limit of 5 as **₹0.05** beside a ₹300 order. It now shows `part.bound`, the figure
+`mandate evidence` already formatted in its own unit, so it cannot be read in the
+wrong one.
+
+**The limits list claimed ten passes over a ledger row that said nine.** Every
+`PARTS` row painted green on an allow, including the one this mandate does not
+set. The unset row now reads "you left this off" and is never given a verdict,
+because the gateway never evaluates it.
+
+### `/try` was rebuilt to the approved canvas
+
+Three tabs, renamed and shaped as folder tabs on the header's bottom edge. The
+result panel was inverted: **the verdict is now a band at the top** with the
+limits in a two-column grid beneath it, where it used to sit at the bottom of a
+panel taller than the viewport, putting the answer below the working.
+
+**The scoreboard is gone** — three mono figures competing with the tab bar for
+one eye-line, counting work a first-time visitor has not done yet.
+
+**Whether a model is called is on the tab, before the tab is pressed**, and
+repeated inside whichever panel opens, because that panel is what a screenshot
+crops to. `ModelMark` is the one component that says it.
+
+**One honest deviation from the mockup.** The canvas drew all nine limits passing
+beside the refused one. The gateway short-circuits at the first refusal, so a
+real refusal reads "4 passed · 1 refused" with five rows dashed. The page is right
+and the mockup was wrong; do not "fix" the tally to match the picture.
+
+**Part labels were renamed in three places at once** — `harness/evidence.py`
+(canonical), `service/server.py` (twice) and `JudgeConsole.tsx`'s offline
+fallback all carry copies. `Max qty per item` → `Most of any one item`,
+`Orders per mandate` → `Orders allowed`, `Allowed sellers` → `Shops you allow`,
+`Blocked categories` → `Never buy`, `Valid until` → `Rules expire`. Regenerate
+`evidence.json` with `mandate evidence` after touching any of them.
+
+**`velocity`'s bound no longer prints `window`.** `3 per mandate` became
+`3 orders`; `mandate` is the policy's word for "over the whole mandate" and this
+page's whole job is not saying it at a stranger.
+
+**Jargon that was removed and must not come back:** `mnd_groceries_01` and
+`tok_pool_004` from the session bar (the mandate id still shows in the policy
+view, where the signed document IS the point), "clauses" and "parts" for limits,
+"arms" for the two sides, raw family ids in the live-agent dropdown, `ALLOW` as a
+verdict word, and the clause id inside a refusal message — `plainMessage()` strips
+the leading `a.b:` prefix, and the label beside it already names the limit.
+
 ## Conventions
 
 - Tests: `.venv/bin/pytest`. Lint: `.venv/bin/ruff check src tests`.

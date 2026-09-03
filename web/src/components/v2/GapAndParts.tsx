@@ -1,6 +1,13 @@
 import { motion, useReducedMotion } from 'motion/react';
 import { ArrowRight } from 'lucide-react';
-import { PARTS } from '@/data/policy';
+import {
+  PARTS,
+  LIMITS,
+  RULES,
+  PART_COUNT_TEXT_CAP,
+  SET_PART_COUNT_TEXT,
+} from '@/data/policy';
+import { Spell } from '@/lib/spell';
 import { PartsGrid } from './YourLimitsGrid';
 import { cn } from '@/lib/utils';
 
@@ -15,7 +22,7 @@ import { cn } from '@/lib/utils';
  *
  * The join is the design. Every one of the twelve conditions carries the part
  * number it compiles to, so the grid underneath is read as the resolution of
- * the complaint above it rather than as a list of features. All nine parts are
+ * the complaint above it rather than as a list of features. Every part is
  * reachable from the twelve — if a part ever stops being reachable, either the
  * example is wrong or the part has no motivation on this page.
  *
@@ -30,7 +37,7 @@ const short = (n: number) => boundOf(n).replace(/\.00$/, '');
 
 interface Condition {
   text: string;
-  /** Which of the nine this compiles to. */
+  /** Which part this compiles to, by its reference numeral. */
   part: number;
   /** Whether the payment rail could carry it on its own. */
   onRail: boolean;
@@ -186,22 +193,22 @@ export default function GapAndParts() {
                 Pre-signed policy matrix
               </span>
               <h3 className="mt-2 text-balance text-[clamp(1.7rem,3vw,2.3rem)] font-semibold leading-[1.1] tracking-[-0.04em]">
-                Nine kinds of limit.{' '}
+                {PART_COUNT_TEXT_CAP} kinds of limit.{' '}
                 <span className="text-ink-3">A closed set, evaluated in bounded time.</span>
               </h3>
               <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
-                Five compare a number against a figure you set. Four test a list, a category or a
-                monotonic clock. Closed means there is no tenth — so evaluation terminates, and a
-                refusal can always name the part it came from.
+                {Spell(LIMITS.length)} compare a number against a figure you set. {Spell(RULES.length)}{' '}
+                test a list, a category or a monotonic clock. Closed means the set does not grow — so
+                evaluation terminates, and a refusal can always name the part it came from.
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3 rounded-lg border border-rule bg-sheet p-2 font-mono text-[11px] text-ink-3">
               <span className="inline-flex items-center gap-1.5 px-1.5 py-0.5">
-                <span className="size-2 rounded-full bg-pass" /> 5 numerical limits
+                <span className="size-2 rounded-full bg-pass" /> {LIMITS.length} numerical limits
               </span>
               <span className="inline-flex items-center gap-1.5 px-1.5 py-0.5">
-                <span className="size-2 rounded-full bg-indigo" /> 4 deterministic rules
+                <span className="size-2 rounded-full bg-indigo" /> {RULES.length} deterministic rules
               </span>
             </div>
           </div>
@@ -212,7 +219,7 @@ export default function GapAndParts() {
             <span>
               Every bound read from the signed policy — <b className="text-ink-2">nothing retyped</b>
             </span>
-            <span>All nine evaluated on every proposed order</span>
+            <span>This mandate sets {SET_PART_COUNT_TEXT}, every one checked on every order</span>
           </div>
         </div>
       </div>
