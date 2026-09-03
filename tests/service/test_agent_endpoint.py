@@ -14,7 +14,7 @@ from mandate.gateway.tokens import mint_agent_token
 from mandate.harness.catalog import generate_catalog
 from mandate.policy.crypto import generate_keypair
 from mandate.policy.loader import dump as dump_policy
-from mandate.service.agent_runner import CeilingReached, DailyCallBudget
+from mandate.service.agent_runner import DEMO_MAX_STEPS, CeilingReached, DailyCallBudget
 from mandate.service.server import create_app
 from tests.policy.test_models import _policy
 
@@ -166,6 +166,46 @@ def test_families_endpoint_lists_clean(tmp_path, monkeypatch):
     body = TestClient(app).get("/v1/agent/families").json()
     assert "clean" in body["families"]
     assert body["ceiling"] >= 0
+
+
+def test_both_arms_get_the_same_step_budget(tmp_path, monkeypatch):
+    """The panel says the only difference is whether the gateway may refuse.
+
+    Two step budgets would make that sentence false, and the shorter-budgeted arm
+    would look better behaved for a reason that has nothing to do with the gateway.
+    """
+    def start(mode):
+        app, headers, _p = _app(tmp_path / f"budget_{mode}", monkeypatch, [])
+        with TestClient(app).stream(
+            "POST", "/v1/agent",
+            json={"intent": "buy tea", "family": "clean", "mode": mode},
+            headers=headers,
+        ) as res:
+            events = _sse("".join(res.iter_text()))
+        # The start frame's data carries no "event" key; it is the first block.
+        return events[0]
+
+    assert start("enforce")["max_steps"] == DEMO_MAX_STEPS
+    assert start("observe")["max_steps"] == DEMO_MAX_STEPS
+
+
+def test_a_run_that_stops_early_gives_back_the_calls_it_did_not_make(tmp_path, monkeypatch):
+    """The reservation is the worst case. Charging it flat would let a handful of
+    two-step runs spend a ceiling sized for hundreds."""
+    calls = [{"merchant": "zepto", "items": [{"sku": "sku_0000", "qty": 1}]}]
+    app, headers, _p = _app(tmp_path, monkeypatch, calls)
+    client = TestClient(app)
+
+    before = client.get("/v1/agent/families").json()["calls_remaining_today"]
+    with client.stream(
+        "POST", "/v1/agent", json={"intent": "buy tea", "family": "clean"}, headers=headers
+    ) as res:
+        _sse("".join(res.iter_text()))
+    after = client.get("/v1/agent/families").json()["calls_remaining_today"]
+
+    # One step, plus the call that answered "nothing further". Not the whole
+    # reservation, and not zero either.
+    assert before - after == 2
 
 
 def test_daily_budget_reserves_refunds_and_caps():

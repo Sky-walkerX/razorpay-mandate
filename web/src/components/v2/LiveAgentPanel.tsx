@@ -53,13 +53,21 @@ interface AgentEvent {
 interface ArmState {
   events: AgentEvent[];
   running: boolean;
+  /** Waiting its turn. The arms share one session token, so they cannot overlap. */
+  queued: boolean;
   spent: number;
   steps: number;
   stopped?: string;
   error?: string;
 }
 
-const EMPTY: ArmState = { events: [], running: false, spent: 0, steps: 0 };
+const EMPTY: ArmState = { events: [], running: false, queued: false, spent: 0, steps: 0 };
+
+/** Why the agent stopped, in the words of someone who has not read the code. */
+const STOPPED_COPY: Record<string, string> = {
+  done: 'the agent decided it was finished',
+  max_steps: 'it hit this demo’s turn limit and was still going',
+};
 
 const rupees = (paise: number) =>
   `₹${(paise / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
@@ -124,7 +132,7 @@ export default function LiveAgentPanel({ token }: { token: string | null }) {
 
   const runArm = useCallback(
     async (mode: Mode, signal: AbortSignal) => {
-      setArms((a) => ({ ...a, [mode]: { ...EMPTY, running: true } }));
+      setArms((a) => ({ ...a, [mode]: { ...EMPTY, running: true, queued: false } }));
       try {
         const res = await fetch(`${API_BASE}/v1/agent`, {
           method: 'POST',
@@ -178,11 +186,17 @@ export default function LiveAgentPanel({ token }: { token: string | null }) {
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    setArms({ enforce: { ...EMPTY }, observe: { ...EMPTY, queued: true } });
     // Sequential, not parallel: two concurrent runs share one session token and
     // would race each other's gateway state.
+    //
+    // Enforced first, and the order matters. It is the arm that gets refused and
+    // stops, so it is the fast one, and it is the answer a visitor came for. The
+    // unprotected arm has nothing to stop it and runs to the turn limit, so
+    // running it first spends the longest wait on the pane that says the least.
     void (async () => {
-      await runArm('observe', ctrl.signal);
       await runArm('enforce', ctrl.signal);
+      await runArm('observe', ctrl.signal);
     })();
   }, [runArm]);
 
@@ -311,7 +325,9 @@ function Arm({ mode, state }: { mode: Mode; state: ArmState }) {
 
       <div className="grid gap-2 p-4">
         {state.events.length === 0 && !state.running && !state.error && (
-          <p className="py-6 text-center text-[12px] text-ink-3">Not run yet</p>
+          <p className="py-6 text-center text-[12px] text-ink-3">
+            {state.queued ? 'runs next, on the same instruction' : 'Not run yet'}
+          </p>
         )}
 
         {state.error && (
@@ -364,8 +380,8 @@ function Arm({ mode, state }: { mode: Mode; state: ArmState }) {
 
         {state.stopped && (
           <p className="border-t border-rule pt-2 font-mono text-[11px] text-ink-3">
-            {state.steps} steps · {executed} executed · {refused} refused · stopped:{' '}
-            {state.stopped}
+            {state.steps} steps · {executed} executed · {refused} refused ·{' '}
+            {STOPPED_COPY[state.stopped] ?? state.stopped}
           </p>
         )}
       </div>

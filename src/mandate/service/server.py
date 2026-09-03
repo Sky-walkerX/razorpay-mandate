@@ -44,6 +44,7 @@ from mandate.policy.models import ConstraintId as C
 from mandate.policy.models import Policy
 from mandate.service.agent_runner import (
     CLEAN,
+    DEMO_MAX_STEPS,
     CeilingReached,
     DailyCallBudget,
     FamilyCatalogs,
@@ -160,6 +161,38 @@ def _source(cid, policy) -> str:
     if cid in policy.provenance.stated:
         return "heard"
     return "inferred"
+
+
+def _reserve_pay_shadow(session, prop, now, token: str) -> dict | None:
+    """Answer the same proposal as UPI Reserve Pay would, for the panel beside
+    the verdict.
+
+    Razorpay already ships spending limits for agents on Reserve Pay, so a cap is
+    not the claim. The claim is shape: a block names one payee and one total, so
+    it lets an attack through that the mandate refuses AND refuses a legitimate
+    order at a second shop that the mandate allows. Both directions are reported;
+    showing only the first would overstate the rail.
+
+    This is a projection of Reserve Pay's published vocabulary, not an emulation
+    of Razorpay's implementation, and the UI says so.
+    """
+    shadow = getattr(session, "shadow", None)
+    if shadow is None:
+        return None
+    dec = shadow.propose(prop, now=now, token=token)
+    state = shadow._state()
+    block = int(shadow.policy.constraints.get(C.BUDGET_TOTAL, {}).get("max", 0))
+    payees = shadow.policy.constraints.get(C.MERCHANT_ALLOW) or []
+    return {
+        "verdict": str(dec.verdict),
+        "clause_id": dec.clause_id,
+        "message": dec.message,
+        "executed": dec.executed,
+        "payee": payees[0] if payees else None,
+        "block_paise": block,
+        "spent_paise": int(getattr(state, "spent", 0) or 0),
+        "clauses_kept": sorted(str(c) for c in shadow.policy.constraints),
+    }
 
 
 def create_app(
@@ -469,10 +502,18 @@ def create_app(
         # while their clauses did the deciding — the same mismatch, one layer up.
         headroom = _compute_headroom(session.gateway.policy, session.gateway._state())
 
+        # Always after the real decision, and never able to disturb it. The
+        # shadow is a talking point; the gateway is the product.
+        try:
+            reserve_pay = _reserve_pay_shadow(session, prop, now, token)
+        except Exception:  # a comparison must never cost a verdict
+            reserve_pay = None
+
         return JSONResponse({
             "decision": dec_json,
             "record": rec_json,
             "headroom": headroom,
+            "reserve_pay": reserve_pay,
             # Backwards compatibility top-level fields
             "verdict": dec_json["verdict"],
             "clause_id": dec_json["clause_id"],
@@ -889,7 +930,9 @@ def create_app(
 
         mode = Mode.OBSERVE if body.get("mode") == "observe" else Mode.ENFORCE
         compromised = bool(body.get("compromised"))
-        max_steps = min(int(body.get("max_steps") or 30), 30)
+        # The console sends no max_steps, so both arms take DEMO_MAX_STEPS and the
+        # comparison stays honest. 30 remains the hard ceiling for an explicit caller.
+        max_steps = min(int(body.get("max_steps") or DEMO_MAX_STEPS), 30)
 
         try:
             call_budget.reserve(max_steps)
@@ -919,6 +962,11 @@ def create_app(
         queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_running_loop()
         sentinel = object()
+        # Written by the producer thread, read by the refund. It must not be
+        # derived from what the browser consumed: a judge who closes the tab
+        # stops the stream, not the agent, and refunding calls the model went on
+        # to make would let the ceiling be walked past a tab at a time.
+        progress = {"steps": 0}
 
         def on_decision(decision) -> None:
             # Only the enforced arm reaches the customer's order history. An
@@ -940,6 +988,8 @@ def create_app(
                     provider=provider, compromised=compromised, mode=mode,
                     max_steps=max_steps, on_decision=on_decision,
                 ):
+                    if ev.get("event") == "step":
+                        progress["steps"] = int(ev.get("n") or progress["steps"])
                     loop.call_soon_threadsafe(queue.put_nowait, ev)
             # This is the error boundary for a worker thread. Anything the model,
             # the provider or the gateway raises has to reach the browser as an
@@ -969,7 +1019,16 @@ def create_app(
                         break
                     yield f"event: {ev['event']}\ndata: " + json.dumps(ev, default=str) + "\n\n"
             finally:
-                await task
+                try:
+                    await task
+                finally:
+                    # The reservation is the worst case; most runs stop long before
+                    # it. Give back what was not spent, or a console press costs the
+                    # ceiling 2 x max_steps however short the run was. One call per
+                    # step plus the one that answered "nothing further" -- transient
+                    # provider retries are not counted back, so this under-refunds
+                    # rather than over-refunds.
+                    call_budget.refund(max(0, max_steps - (progress["steps"] + 1)))
 
         return StreamingResponse(
             events(),

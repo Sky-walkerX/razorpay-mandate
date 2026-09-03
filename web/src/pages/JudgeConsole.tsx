@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { SellerChip } from '@/components/v2/SellerMark';
 import { MandateLockup } from '@/components/brand/MandateLockup';
 import SandboxPanel from '@/components/v2/SandboxPanel';
+import { ReservePayShadow, type ReservePayVerdict } from '@/components/ReservePayShadow';
 import { API_BASE } from '@/lib/api';
 
 /**
@@ -67,6 +68,10 @@ interface DecisionRecord {
   stopped_at_clause?: number;
   /** False when the gateway did not answer and the outcome came from the preset. */
   live: boolean;
+  /** What UPI Reserve Pay would have done with the same basket. Absent on a
+      simulated outcome, and null when the shadow itself failed — the comparison
+      is never allowed to cost a verdict. */
+  reserve_pay?: ReservePayVerdict | null;
 }
 
 interface AttackPreset {
@@ -512,6 +517,7 @@ export default function JudgeConsole() {
           latency_ms: elapsed,
           stopped_at_clause: stoppedIndex,
           live: true,
+          reserve_pay: data.reserve_pay ?? null,
         },
         isAllowed ? 'allow' : 'deny',
         stoppedIndex,
@@ -1069,6 +1075,14 @@ export default function JudgeConsole() {
                     </span>
                   )}
                 </div>
+
+                {currentDisplay.reserve_pay && (
+                  <ReservePayShadow
+                    shadow={currentDisplay.reserve_pay}
+                    mandateAllowed={currentDisplay.executed}
+                    amountPaise={currentDisplay.amount_paise}
+                  />
+                )}
 
                 {/* Whether a model was asked, said again here rather than only on
                     the tab, because this is the panel a screenshot crops to. */}

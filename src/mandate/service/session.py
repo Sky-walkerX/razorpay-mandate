@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from mandate.downstream.fake import FakeDownstream
 from mandate.gateway.audit import AuditLog
 from mandate.gateway.core import Gateway, Mode
 from mandate.gateway.idem import Ledger
@@ -18,6 +19,7 @@ from mandate.gateway.pricebook import PriceBook
 from mandate.gateway.revocation import RevocationList
 from mandate.gateway.tokens import TokenClaims
 from mandate.policy.models import Policy
+from mandate.policy.rails import project_to_reserve_pay
 
 
 @dataclass
@@ -32,6 +34,10 @@ class Session:
     audit: AuditLog
     ledger: Ledger
     mode: Mode = Mode.ENFORCE
+    # The same proposal answered as UPI Reserve Pay would answer it. A real
+    # Gateway on a projected policy, with its own rail, ledger and chain, so its
+    # spend is never confused for the mandate's and the block drains honestly.
+    shadow: Gateway | None = None
 
 
 class SessionManager:
@@ -103,6 +109,22 @@ class SessionManager:
             )
 
             now = datetime.now(UTC)
+            shadow_dir = session_dir / "shadow"
+            shadow_dir.mkdir(parents=True, exist_ok=True)
+            shadow = Gateway(
+                policy=project_to_reserve_pay(gw.policy),
+                # Its own rail. The shadow's orders are a projection, not money
+                # this mandate authorised, and must not reach the real one.
+                downstream=FakeDownstream(),
+                audit=AuditLog(shadow_dir / "audit.jsonl"),
+                mode=Mode.ENFORCE,
+                ledger=Ledger(shadow_dir / "ledger.jsonl"),
+                pricebook=gw.pricebook,
+                capability_secret=self.capability_secret,
+                issuer_public_key=self.issuer_public_key,
+                revocations=self.revocations,
+            )
+
             session = Session(
                 jti=claims.jti,
                 token=token,
@@ -114,6 +136,7 @@ class SessionManager:
                 audit=audit,
                 ledger=ledger,
                 mode=mode,
+                shadow=shadow,
             )
             self._sessions[claims.jti] = session
             return session

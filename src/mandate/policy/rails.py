@@ -188,3 +188,30 @@ __all__ = [
     "to_ap2_payment_constraints",
     "to_reserve_pay",
 ]
+
+
+def project_to_reserve_pay(policy: Policy) -> Policy:
+    """The same mandate as UPI Reserve Pay would hold it, and nothing more.
+
+    Reserve Pay blocks an amount against one payee until an expiry. Every clause
+    whose fate in RESERVE_PAY_CARRIES is not "rail" has nowhere to go, so it is
+    dropped rather than quietly enforced by us on the rail's behalf. The payee
+    list narrows to one entry for the same reason: a block names a single payee,
+    so carrying all three would credit the rail with a capability it lacks.
+
+    The projection reads the table above rather than restating it. Two opinions
+    about the rail's vocabulary would let `/rails` and the shadow gateway drift
+    apart while each looked correct on its own.
+
+    The mandate id is preserved deliberately: a token bound to this mandate must
+    still verify against the projection, since the shadow answers the same
+    proposal with the same bearer token.
+    """
+    can_hold = {cid for cid, (fate, _) in RESERVE_PAY_CARRIES.items() if fate == "rail"}
+    kept: dict[C, dict | list] = {
+        cid: value for cid, value in policy.constraints.items() if cid in can_hold
+    }
+    payees = kept.get(C.MERCHANT_ALLOW)
+    if isinstance(payees, list) and payees:
+        kept[C.MERCHANT_ALLOW] = [payees[0]]
+    return policy.model_copy(update={"constraints": kept})

@@ -20,6 +20,16 @@ from mandate.harness.catalog import Catalog
 CLEAN = "clean"
 DEFAULT_DAILY_CALL_CEILING = 2000
 
+# How many turns one console run gets. The sweep runs at 30, which is right for a
+# measurement nobody is watching and wrong for a stage: an unenforced agent has
+# nothing to stop it, so it shops until the cap, and 30 model calls of it is
+# minutes of a judge waiting on the pane that says the least.
+#
+# The number is the same for both arms and must stay that way. "One instruction,
+# one shop, run twice, the only difference is whether the gateway may refuse" is
+# the claim the panel makes in words; two step budgets would make it false.
+DEMO_MAX_STEPS = 10
+
 
 class CeilingReached(Exception):
     """The daily model-call budget is spent."""

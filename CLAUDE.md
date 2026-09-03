@@ -574,6 +574,40 @@ keeps the old behaviour when no pools are configured, which is how every test an
 local daemon run. Both properties are tested, and the sizing test uses pools above the
 floor so it exercises the arithmetic rather than passing on the default.
 
+### Closed, 3 Sep: "Watch an AI shop" spent its longest wait on its dullest pane
+
+One press of Run was up to **60 sequential model calls**: two arms at `max_steps` 30,
+run one after the other because they share a session token and would otherwise race
+each other's accumulators. Worse, the slow arm went first. `Without Mandate` is
+`Mode.OBSERVE`, so nothing ever refuses the agent and nothing gives it a reason to
+stop; it shops to the cap while `With Mandate` — the pane a visitor came for — sits
+on "Not run yet".
+
+Three changes, all in `run_agent` and `LiveAgentPanel.tsx`:
+
+- **Enforced arm runs first.** It gets refused and stops, so it is both the fast arm
+  and the answer. The unprotected arm fills in beside it.
+- **`DEMO_MAX_STEPS = 10`**, in `agent_runner.py`, replacing the sweep's 30 as the
+  default. 30 stays the hard clamp for an explicit caller.
+- **The unused reservation is refunded.** `reserve(max_steps)` is the worst case and
+  was never given back except on a provider failure, so a two-step run cost the
+  ceiling 60 calls and 2,000/day meant about 33 presses. The refund is
+  `max_steps - (steps + 1)`, counted from a cell the **producer thread** writes, not
+  from what the browser consumed — a judge closing the tab stops the stream, not the
+  agent, and refunding calls the model went on to make would let the ceiling be
+  walked past a tab at a time. Transient provider retries are not counted back, so it
+  under-refunds rather than over-refunds. Mutation-verified.
+
+**The step budget is one number for both arms and must stay that way.** The panel
+says in words that the only difference between the two sides is whether the gateway
+may refuse. Give the arms different budgets and that sentence is false, and the
+shorter-budgeted arm looks better behaved for a reason that has nothing to do with
+the gateway. `test_both_arms_get_the_same_step_budget` pins it.
+
+A visible consequence of the lower cap: `stopped: max_steps` now shows often, so the
+panel says "it hit this demo's turn limit and was still going" instead of printing
+the raw reason. That is the honest reading of an unenforced run and it is the point.
+
 ### Closed, 2 Sep: the judge console was posting to the visitor's own laptop
 
 Found while testing the sandbox, unrelated to it, **live on the custom domain**.

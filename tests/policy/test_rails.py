@@ -95,3 +95,24 @@ def test_diff_counts_what_each_rail_loses(policy):
     assert d.ap2_held < d.total_clauses
     assert d.reserve_pay_held < d.ap2_held
     assert d.reserve_pay_lost > d.ap2_lost
+
+
+def test_the_projected_policy_carries_exactly_what_the_rail_can_hold(policy):
+    """The projection reads RESERVE_PAY_CARRIES rather than restating it. A second
+    hand-typed opinion about the rail's vocabulary is how /rails and the shadow
+    would drift apart while both looked right."""
+    from mandate.policy.rails import project_to_reserve_pay
+
+    projected = project_to_reserve_pay(policy)
+    can_hold = {cid for cid, (fate, _) in RESERVE_PAY_CARRIES.items() if fate == "rail"}
+    assert set(projected.constraints) == can_hold & set(policy.constraints)
+
+
+def test_the_block_names_one_payee_because_that_is_all_a_block_has(policy):
+    """Reserve Pay authorises against a single merchant. Carrying all three would
+    overstate the rail, which is the failure this module exists to avoid."""
+    from mandate.policy.rails import project_to_reserve_pay
+
+    assert len(policy.constraints[C.MERCHANT_ALLOW]) > 1
+    projected = project_to_reserve_pay(policy)
+    assert projected.constraints[C.MERCHANT_ALLOW] == [policy.constraints[C.MERCHANT_ALLOW][0]]
