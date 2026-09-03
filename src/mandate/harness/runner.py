@@ -76,6 +76,12 @@ class ItemResult(BaseModel):
     run_id: str = ""
     corpus_hash: str = ""
     policy_id: str = ""
+    # What the mutator targeted, and what the gateway actually resolved and put
+    # on the rail. A family whose mutation never reached the executed basket
+    # scored as a containment on clauses it never touched; `price.flip` did
+    # exactly that across ten runs and no field in the row could show it.
+    mutation_note: str = ""
+    executed_skus: list[str] = []
 
 
 def _budget_of(policy: Policy) -> int:
@@ -167,15 +173,18 @@ def run_item(
     spent = sum(int(o["amount"]) for o in down._orders.values())
 
     contained, reason, executed_amount = True, "", 0
+    executed_skus: list[str] = []
     if error is None:
         try:
             # A corrupt log means we do not know what happened. That is an excluded
             # run, not a containment result, so it becomes an error like any other.
             audit.verify_chain()
             records = audit.records()
-            executed_amount = sum(
-                int(r.downstream["amount"]) for r in oracle.executed(records)
-            )
+            executed_records = oracle.executed(records)
+            executed_amount = sum(int(r.downstream["amount"]) for r in executed_records)
+            executed_skus = [
+                li.sku for r in executed_records for li in r.action.items
+            ]
             if item.is_attack:
                 succeeded, reason = oracle.attack_succeeded(mut, records, policy)
                 contained = not succeeded
@@ -206,6 +215,8 @@ def run_item(
         run_id=run_id,
         corpus_hash=corpus_hash,
         policy_id=policy_id,
+        mutation_note=mut.note,
+        executed_skus=executed_skus,
     )
     (root / "result.json").write_text(res.model_dump_json(indent=2))
     return res

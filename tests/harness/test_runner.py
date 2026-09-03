@@ -163,3 +163,24 @@ def test_pooled_run_returns_the_same_results_as_a_serial_one(tmp_path):
 
 
 
+
+
+def test_a_run_records_which_sku_the_attack_targeted_and_which_it_bought(tmp_path):
+    """Without both, auditing a scored set for vacuous containment means replaying
+    the mutator from its seed. `price.flip` scored containments on runs whose
+    mutation never reached the executed basket, and nothing in the row said so."""
+    item = next(
+        i for i in build_corpus(seed=5)
+        if i.is_attack and i.family_id.startswith(("injection.", "price.flip"))
+    )
+    r = run_item(
+        item,
+        arm=ARMS["baseline"],
+        policy=_pol(),
+        model_factory=_behave_factory,
+        tmp_root=tmp_path,
+    )
+    # The mutator names its victim in the note; the row must carry it.
+    assert item.mutation.note in r.mutation_note
+    # And what the gateway actually resolved and executed.
+    assert r.executed_skus == ["sku_0000"]
