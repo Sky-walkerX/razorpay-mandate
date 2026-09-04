@@ -9,6 +9,7 @@ legitimate order at a second shop that the mandate allows.
 The shadow is a real `Gateway` on a projected policy, never a second evaluator.
 A demo-only path would let the comparison keep working while the gateway broke.
 """
+import pathlib
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -185,3 +186,39 @@ def test_the_cost_of_covering_every_shop_is_reported(mgr_session):
     assert exposure.blocks_needed == 3
     assert int(exposure.blocked_total) == 600000
     assert exposure.refused_payees == ["blinkit", "instamart"]
+
+
+def test_a_hostile_payee_cannot_walk_out_of_the_session_directory(mgr_session):
+    """`Proposal.merchant` is written by the agent and was used as a directory name.
+
+    `merchant: "../../.."` reached `mkdir(parents=True)` and an `AuditLog` open
+    outside the session, which is the project's own rule broken at the
+    filesystem: a field the agent supplied was read rather than resolved.
+
+    The fix is not to scrub the string. It is to key on the payee the projection
+    resolved to, which always comes from the signed allowlist, so a hostile
+    payee and an unknown one land on the same fallback block.
+    """
+    mgr, sess, _ = mgr_session
+    before = sorted(p.name for p in (sess.dir_path / "shadow").glob("*")) \
+        if (sess.dir_path / "shadow").exists() else []
+
+    for hostile in ("../../../etc", "..", "/tmp/escape", "a/b/c", ""):
+        shadow = mgr.shadow_for(sess, hostile)
+        # It resolves to the fallback block, exactly as an unknown shop does.
+        assert shadow.policy.constraints[C.MERCHANT_ALLOW] == ["zepto"]
+
+    created = sorted(p.name for p in (sess.dir_path / "shadow").glob("*"))
+    assert set(created) - set(before) <= {"zepto"}, created
+    # And nothing was written anywhere above the session.
+    for path in (sess.dir_path.parent / "etc", pathlib.Path("/tmp/escape")):
+        assert not path.exists(), f"{path} was created outside the session"
+
+
+def test_every_shadow_directory_is_named_by_a_payee_the_user_allowed(mgr_session):
+    mgr, sess, _ = mgr_session
+    allowed = {m.lower() for m in sess.gateway.policy.constraints[C.MERCHANT_ALLOW]}
+    for payee in ("zepto", "blinkit", "instamart", "nobody", "../x"):
+        mgr.shadow_for(sess, payee)
+    names = {p.name for p in (sess.dir_path / "shadow").glob("*")}
+    assert names <= allowed, f"{names - allowed} is not a payee this mandate allows"

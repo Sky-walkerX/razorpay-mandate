@@ -18,6 +18,7 @@ from mandate.gateway.idem import Ledger
 from mandate.gateway.pricebook import PriceBook
 from mandate.gateway.revocation import RevocationList
 from mandate.gateway.tokens import TokenClaims
+from mandate.policy.models import ConstraintId as C
 from mandate.policy.models import Policy
 from mandate.policy.rails import project_to_reserve_pay
 
@@ -139,16 +140,37 @@ class SessionManager:
         payee falls back to the first allowed one, which is `project_to_reserve_pay`'s
         own rule rather than a second opinion about it.
         """
-        key = (payee or "").strip().lower()
+        # `payee` is `Proposal.merchant`, which the agent writes. It is used
+        # below as a cache key and a directory name, so it is resolved through
+        # the policy before either: `project_to_reserve_pay` matches it against
+        # the signed allowlist and falls back to the first entry, so the value
+        # that comes back is always one the user actually named.
+        #
+        # Keying on the raw string instead was a path traversal — `merchant:
+        # "../../.."` walked out of the session directory and mkdir'd there —
+        # and it was also wrong on its own terms, since two unknown payees both
+        # project to the same block and should share it rather than get one
+        # each. This is the project's own rule at the filesystem: a field the
+        # agent supplied is resolved, never read.
+        projected = project_to_reserve_pay(session.gateway.policy, payee=payee)
+        allowed = projected.constraints.get(C.MERCHANT_ALLOW) or []
+        key = str(allowed[0]).strip().lower() if allowed else "_default"
+
         with self._lock:
             existing = session.shadows.get(key)
             if existing is not None:
                 return existing
 
-            shadow_dir = session.dir_path / "shadow" / (key or "_default")
+            shadow_root = (session.dir_path / "shadow").resolve()
+            shadow_dir = (shadow_root / key).resolve()
+            # Belt and braces. The key is policy-derived above, so this cannot
+            # fire today; it is here so that a future caller passing something
+            # else fails loudly rather than writing outside the session.
+            if not shadow_dir.is_relative_to(shadow_root):
+                raise ValueError(f"refusing a shadow directory outside the session: {key!r}")
             shadow_dir.mkdir(parents=True, exist_ok=True)
             shadow = Gateway(
-                policy=project_to_reserve_pay(session.gateway.policy, payee=key),
+                policy=projected,
                 # Its own rail. The shadow's orders are a projection, not money
                 # this mandate authorised, and must not reach the real one.
                 downstream=FakeDownstream(),
