@@ -1603,6 +1603,46 @@ view, where the signed document IS the point), "clauses" and "parts" for limits,
 verdict word, and the clause id inside a refusal message — `plainMessage()` strips
 the leading `a.b:` prefix, and the label beside it already names the limit.
 
+## Re-cut for the video, 4 Sep
+
+Fourteen beats, not twelve. `/dashboard` came out; its order history is a weaker
+version of what `/store` already shows. `try-normal` was trimmed, and the beats
+that ran over budget in rehearsal were trimmed to it.
+
+**The `rails` beat was broken, not merely stale.** It scrolls by offsets computed
+from `#rails`, and the page gained `#surface` above it and `#mandate` below the
+clause table, so every previous number landed on other content. Any page edit that
+inserts a section above a beat's anchor breaks that beat silently.
+
+**The surface section is split on purpose.** `surface-problem` runs at 0:21 because
+"Razorpay ships 42 agent tools, 16 move money, nothing in front of them" is the
+sharpest fact in the project and landing it at 4:15 wastes it. `surface-mediated`
+stays at the end, because the same 42 behind a mandate means nothing until the
+viewer knows a mandate exists. Do not merge them back into one beat.
+
+**A beat that navigates must navigate back.** `surface-problem` went to `/rails` and
+left the run there, so `gap`, `limits` and `how` scrolled to selectors that only
+exist on the home page. A dry rehearsal reports that as **three 0.0s shots, not an
+error**, and the beats after it hung on selectors for 588s and 393s. It returns via
+the nav link, which is a client-side transition rather than a reload. Read the
+per-shot actuals after any shot-list edit; a 0.0s shot is a failure.
+
+**Preflight is thirteen checks now.** `/rails` renders identically whether or not
+the deployment holds `RAZORPAY_KEY_*`, because the tool counts come from
+`evidence.json`, so only the mandate button fails and it fails mid-take. Preflight
+creates a real test-mode auth link, so **every preflight and every take leaves one
+in the Razorpay dashboard**.
+
+**Timecodes in the voiceover script are derived now.** They were the last
+hand-maintained numbers in the pipeline and inserting one beat broke them the same
+way: two sections both claiming 0:21. `npm run sync-script` rewrites them from a
+take's own `shot-times.json`, `check-script` exits non-zero on drift, and both
+refuse when the section count and the shot count disagree rather than guessing.
+
+Measured in dry rehearsal: 14 shots, ~250s with the two model beats skipped. A real
+take adds roughly 111s for `agent` and 36s for `sandbox`, and `post` ramps about 74s
+back out, so expect a final near 5:00. Re-measure rather than trusting that.
+
 ## Recording the pitch video, 3 Sep
 
 `scripts/record/` drives the deployed site through a twelve-beat walkthrough and

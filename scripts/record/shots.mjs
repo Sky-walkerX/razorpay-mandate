@@ -84,11 +84,11 @@ export const shots = [
       await hold(3400);
       await scrollToSelector(page, '#gap', { ms: 2200, offset: -260 });
       // The twelve conditions, each tagged with where it can live.
-      await hold(5200);
+      await hold(4400);
       await moveTo(page, 980, 520, 1100);
-      await hold(3600);
+      await hold(3000);
       await smoothScrollTo(page, await yOf(page, '#gap', -640), 2600);
-      await hold(4200);
+      await hold(3200);
     },
   },
 
@@ -126,9 +126,9 @@ export const shots = [
       // lighting in sequence as it passes. Two full cycles.
       await smoothScrollTo(page, await yOf(page, '#how', -420), 2600);
       await moveTo(page, 480, 520, 1000);
-      await hold(8600);
+      await hold(7800);
       await moveTo(page, 900, 470, 1400);
-      await hold(2200);
+      await hold(1600);
     },
   },
 
@@ -149,7 +149,7 @@ export const shots = [
       await clickAt(page, preset(page, 'A normal order'), { travel: 700 });
       // One deterministic POST, no model. Then the 10-row clause waterfall at
       // 45ms a row. Do not cut for at least a second after this.
-      await hold(6800);
+      await hold(6000);
     },
   },
 
@@ -191,7 +191,7 @@ export const shots = [
       await smoothScrollTo(page, 420, 2400);
       await hold(5600);
       await smoothScrollTo(page, 760, 2200);
-      await hold(4200);
+      await hold(3400);
       await smoothScrollTo(page, 0, 1600);
     },
   },
@@ -290,7 +290,7 @@ export const shots = [
         await hold(4200);
       }
       await smoothScrollTo(page, 700, 2200);
-      await hold(3400);
+      await hold(2400);
     },
   },
 
