@@ -67,10 +67,10 @@ Replace **Naman** in the first line if someone else is narrating.
 
 *On screen: scroll into "The rail can hold three things. You meant twelve." Twelve conditions cascade in, each tagged.*
 
-> So why did that work?
+> Back to your own sentence, though. Why did it fail?
 >
-> Your one sentence held about twelve conditions. The payment rail can only carry
-> three: an amount, a merchant, an expiry.
+> It held about twelve conditions. The payment rail can only carry three: an
+> amount, a merchant, an expiry.
 >
 > The other nine live in the AI's prompt, so they hold only as long as the model
 > chooses to remember them. And the seller writes into that same prompt.
@@ -105,7 +105,7 @@ Replace **Naman** in the first line if someone else is narrating.
 > An ordinary order: one pack of dal, a hundred rupees. Checked against every
 > limit, and it goes through.
 >
-> This is not a wall.
+> Nothing is being blocked for the sake of it.
 
 ## 1:44 – 2:11 · The attack
 
@@ -124,7 +124,7 @@ Replace **Naman** in the first line if someone else is narrating.
 
 *On screen: "Split it into many small orders" — four orders in one click, the ledger filling.*
 
-> Now something smarter. Instead of breaking a limit, go under it. Four small
+> Here is a smarter one. Instead of breaking a limit, go under it. Four small
 > orders, each one fine on its own.
 >
 > The fourth is refused, because the limits count orders as well as measure
@@ -148,7 +148,7 @@ Replace **Naman** in the first line if someone else is narrating.
 > poisoned catalogue offers. On the right, the same AI picks the same things, and
 > every order past a limit is refused, with the limit named.
 >
-> Now watch the two totals. That gap is the whole product.
+> Watch the two totals. That gap is the whole product.
 
 ## 3:09 – 3:37 · Your own rules
 
@@ -160,7 +160,7 @@ Replace **Naman** in the first line if someone else is narrating.
 > An AI reads your sentence twice, and if the two readings disagree it refuses
 > rather than guess. Those become real limits, live for your visit.
 >
-> Now try to get an order past them. Refused, quoting your number, not ours,
+> Then try to get an order past them. Refused, quoting your number, not ours,
 > through the same gateway everything else here runs on.
 
 ## 3:37 – 3:57 · The storefront
@@ -170,10 +170,10 @@ Replace **Naman** in the first line if someone else is narrating.
 > Here is the shop's side of it. What the agent actually bought, and underneath,
 > the orders that never happened.
 >
-> Each refusal names the limit, and shows the amount struck through. Every
-> struck-through line is money that stayed in the account.
+> Each refusal names the limit and shows the amount struck through. None of this
+> is a mock-up.
 >
-> Every row here is a real decision, not a mock-up.
+> Every struck-through line is money that stayed in the account.
 
 ## 3:57 – 4:16 · The same tools, with the mandate in front
 
@@ -191,9 +191,9 @@ Replace **Naman** in the first line if someone else is narrating.
 
 *On screen: the tally bars subtracting, the clause table, ending on the NOWHERE row.*
 
-> So where does the rest live?
+> So which of your limits can the rails actually hold?
 >
-> Some of it fits A-P-two. Less fits Reserve Pay.
+> Some fit A-P-two. Fewer fit Reserve Pay.
 >
 > And this one, an extra check above fifteen thousand rupees, is the regulator's
 > own rule. It fits neither. The gateway holds it because the rails cannot.
