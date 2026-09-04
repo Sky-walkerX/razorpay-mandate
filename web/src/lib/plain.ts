@@ -83,7 +83,7 @@ export function plainMessage(message: string | null | undefined): string {
  */
 function humanise(text: string): string {
   const money = text.match(/^limit ₹([\d,.]+), attempted ₹([\d,.]+)$/);
-  if (money) return `You set a cap of ₹${money[1]}. This order came to ₹${money[2]}.`;
+  if (money) return `You set a cap of ${inr(money[1])}. This order came to ${inr(money[2])}.`;
 
   const orders = text.match(/^limit (\d+) orders, attempted (\d+)$/);
   if (orders) return `You allowed ${orders[1]} orders. This would have been number ${orders[2]}.`;
@@ -146,4 +146,17 @@ const FAMILY_NAMES: Record<string, string> = {
 export function familyName(id: string | null | undefined): string {
   if (!id) return '';
   return FAMILY_NAMES[id] ?? id;
+}
+
+/**
+ * A rupee figure from a log line, grouped the way the rest of the page groups.
+ *
+ * `_explain` writes `%.2f`, so a four-figure amount arrives as `1425.00` and
+ * sat next to a `₹300.00` the page had formatted itself. Two spellings of money
+ * in one sentence reads as a bug even when both numbers are right.
+ */
+function inr(digits: string): string {
+  const n = Number(digits.replace(/,/g, ''));
+  if (!Number.isFinite(n)) return `₹${digits}`;
+  return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }

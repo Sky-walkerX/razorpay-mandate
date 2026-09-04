@@ -283,3 +283,137 @@ def test_the_pinned_surface_still_matches_the_live_one():
     live = up.list_tools()
     assert {t["name"] for t in live} == {t["name"] for t in SNAPSHOT}
     assert unclassified_destructive(live) == set()
+
+
+# --- the service wiring ------------------------------------------------------
+
+@pytest.fixture
+def service(monkeypatch):
+    """The real app, with a fake upstream standing in for Razorpay.
+
+    Patched at the point `create_app` constructs it, so everything between the
+    HTTP request and the upstream call is the production wiring.
+    """
+    from starlette.testclient import TestClient
+
+    from mandate.service import server
+
+    made: list[FakeUpstream] = []
+
+    def _fake(_key_id, _secret):
+        up = FakeUpstream()
+        made.append(up)
+        return up
+
+    monkeypatch.setattr(server, "RazorpayMCPUpstream", _fake)
+    monkeypatch.setenv("RAZORPAY_KEY_ID", "rzp_test_probe")
+    monkeypatch.setenv("RAZORPAY_KEY_SECRET", "secret")
+    app = server.create_app(public_key_path=".mandate/keys/issuer_public.key",
+                            capability_secret="s", store_path=None)
+    with TestClient(app) as client:
+        yield client, made
+
+
+@pytest.fixture
+def service_without_keys(monkeypatch):
+    from starlette.testclient import TestClient
+
+    from mandate.service import server
+
+    monkeypatch.delenv("RAZORPAY_KEY_ID", raising=False)
+    monkeypatch.delenv("RAZORPAY_KEY_SECRET", raising=False)
+    app = server.create_app(public_key_path=".mandate/keys/issuer_public.key",
+                            capability_secret="s", store_path=None)
+    with TestClient(app) as client:
+        yield client
+
+
+def _token():
+    from datetime import UTC, datetime, timedelta
+    from pathlib import Path
+
+    from mandate.gateway.tokens import mint_agent_token
+    from mandate.policy.loader import load
+    priv = Path(".mandate/keys/issuer_private.key").read_text().strip()
+    pol = load(Path("policies/policy.yaml"))
+    return mint_agent_token(
+        mandate_id=pol.mandate_id, private_key_hex=priv,
+        expires_iso=(datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+        jti="tok_proxy_wiring_1")
+
+
+def _rpc(client, name, args, token=None):
+    headers = {"Accept": "application/json, text/event-stream"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    r = client.post("/mcp/razorpay", headers=headers, json={
+        "jsonrpc": "2.0", "id": 1,
+        "method": "tools/call", "params": {"name": name, "arguments": args}})
+    import json as _json
+    result = r.json()["result"]
+    if result.get("structuredContent"):
+        return result["structuredContent"]
+    text = result["content"][0]["text"]
+    try:
+        return _json.loads(text)
+    except _json.JSONDecodeError:
+        return text          # a tool that raised comes back as a plain message
+
+
+def test_the_surface_endpoint_counts_off_the_snapshot(service_without_keys):
+    """The numbers on the screen are the upstream's own claim about itself."""
+    body = service_without_keys.get("/v1/rail/surface").json()
+    assert body["total"] == 42
+    assert body["destructive"] == 16
+    assert body["read_only"] == 26
+    assert len(body["bound"]) == 4
+    assert len(body["refused"]) == 12
+    assert body["mounted"] is False
+
+
+def test_without_rail_keys_the_proxy_is_not_mounted_at_all(service_without_keys):
+    """A 404 rather than a tool list that silently does nothing.
+
+    Same rule as `/v1/compile` after it stopped answering with a policy it had
+    not compiled: a component that answers a question it could not answer hides
+    the outage.
+    """
+    r = service_without_keys.post(
+        "/mcp/razorpay", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list",
+                               "params": {}},
+        headers={"Accept": "application/json, text/event-stream"})
+    assert r.status_code == 404
+    assert service_without_keys.post("/v1/rail/mandate").status_code == 503
+
+
+def test_a_money_moving_call_needs_a_mandate_token(service):
+    """`/mcp` may serve a walk-up because a fake rail sits behind it. This one
+    reaches a real merchant account, so it may not."""
+    client, made = service
+    body = _rpc(client, "create_payment_link", {"amount": 30000, "currency": "INR"})
+    assert "needs a mandate token" in str(body)
+    assert made[0].calls == []
+
+
+def test_an_allowed_call_executes_against_razorpay_not_the_storefronts_fake_rail(service):
+    """The bug this wiring exists to prevent, pinned.
+
+    A shared SessionManager fixes each session's downstream at build time, so
+    `/mcp/razorpay` executed allowed calls against FakeDownstream and reported
+    `order_000000000001` as though Razorpay had issued it.
+    """
+    client, made = service
+    body = _rpc(client, "create_payment_link",
+                {"amount": 30000, "currency": "INR"}, token=_token())
+    assert body["allowed"] is True
+    assert made[0].calls == [("create_payment_link", {"amount": 30000, "currency": "INR"})]
+    assert not str(body.get("upstream", {})).startswith("order_0000")
+
+
+def test_a_refused_call_still_never_reaches_razorpay(service):
+    client, made = service
+    body = _rpc(client, "create_payment_link",
+                {"amount": 5000000, "currency": "INR"}, token=_token())
+    assert body["allowed"] is False
+    assert body["clause"] == str(C.BUDGET_PER_TRANSACTION)
+    assert made[0].calls == []

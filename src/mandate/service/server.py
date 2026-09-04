@@ -7,6 +7,7 @@ via scoped bearer tokens over HTTP or MCP.
 import asyncio
 import contextlib
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -22,8 +23,23 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from mandate.adapters.mcp_server import build_mcp_server
+from mandate.adapters.razorpay_proxy import (
+    BOUND,
+    REFUSED,
+    build_razorpay_proxy_server,
+    classify,
+    load_snapshot,
+)
+from mandate.adapters.razorpay_upstream import RazorpayMCPUpstream, destructive_names
 from mandate.downstream.fake import FakeDownstream
+from mandate.downstream.rail_mandate import (
+    RailMandateError,
+    create_auth_link,
+    summarise,
+)
+from mandate.downstream.razorpay_mcp import RazorpayMCPDownstream
 from mandate.gateway.action import ActionType, Proposal, ProposalItem
+from mandate.gateway.applicability import applicability_for_raw
 from mandate.gateway.audit import AuditChainBroken
 from mandate.gateway.core import Mode
 from mandate.gateway.pricebook import DictPriceBook, PriceBook
@@ -43,6 +59,7 @@ from mandate.policy.labels import PART_LABELS, label_for
 from mandate.policy.loader import load as load_policy
 from mandate.policy.models import ConstraintId as C
 from mandate.policy.models import Policy
+from mandate.policy.rails import reserve_pay_exposure
 from mandate.service.agent_runner import (
     CLEAN,
     DEMO_MAX_STEPS,
@@ -243,6 +260,15 @@ def create_app(
     revocations = RevocationList(Path(revocations_path))
     down = downstream if downstream is not None else FakeDownstream()
 
+    # Razorpay's own MCP server, if this deployment holds keys for it. Absent,
+    # `/mcp/razorpay` is not mounted and `/v1/rail/*` answer 503 with a reason,
+    # rather than pretending. Same rule as `/v1/compile`: prefer the loud failure.
+    rzp_key_id = os.environ.get("RAZORPAY_KEY_ID", "")
+    rzp_key_secret = os.environ.get("RAZORPAY_KEY_SECRET", "")
+    rzp_upstream = None
+    if rzp_key_id.startswith("rzp_test_") and rzp_key_secret:
+        rzp_upstream = RazorpayMCPUpstream(rzp_key_id, rzp_key_secret)
+
     # Load catalog & pricebook
     cat = catalog
     if cat is None:
@@ -303,6 +329,30 @@ def create_app(
         # 100 floor keeps the old behaviour when no pools are configured.
         max_sessions=max(100, pool.total_count + sbx_pool.total_count),
     )
+
+    # The proxy gets its own SessionManager, and that is not tidiness.
+    #
+    # A session's downstream is fixed when the session is built, so sharing this
+    # manager would mean `/mcp/razorpay` executing allowed calls against the
+    # storefront's FakeDownstream and reporting `order_000000000001` as though
+    # Razorpay had issued it. Worse, the two surfaces key on the same jti, so
+    # whichever touched a token first would decide which rail the other one got.
+    #
+    # Separate managers means separate directories and separate audit chains, so
+    # a real Razorpay object and a simulated one can never be confused for each
+    # other in the log. Same reasoning as the sandbox pool's own jti prefix.
+    rzp_session_manager = None
+    if rzp_upstream is not None:
+        rzp_session_manager = SessionManager(
+            policy=policy,
+            pricebook=pb,
+            downstream=RazorpayMCPDownstream(rzp_upstream),
+            capability_secret=capability_secret,
+            issuer_public_key=pub_hex,
+            revocations=revocations,
+            base_dir=Path(session_manager.base_dir) / "razorpay",
+            max_sessions=max(100, pool.total_count + sbx_pool.total_count),
+        )
 
     def _extract_and_verify_token(req: Request) -> tuple[str | None, TokenClaims | None, JSONResponse | None]:
         auth_hdr = req.headers.get("Authorization", "")
@@ -827,6 +877,48 @@ def create_app(
         marker = store.advance_week(family=family)
         return JSONResponse({"week": marker.week, "family": marker.family})
 
+    async def get_rail_surface(req: Request):
+        """What Razorpay's own agent surface exposes, and what the mandate does with it.
+
+        Every number here is counted off the pinned tool snapshot and the
+        upstream's own `destructiveHint` annotations. Nothing is typed in, for
+        the same reason no bound is ever retyped into a `.tsx`.
+        """
+        tools = load_snapshot()
+        buckets = classify([t["name"] for t in tools])
+        destructive = destructive_names(tools)
+        return JSONResponse({
+            "upstream": "https://mcp.razorpay.com/mcp",
+            "mounted": rzp_upstream is not None,
+            "path": "/mcp/razorpay",
+            "total": len(tools),
+            "destructive": len(destructive),
+            "read_only": len(tools) - len(destructive),
+            "bound": sorted(BOUND),
+            "refused": [{"tool": t, "reason": r} for t, r in sorted(REFUSED.items())],
+            "passthrough": sorted(n for n, b in buckets.items() if b == "passthrough"),
+            "limits_on_a_raw_call": applicability_for_raw(policy),
+            "mandate_id": policy.mandate_id,
+        })
+
+    async def create_rail_mandate(req: Request):
+        """Open the rail's own mandate for this policy, and report what it holds."""
+        if not (rzp_key_id.startswith("rzp_test_") and rzp_key_secret):
+            return JSONResponse(
+                {"error": "rail_keys_unavailable",
+                 "reason": "this deployment holds no rzp_test_ keys, so it cannot "
+                           "create a mandate on the rail."},
+                status_code=503)
+        try:
+            link = create_auth_link(policy, rzp_key_id, rzp_key_secret)
+        except (RailMandateError, ValueError) as e:
+            return JSONResponse({"error": "rail_refused", "reason": str(e)},
+                                status_code=502)
+        return JSONResponse({
+            "link": summarise(link, policy),
+            "exposure": reserve_pay_exposure(policy).model_dump(),
+        })
+
     async def get_conformance(req: Request):
         conf_file = Path("results-conformance/conformance_results.json")
         if conf_file.exists():
@@ -1090,6 +1182,25 @@ def create_app(
         return session_manager.create_session(
             token, claims, pricebook=_week_pricebook())
 
+    def _bearer_session(headers):
+        """Like `_session_for`, but with no walk-up.
+
+        `/mcp` may serve an anonymous caller because a FakeDownstream sits behind
+        it. `/mcp/razorpay` reaches a real merchant account, so an unauthenticated
+        caller on a public URL would be exactly the hole this project is about.
+        """
+        auth = headers.get("authorization", "")
+        if not auth.lower().startswith("bearer "):
+            raise PermissionError(
+                "this surface reaches a real Razorpay account and needs a mandate "
+                "token. POST /v1/sessions to claim one, then send it as "
+                "`Authorization: Bearer <token>`."
+            )
+        token = auth.split(" ", 1)[1].strip()
+        claims = verify_agent_token(token, pub_hex)
+        return (rzp_session_manager.get_session(claims.jti)
+                or rzp_session_manager.create_session(token, claims))
+
     mcp_server = build_mcp_server(
         session_for=_session_for,
         catalog_for=_week_catalog,
@@ -1113,9 +1224,34 @@ def create_app(
     )
     mcp_asgi = StreamableHTTPASGIApp(mcp_server.session_manager)
 
+    # Razorpay's own surface, mediated. Absent keys it is not mounted at all
+    # rather than mounted and inert, so a judge pointing a client at it gets a
+    # 404 instead of a tool list that silently does nothing.
+    rzp_proxy_server = None
+    if rzp_upstream is not None:
+        rzp_proxy_server = build_razorpay_proxy_server(
+            session_for=_bearer_session,
+            upstream=rzp_upstream,
+            policy=policy,
+        )
+        # Stateless and JSON, so this surface is curl-able exactly the way
+        # `mcp.razorpay.com/mcp` is. The demo is the same request sent to two
+        # URLs, and a handshake on one side and not the other would bury that.
+        rzp_proxy_server.streamable_http_app(
+            streamable_http_path="/mcp/razorpay",
+            stateless_http=True,
+            json_response=True,
+            transport_security=TransportSecuritySettings(
+                enable_dns_rebinding_protection=False),
+        )
+        rzp_proxy_asgi = StreamableHTTPASGIApp(rzp_proxy_server.session_manager)
+
     @contextlib.asynccontextmanager
     async def lifespan(_app):
-        async with mcp_server.session_manager.run():
+        async with contextlib.AsyncExitStack() as stack:
+            await stack.enter_async_context(mcp_server.session_manager.run())
+            if rzp_proxy_server is not None:
+                await stack.enter_async_context(rzp_proxy_server.session_manager.run())
             yield
 
     middleware = [
@@ -1150,9 +1286,14 @@ def create_app(
         # A non-function endpoint leaves `methods` unset, so GET, POST and
         # DELETE all reach the MCP handler. Registered before the SPA mount.
         Route("/mcp", endpoint=mcp_asgi),
+        Route("/v1/rail/surface", get_rail_surface, methods=["GET"]),
+        Route("/v1/rail/mandate", create_rail_mandate, methods=["POST"]),
         Route("/v1/agent", run_agent, methods=["POST"]),
         Route("/v1/agent/families", list_agent_families, methods=["GET"]),
     ]
+
+    if rzp_proxy_server is not None:
+        routes.append(Route("/mcp/razorpay", endpoint=rzp_proxy_asgi))
 
     if static_dir and Path(static_dir).exists():
         routes.append(Mount("/", SPAStaticFiles(directory=str(static_dir), html=True)))

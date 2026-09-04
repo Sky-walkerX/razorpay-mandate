@@ -357,7 +357,7 @@ function Arm({ mode, state }: { mode: Mode; state: ArmState }) {
                   {sellerName(step?.merchant)}
                   {step?.items?.length ? ' · ' : ''}
                   {step?.items
-                    ?.map((it) => `${it.qty} × ${it.title ?? it.sku}`)
+                    ?.map((it) => `${it.qty} × ${it.title || it.sku || 'an item that does not exist'}`)
                     .join(', ')}
                 </span>
                 <span
@@ -370,8 +370,13 @@ function Arm({ mode, state }: { mode: Mode; state: ArmState }) {
                 </span>
               </div>
               {v.clause && (
-                <p className="mt-1 text-[11.5px] text-ink-3">
-                  {v.executed ? 'Allowed against' : 'Stopped by'}{' '}
+                <p
+                  className={cn(
+                    'mt-1 text-[11.5px]',
+                    v.executed ? 'text-refer' : 'text-ink-3',
+                  )}
+                >
+                  {v.executed ? 'Went through anyway, past' : 'Stopped by'}{' '}
                   {clauseLabel(v.clause, v.clause_label)}
                 </p>
               )}
