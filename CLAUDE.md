@@ -284,7 +284,8 @@ Session handoff. Read this first if picking the work back up.
 
 ### State right now
 
-All four x-factor features have landed. **492 tests pass**, conformance 9/9 blocked
+All four x-factor features have landed, plus the mediated Razorpay surface and the
+real rail mandate (4 Sep, see below). **541 tests pass**, conformance 9/9 blocked
 and 0 vacuous, ruff at **13**. Every one is the same deliberate best-effort catch:
 eleven were there before, the twelfth makes a compiler failure inside `/v1/sandbox`
 an honest response rather than a 500, and the thirteenth wraps the Reserve Pay
@@ -698,6 +699,142 @@ is the design working, and it is a better story told than discovered.
 
 Nothing. `.mandate/sandbox_pool.json` is generated and gitignored by design; see
 the pool note above.
+
+## 4 Sep: Razorpay's own surface, mediated, and a rail mandate that is real
+
+Two features against one objection: Razorpay already ships spending limits, so
+arguing from a projection of the rail's vocabulary is weaker than arguing from the
+rail itself. Full design in
+`docs/superpowers/specs/2026-09-04-mediated-razorpay-surface-design.md`.
+
+### Three things that were verified rather than assumed, and came back different
+
+**`mcp.razorpay.com/mcp` is public, stateless, and wide open by design.** Basic auth
+with the merchant's API keys, **42 tools, 16 flagged `destructiveHint` by the
+upstream itself**. Both `tools/list` and `tools/call` answer a plain JSON-RPC POST
+with no `initialize` and no session id, which is why `razorpay_upstream.py` is forty
+lines rather than an MCP client session. That surface is the reason the proxy exists.
+
+**Reserve Pay is sales-gated, including in test mode.** The MCP `create_order`
+advertises `token.type="single_block_multiple_debit"`. Creating one succeeds and
+**silently drops the token spec**: the order fetches back with no `token` field.
+The S2S UPI path answers `"The requested URL was not found on the server"`. Nothing
+in this repo can produce a Reserve Pay block, and the demo must not imply otherwise.
+
+**The deployed gateway had never placed a real order.** Cloud Run carried no
+`RAZORPAY_KEY_*`, so `create_app` fell to `FakeDownstream` at `server.py:238`.
+
+### The one rule is amended, and this is the reasoning
+
+**"No constraint may read a field the agent supplied" becomes "the checked figure is
+the executed figure."** A raw call like `create_payment_link(amount=...)` has no
+catalog to resolve against: the request *is* the action. The original bug was that
+the agent's lie was both checked and executed. Here, lying low moves less money and
+lying high is refused; what must hold is that the number the constraints saw is the
+number that reaches Razorpay.
+
+Made structural rather than promised. `RawProposal` is a separate type from
+`Proposal`, so `IGNORED_AGENT_FIELDS` and the invariance property keep meaning what
+they mean. `_resolve_raw_to_action` reads `amount` once. `Gateway` hands the
+downstream the **resolved action** via a new `action=` keyword, so three of the four
+bound tools forward `{amount, currency}` and drop everything else the agent sent.
+`test_the_forwarded_amount_is_the_checked_amount` is what makes it a fact.
+
+### Four buckets, and the fourth is the load-bearing one
+
+`BOUND` 4, `REFUSED` 12 with a written reason each, `PASSTHROUGH` 26 read-only, and
+**anything Razorpay ships later is refused with the classification test going red**.
+A proxy that forwards a seventeenth destructive tool because nobody updated a list is
+the bug this project exists to prevent. Do not fix that test by widening passthrough.
+
+`create_order` is BOUND on `/mcp/razorpay` and resolved from the price book on
+`/mcp`. Not an inconsistency: Razorpay's takes a raw amount, the storefront's takes
+SKUs. Two surfaces, two meanings.
+
+### Two bugs the work surfaced in existing code
+
+**`canonical_intent` hashes items and not the amount.** Right for a basket, wrong for
+a raw call: a Rs 100 link and a Rs 50,000 link shared a key, and the second would
+have replayed the first as "already committed" having never been created. The amount
+is hashed **only when there are no items**, so every hash ever returned for an
+item-bearing action is byte-identical.
+
+**`merchant.allow` denied every raw call**, because `RawProposal.merchant` is "self"
+and a call against the principal's own account has no payee. It now returns "no payee
+to check" on an action with no line items, the same shape `budget_per_item` already
+had. A basket always carries items, so it cannot reach that branch.
+
+### Five of ten limits are evaluable on a raw call, and the answer says so
+
+`budget.total`, `budget.per_transaction`, `velocity`, `time.window` and
+`afa.required` read the amount or the clock. The other five read line items or a
+payee and there are none. **The evaluators are not changed** and `lattice.py` is
+untouched; `gateway/applicability.py` derives the distinction at report time.
+Ten clauses painted green on five evaluations is the VACUOUS bug at another layer.
+
+**No field was added to `AuditRecord`.** `record_hash` covers every field, so a new
+one changes the hash of every record already written.
+
+### `/mcp/razorpay` has no walk-up, and its own SessionManager
+
+`/mcp` may serve an anonymous caller because a `FakeDownstream` sits behind it. This
+one reaches a real merchant account, so it requires a pooled bearer token.
+
+**The separate SessionManager is not tidiness.** A session's downstream is fixed when
+the session is built, so sharing the storefront's had `/mcp/razorpay` executing
+allowed calls against `FakeDownstream` and reporting `order_000000000001` as though
+Razorpay had issued it. Found by running it. Separate managers means separate
+directories and separate audit chains, so a real Razorpay object and a simulated one
+cannot be confused in the log.
+
+It is mounted `stateless_http=True, json_response=True`, so it is curl-able exactly
+the way `mcp.razorpay.com/mcp` is and the demo is one request sent to two URLs.
+**Absent keys it is not mounted at all** (404), rather than serving a tool list that
+silently does nothing.
+
+### The rail mandate is UPI Autopay and must keep saying so
+
+`POST /v1/rail/mandate` creates it from the signed policy: block from
+`budget.total`, expiry from `policy.expires`, mandate id in `notes`. Verified live,
+returning a hosted `rzp.io` link whose order carries
+`{max_amount, frequency: as_presented, expire_at, method: upi}`.
+
+Autopay's `frequency` looks like a fourth held clause and is not: `as_presented`
+bounds nothing and `daily` bounds one debit per day, not three per mandate.
+`test_the_web_does_not_call_the_rail_mandate_reserve_pay` pins the naming.
+
+### The shadow opens one block per payee, and that costs money
+
+Fixes the console bug where every attack preset ordered from `blinkit` while the
+block named `zepto`, so `railWorse` could never fire. But per-payee blocks fix it by
+spending three times the user's money, so `reserve_pay_exposure` reports the bill:
+**Rs 2,000 of stated intent becomes 3 blocks and Rs 6,000 of blocked funds.** The
+other reading, one block refusing two allowed shops, is kept and still tested. Neither
+equals the mandate, and that is the finding. Do not drop either half.
+
+### On the page
+
+`/rails` gained `#surface` (first, evidence before the projection) and `#mandate`.
+The tool block's column counts divide the upstream's tool count exactly at both sizes
+because flex-wrap left an orphan row. Measured 0px horizontal overflow at 390 and
+1440. Three defects were found by measuring rather than reading: "three fields" above
+a four-row table, an em dash in a value, and a sentence right-aligned in mono where
+the sharp fact is "1 of 3 this mandate allows".
+
+Two drift guards in `test_docs.py`: no `.tsx` may type a count off Razorpay's
+surface (it caught a `42` in a comment on its first run), and the created object may
+not be called Reserve Pay.
+
+### Known limitations, stated rather than discovered
+
+- The 26 passthrough tools include `fetch_all_payments` and
+  `fetch_settlement_recon_details`, which return account-wide data. The mandate
+  bounds money movement, not reads.
+- `capture_payment` is BOUND but needs a live authorized payment id to exercise, so
+  it is untested against the real rail.
+- `test_the_pinned_surface_still_matches_the_live_one` is opt-in behind
+  `MANDATE_LIVE_UPSTREAM=1`. **Run it before a demo**; a drift means the snapshot is
+  stale and the classification may be missing a tool that moves money.
 
 ### Next step
 
@@ -1557,6 +1694,19 @@ in `voice.mjs` are kept for a paid account.
   frames is what the last pass removed.
 - No arbitrary `rounded-[Npx]`. The five tokens in that table cover every case
   the four pages needed.
+- **The checked figure is the executed figure.** Resolution is how you get there
+  when a catalog exists; identity resolution is how you get there when it does
+  not. A downstream receives the resolved action, never the proposal.
+- A conformance or proxy tool that moves money must reach `Gateway.propose`. An
+  upstream tool nobody has classified is refused, and the fix is to decide which
+  limit bounds it, never to widen the passthrough set.
+- `canonical_intent` hashes the amount only when there are no line items. Adding
+  it unconditionally reopens `idem.forge`; removing it lets two raw calls of
+  different value share a key.
+- A raw call cannot reach every clause, and the answer says which it could not.
+  Reporting ten passes on five evaluations is the vacuous bug at another layer.
+- The created rail mandate is UPI Autopay, not Reserve Pay. Reserve Pay's block
+  is gated and this repo cannot produce one.
 - Measure the page, do not squint at it. Two defects in the last pass were
   invisible by eye and obvious in `getBoundingClientRect`; two more looked real
   and measured clean.
