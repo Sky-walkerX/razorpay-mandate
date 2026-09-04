@@ -251,9 +251,18 @@ def create_app(
     # The log signs its own tree heads with a key distinct from the issuer's, so the
     # issuer key can stay offline. Absent, /v1/audit/head reports 503 rather than
     # serving an unsigned head that would look verified.
+    #
+    # The environment path is not a convenience. `test_docker_image_ships_no_signing_key`
+    # rejects any COPY whose source contains "private", so the deployed image carries no
+    # log key by construction, and without this branch the signed tree head can never run
+    # in production -- which is exactly where it was found answering 503. File first, then
+    # environment: locally the key you just generated wins over a stale exported variable,
+    # and production is unaffected because it has no file to prefer.
     log_private_key_hex = None
     if log_private_key_path and Path(log_private_key_path).exists():
         log_private_key_hex = Path(log_private_key_path).read_text().strip()
+    elif os.environ.get("MANDATE_LOG_PRIVATE_KEY", "").strip():
+        log_private_key_hex = os.environ["MANDATE_LOG_PRIVATE_KEY"].strip()
 
     policy = load_policy(Path(policy_path), public_key_hex=pub_hex)
     pol_hash = policy_hash(policy)

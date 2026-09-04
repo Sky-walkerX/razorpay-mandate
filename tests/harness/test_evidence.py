@@ -145,3 +145,20 @@ def test_the_ap2_export_carries_the_users_own_words(ev):
     pol = load_policy(ROOT / "policies" / "policy.yaml")
     assert ev["alignment"]["ap2_export"]["intent_mandate"][
         "natural_language_description"] == pol.source_text
+
+
+def test_evidence_carries_the_log_public_key_so_the_page_can_pin_it(ev):
+    """The verifier must not fetch the key from the server that signed the head.
+
+    A page that asked the gateway for the key it verifies the gateway's signature
+    against is checking a signature against a key its adversary chose. Pinning the
+    key at build time is what makes the client-side proof mean anything, and it is
+    why a production key that differs from the committed one fails loudly.
+    """
+    log = ev["log"]
+    assert set(log) == {"public_key"}
+    key = log["public_key"]
+    # Absent is allowed and is reported as absent. Present must be a real
+    # Ed25519 public key, not an empty string standing in for one.
+    if key is not None:
+        assert len(key) == 64 and int(key, 16) >= 0
