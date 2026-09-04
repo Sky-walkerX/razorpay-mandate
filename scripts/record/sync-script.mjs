@@ -35,11 +35,15 @@ function newestTake() {
     .reverse();
   for (const t of takes) {
     try {
-      readFileSync(join(OUT, t, 'shot-times.json'));
+      // Skip rehearsals. `npm run fast` writes a manifest too, and it is almost
+      // always the newest thing in out/, so defaulting to it would mean the
+      // default path never works.
+      const j = JSON.parse(readFileSync(join(OUT, t, 'shot-times.json'), 'utf8'));
+      if (j.dry || j.skipModel) continue;
       return join(OUT, t);
     } catch { /* a take that never got far enough to write one */ }
   }
-  throw new Error('no take with a shot-times.json in out/');
+  throw new Error('no real take in out/ — record one, or pass --take <dir>');
 }
 
 const args = process.argv.slice(2);
@@ -47,6 +51,21 @@ const check = args.includes('--check');
 const takeDir = args.includes('--take') ? args[args.indexOf('--take') + 1] : newestTake();
 
 const times = JSON.parse(readFileSync(join(takeDir, 'shot-times.json'), 'utf8'));
+
+// A dry rehearsal does not press the two buttons that call a model, so `agent`
+// and `sandbox` measure about eight seconds each instead of roughly a hundred
+// and eleven and thirty-six. Writing timecodes from one produces a script whose
+// two longest sections claim eight-second windows, and a reader would discover
+// that only by running out of video mid-sentence.
+if (times.dry || times.skipModel) {
+  console.error(
+    `\n  ${takeDir.split('/').pop()} is a rehearsal (dry=${!!times.dry}, ` +
+    `skipModel=${!!times.skipModel}).\n` +
+    `  Its model beats are seconds long rather than minutes, so its timings are\n` +
+    `  not the video's. Record a real take, or pass --take <a real one>.\n`,
+  );
+  process.exit(2);
+}
 const shots = times.shots.map((s) => ({
   id: s.id,
   seconds: s.actual ?? (s.tEnd - s.tStart) / 1000,
