@@ -825,6 +825,28 @@ Two drift guards in `test_docs.py`: no `.tsx` may type a count off Razorpay's
 surface (it caught a `42` in a comment on its first run), and the created object may
 not be called Reserve Pay.
 
+### Two things production told us that local did not
+
+**MCP error detail is masked in the deployed server and not locally.** A raised
+exception inside a tool reaches the client as a bare
+`"Error executing tool create_payment_link"`, with the reason gone. So a missing
+bearer token looked identical to a broken gateway. Every answer on this surface is
+now a structured refusal naming a clause, including the authentication one. If a new
+tool path raises, check what it looks like on the deployed service, not on :8811.
+
+**`shadow_for` was a path traversal, and it was this project's own rule broken at
+the filesystem.** It took `Proposal.merchant`, which the agent writes, and used it as
+a directory name, so `merchant: "../../.."` reached `mkdir(parents=True)` and an
+`AuditLog` open outside the session. Confirmed rather than reasoned about: the
+mutated run still creates `/tmp/escape`. It shipped live in `00012-dsg` for a few
+minutes before `00013-xfm`.
+
+The fix is not to scrub the string. The key is the payee `project_to_reserve_pay`
+resolved to, which is matched against the signed allowlist and falls back to its
+first entry, so it can only ever be a shop the user named. That also corrects the
+cache: two unknown payees project to the same block and now share it. **A field the
+agent supplied is resolved, never read, and that applies to paths too.**
+
 ### Known limitations, stated rather than discovered
 
 - The 26 passthrough tools include `fetch_all_payments` and
