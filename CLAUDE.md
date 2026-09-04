@@ -285,23 +285,29 @@ Session handoff. Read this first if picking the work back up.
 ### State right now
 
 All four x-factor features have landed, plus the mediated Razorpay surface and the
-real rail mandate (4 Sep, see below). **541 tests pass**, conformance 9/9 blocked
+real rail mandate (4 Sep, see below). **544 tests pass**, conformance 9/9 blocked
 and 0 vacuous, ruff at **13**. Every one is the same deliberate best-effort catch:
 eleven were there before, the twelfth makes a compiler failure inside `/v1/sandbox`
 an honest response rather than a 500, and the thirteenth wraps the Reserve Pay
 shadow so a talking point can never cost a real verdict. Recorded here so the
 baseline moving is a choice and not a drift.
 
-`dev` is fully pushed. Nothing is uncommitted.
+`dev` is fully pushed through `7d214f4`. Nothing is uncommitted.
 
-**Cloud Run: `mandate-gateway-00011-gv6` is serving and verified.** `00008-cx9`
-carried the `/v1/compile` honest-failure fix and the pool-sized session cap;
-`00011-gv6` carries `5cc6dde`, the Reserve Pay shadow and the demo turn cap.
-Note that `00009` and `00010` landed without being recorded here — if the
-revision in this file does not match `gcloud run services describe`, trust
-gcloud.
+**Cloud Run is on `mandate-gateway-00015-k9x`**, built from HEAD and verified: all
+thirteen preflight checks pass on the custom domain, and on the live service a
+Rs 50,000 payment link is refused on `budget.per_transaction` while Rs 300 creates a
+real `plink_` on the test rail.
 
-All six checks below pass against it on the custom domain: bundle clean of both
+Earlier revisions, for the record: `00008-cx9` carried the `/v1/compile`
+honest-failure fix and the pool-sized session cap, `00011-gv6` the Reserve Pay
+shadow and the demo turn cap, `00012-dsg` shipped the shadow path traversal and
+stood for minutes before `00013-xfm`, `00014-fqk` made the missing-token refusal
+readable. **If the revision named here does not match
+`gcloud run services describe`, trust gcloud**; two revisions have already landed
+without being written down.
+
+All six checks below pass on the custom domain: bundle clean of both
 `127.0.0.1:8000` and `run.app`; `/v1/compile` returns real clauses with
 `fallback: false`; `/v1/sandbox` compiles "Rs 300 an order, Rs 800 total, nothing
 alcoholic" and refuses ₹400 on the visitor's ₹300 with the headroom meter agreeing
@@ -1639,9 +1645,32 @@ way: two sections both claiming 0:21. `npm run sync-script` rewrites them from a
 take's own `shot-times.json`, `check-script` exits non-zero on drift, and both
 refuse when the section count and the shot count disagree rather than guessing.
 
-Measured in dry rehearsal: 14 shots, ~250s with the two model beats skipped. A real
-take adds roughly 111s for `agent` and 36s for `sandbox`, and `post` ramps about 74s
-back out, so expect a final near 5:00. Re-measure rather than trusting that.
+### The take, 4 Sep
+
+`out/take-2026-09-04T19-56-54/` is the recorded cut. **345.5s raw across 14 shots,
+no zero-length beats, twelve of fourteen at or under budget.** Computed final is
+**4:55**: `post` ramps the two marked regions 5x, and they measured 54.1s and 8.9s,
+so 50.4s comes out. That is a calculation from the marks, not a measured runtime;
+confirm it against `final.mp4` before pinning any voiceover to it.
+
+**The `agent` beat is the one number that moves between takes, and it moves a lot.**
+It ran 80.3s here against 111.2s on 3 Sep, a 31s swing on the same shot list, because
+its length is however long the two model-driven arms take that day. Every estimate of
+total runtime in this file rests on it, so re-measure rather than reusing a figure.
+
+The dry rehearsal that preceded this take measured 246.2s with the two model beats
+skipped, which is 99s short of the real 345.5s. A rehearsal proves the choreography
+and says nothing useful about duration.
+
+### What is left on the video
+
+1. `npm run post` — writes `final.mp4` from the marks.
+2. `npm run sync-script` — rewrites the script's timecodes from this take. It refuses
+   a rehearsal manifest, so it has to run after `post`, against the real one.
+3. Re-read **four** voiceover sections: `surface-problem`, `surface-mediated`,
+   `mandate` (all new) and `rails` (words changed). The other ten takes carry over
+   untouched and `assemble` re-pins every one of them from the new timing.
+4. `node voice.mjs assemble --from <takes>`.
 
 ## Recording the pitch video, 3 Sep
 
@@ -1681,7 +1710,7 @@ Four things cost real time here and would again:
   `screencapture -x file.png` succeeds. Capture goes through ffmpeg + avfoundation
   instead of chasing a silent TCC denial.
 
-`preflight` refuses to record against a deployment failing any of eleven checks,
+`preflight` refuses to record against a deployment failing any of thirteen checks,
 and **retries the two model-backed ones once**: a container cold right after a
 deploy exceeds the 30s compile ceiling, and a single attempt cannot tell that from
 an outage. Measured warm, `/v1/sandbox` is 9.7-12.5s.
