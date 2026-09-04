@@ -44,9 +44,39 @@ export const shots = [
   },
 
   {
+    id: 'surface-problem',
+    label: "Razorpay already ships 42 agent tools. Nothing stands in front of them.",
+    budget: 16,
+    async run({ page, base }) {
+      // Deliberately early, and deliberately only the first half of this
+      // section. The sharpest fact in the project is that the hole is in a
+      // shipped Razorpay product, and landing it at 4:15 wastes it. The second
+      // half — the same 42 behind the mandate — means nothing until the viewer
+      // knows a mandate exists, so it stays at the end as `surface-mediated`.
+      await page.goto(`${base}/rails`, { waitUntil: 'domcontentloaded' });
+      await scrollToSelector(page, '#surface', { ms: 1600, offset: 90 });
+      await hold(3400);
+      // 42 cells on a 12ms stagger, one per upstream tool, four blue and twelve
+      // red leading. The block finishes filling ~0.5s in; hold past it.
+      await smoothScrollTo(page, await yOf(page, '#surface', -300), 1800);
+      await hold(5200);
+      // Back to the home page, because the next three beats scroll to `#gap`,
+      // `#limits` and `#how` and only exist there. Leaving the run on /rails
+      // made all three resolve instantly against a selector that is not on the
+      // page, which a dry rehearsal reports as three 0.0s shots rather than as
+      // an error. The nav link is a client-side transition, so it reads as a
+      // move rather than a reload, and the boot loader is sessionStorage-gated
+      // so it does not replay.
+      await clickAt(page, page.getByRole('link', { name: 'Home' }).first(), { travel: 700 });
+      await page.waitForURL(/mandate\.namankhandelwal\.dev\/?$|\/$/, { timeout: 15000 });
+      await hold(1200);
+    },
+  },
+
+  {
     id: 'gap',
     label: 'The rail holds three things. You meant twelve.',
-    budget: 26,
+    budget: 23,
     async run({ page }) {
       // Enter the section so the twelve motion.li rows cross their -60px
       // viewport margin and cascade rather than being already-visible on arrival.
@@ -105,7 +135,7 @@ export const shots = [
   {
     id: 'try-normal',
     label: 'A normal order goes through',
-    budget: 18,
+    budget: 12,
     async run({ page }) {
       // A real click on the nav CTA, so this is a client-side transition
       // rather than a reload. The in-page anchors are deliberately never
@@ -265,48 +295,69 @@ export const shots = [
   },
 
   {
-    id: 'dashboard',
-    label: 'Three orders went through. Fifty did not.',
-    budget: 22,
+    id: 'surface-mediated',
+    label: 'The same 42 tools, with the mandate in front',
+    budget: 23,
     async run({ page, base }) {
-      await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
-      // RunStrip is mount-triggered, not scroll-triggered: 53 columns rising on
-      // a 12ms stagger, finished ~1.06s after arrival. Hold immediately.
-      await hold(5200);
-      await smoothScrollTo(page, 300, 2400);
-      await hold(4200);
-      await smoothScrollTo(page, 700, 2400);
-      await hold(4000);
-      await smoothScrollTo(page, 1150, 2200);
-      await hold(3000);
+      await page.goto(`${base}/rails`, { waitUntil: 'domcontentloaded' });
+      await smoothScrollTo(page, await yOf(page, '#surface', -300), 1600);
+      await hold(3200);
+      // The two wire panels: the same request sent to Razorpay's own MCP server
+      // and to ours. One creates a Rs 50,000 link, the other names the clause.
+      await smoothScrollTo(page, await yOf(page, '#surface', -760), 2400);
+      await hold(6200);
+      // Four allowed beside twelve refused, each refusal saying why the mandate
+      // cannot decide it.
+      await smoothScrollTo(page, await yOf(page, '#surface', -1180), 2400);
+      await hold(5400);
     },
   },
 
   {
     id: 'rails',
     label: 'What the rails can and cannot carry',
-    budget: 30,
-    async run({ page, base }) {
-      await page.goto(`${base}/rails`, { waitUntil: 'domcontentloaded' });
-      await hold(2800);
+    budget: 20,
+    async run({ page }) {
+      // Offsets are taken from `#rails` and were all rewritten on 4 Sep: the
+      // page gained `#surface` above this section and `#mandate` below the
+      // clause table, so every previous number here landed on other content.
+      await scrollToSelector(page, '#rails', { ms: 2000, offset: 100 });
       // The two tally cards fill cell by cell: the subtraction made visible.
-      await scrollToSelector(page, '#rails', { ms: 2600, offset: 110 });
-      await hold(4600);
+      await hold(4200);
       // The clause table, one row at a time, each with a fixed-width chip
       // reading STRUCTURAL / ON THE RAIL / PROSE ONLY / NOWHERE.
-      await smoothScrollTo(page, await yOf(page, '#rails', -420), 2600);
-      await hold(4800);
-      await smoothScrollTo(page, await yOf(page, '#rails', -900), 2800);
-      await hold(5200);
+      await smoothScrollTo(page, await yOf(page, '#rails', -520), 2400);
+      await hold(4600);
       // afa.required: RBI's own requirement, and it has nowhere to sit on
       // either rail. The gateway holds it because the rails cannot.
       const nowhere = page.getByText('NOWHERE').first();
       if (await nowhere.isVisible().catch(() => false)) {
-        await hoverAt(page, nowhere, { travel: 900, dwell: 3600 });
+        await hoverAt(page, nowhere, { travel: 900, dwell: 3200 });
       } else {
-        await hold(3600);
+        await hold(3200);
       }
-      await hold(2400);
+    },
+  },
+
+  {
+    id: 'mandate',
+    label: "The rail's own mandate, created live",
+    budget: 22,
+    async run({ page, base }) {
+      await scrollToSelector(page, '#mandate', { ms: 2200, offset: 90 });
+      await hold(3200);
+      // The exposure callout: Rs 2,000 of stated intent becomes three blocks
+      // and Rs 6,000 of the person's money.
+      await hold(3400);
+      const open = page.getByRole('button', { name: "Open the rail's mandate" });
+      await clickAt(page, open, { travel: 800 });
+      // A real Razorpay call. Measured at 1.2-2.5s warm; the QR mounts on a
+      // 0.4s fade. Every take creates a real test-mode auth link.
+      await page.waitForSelector('#mandate svg[height]', { timeout: 20000 });
+      await hold(5200);
+      // The four fields the rail can hold, one of which bounds nothing.
+      await smoothScrollTo(page, await yOf(page, '#mandate', -240), 2000);
+      await hold(4600);
     },
   },
 ];

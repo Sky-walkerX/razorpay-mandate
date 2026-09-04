@@ -1,16 +1,19 @@
 # Voiceover script — 5-minute site walkthrough
 
-Read against `scripts/record/out/take-2026-09-03T16-10-28/final.mp4`.
-**Runtime 4:54.** Timecodes are computed from that take's `shot-times.json`
+Read against the newest `scripts/record/out/take-*/final.mp4`.
+**Re-cut 4 Sep for the mediated Razorpay surface and the live rail mandate.**
+The timecodes below are provisional until a take exists; `assemble` pins each
+section from that take's own `shot-times.json`, so they correct themselves.
+**Runtime: re-measured per take.** Timecodes are computed from that take's `shot-times.json`
 after both speed ramps, so they match the video and not the raw capture.
 
-Written as one continuous walkthrough rather than twelve captions: it opens, it
+Written as one continuous walkthrough rather than fourteen captions: it opens, it
 hands off from section to section in the presenter's own voice, and it closes.
 The connective lines are load-bearing — they are what stop a demo reel from
 sounding like a list of features being read out.
 
 **Delivery target: ~145 words per minute.** That is slower than conversational,
-and deliberately so. Total is 703 words against 294 seconds, and the per-section pace is
+and deliberately so. The per-section pace is
 balanced so no stretch runs dry or has to be rushed. Do not speed up to
 fill it.
 
@@ -34,6 +37,15 @@ Replace **Naman** in the first line if someone else is narrating.
 >
 > So the seller wrote the rest. Four thousand, one hundred and twenty-five
 > rupees.
+
+## 0:21 – 0:34 · The surface that already exists
+
+*On screen: /rails, the heading, then the block of one cell per Razorpay tool filling in.*
+
+> And this is not hypothetical. Razorpay publishes a tool server for A-I agents
+> today. Forty-two tools. Sixteen of them move money.
+>
+> Hand a model those credentials and there is nothing standing in between.
 
 ## 0:21 – 0:46 · The gap
 
@@ -151,51 +163,64 @@ Replace **Naman** in the first line if someone else is narrating.
 >
 > Every refusal on this page is a rupee that stayed where it was.
 
-## 3:55 – 4:19 · The record
+## 3:55 – 4:18 · The same tools, with the mandate in front
 
-*On screen: /dashboard, the RunStrip rising on arrival.*
+*On screen: back on /rails, the tool block, then the two wire panels side by side.*
 
-**Let the strip finish rising — about a second and a half — before the first line.**
-
-> And here is the record of a full run. Fifty-three attempts. Three went
-> through; fifty did not — every single one of them stopped on the same limit.
+> Now, back to those forty-two tools — this is the same list, with the mandate
+> in front of it.
 >
-> No attacker was involved at any point in this. That is just an agent doing its
-> best, against limits that happened to be real.
-
-## 4:19 – 4:54 · The rails, and the close
-
-*On screen: /rails, tally bars subtracting, the clause table, ending on the NOWHERE row.*
-
-> So, finally — where does this actually sit?
+> Four are checked against your limits before they run. Twelve are refused
+> outright, because no limit you set can decide them. The rest only read.
 >
-> Razorpay already ships spending limits for agents. We are not pitching you a
-> cap. This page is the subtraction: every condition, and where it can really
-> live. A-P-two carries some. Reserve Pay carries three.
+> Same request, same credentials, same server. On the left, a fifty thousand
+> rupee payment link gets created. On the right, it names the limit and never
+> makes the call.
+
+## 4:18 – 4:38 · The rails
+
+*On screen: the tally bars subtracting, the clause table, ending on the NOWHERE row.*
+
+> So where does the rest of this sit?
+>
+> A-P-two carries some of your conditions. Reserve Pay carries three.
 >
 > And this one — an additional factor above fifteen thousand rupees — is the
-> regulator's own requirement, and it has nowhere to sit on either rail.
+> regulator's own requirement, and it has nowhere to sit on either rail. The
+> gateway holds it, because the rails cannot.
+
+## 4:38 – 5:00 · The rail's own mandate, and the close
+
+*On screen: the exposure callout, then the button click, then a real QR code resolving.*
+
+> And here is what your two thousand rupees actually looks like on the rail.
+> One block names one shop — so covering all three means blocking six thousand
+> rupees of your money to authorise two.
 >
-> The gateway holds it, because the rails cannot.
+> This is real. That is a live mandate on Razorpay's rail, created just now from
+> the signed policy. Scan it. A cap, one shop, an expiry.
+>
+> Three fields. You meant twelve.
 >
 > That's Mandate. Thank you for watching.
+
 
 ---
 
 ## How to record this
 
 **Record section by section, not in one pass.** Every section starts on a visual
-cut, so a bad take costs you one section and nothing else. Twelve short takes
+cut, so a bad take costs you one section and nothing else. Fourteen short takes
 you are happy with beat one long take you are tired of fixing.
 
     cd scripts/record
-    node voice.mjs clips        # cuts the video into 12 per-section clips
+    node voice.mjs clips        # cuts the video into per-section clips
 
 Play a section's clip while you read that section. Matching your pace to the
 picture is far easier than matching it to a stopwatch, and it is the whole
 reason the timings are printed above each block.
 
-**Save takes as `01.wav` … `12.wav`** in one folder — any format ffmpeg reads is
+**Save takes as `01.wav` … `14.wav`** in one folder — any format ffmpeg reads is
 fine, including a phone voice memo. Then:
 
     node voice.mjs assemble --from ~/path/to/takes

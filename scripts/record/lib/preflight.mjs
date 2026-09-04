@@ -158,7 +158,30 @@ export async function preflight(base, { needCalls = 60, requireReservePay = true
     }
   }
 
-  // 6. Enough model budget for the take plus one retry.
+  // 6. The rail. Added 4 Sep, because the two new beats depend on a deployment
+  //     holding Razorpay keys, and nothing on the page says whether it does.
+  //     `/rails` renders identically either way: the tool counts come from
+  //     evidence.json, so only the mandate button fails, and it fails mid-take.
+  //     That is the same silent shape as the two failures in this file's header.
+  try {
+    const j = await (await fetch(`${base}/v1/rail/surface`)).json();
+    say(j.mounted === true, `/mcp/razorpay mounted · ${j.total} tools, ${j.destructive} destructive`);
+  } catch (e) {
+    say(false, `/v1/rail/surface failed: ${e.message}`);
+  }
+
+  // Creating one is the only honest check that the keys work, so preflight
+  // makes a real test-mode auth link. Every run leaves one behind.
+  try {
+    const r = await fetch(`${base}/v1/rail/mandate`, { method: 'POST' });
+    const j = await r.json();
+    say(r.status === 200 && !!j?.link?.short_url,
+        `/v1/rail/mandate ${r.status} · ${j?.link?.short_url ?? j?.reason ?? 'no link'}`);
+  } catch (e) {
+    say(false, `/v1/rail/mandate failed: ${e.message}`);
+  }
+
+  // 7. Enough model budget for the take plus one retry.
   try {
     const j = await (await fetch(`${base}/v1/agent/families`)).json();
     say(
