@@ -38,7 +38,7 @@ Replace **Naman** in the first line if someone else is narrating.
 > So the seller wrote the rest. Four thousand, one hundred and twenty-five
 > rupees.
 
-## 0:21 – 0:34 · The surface that already exists
+## 0:21 – 0:36 · The surface that already exists
 
 *On screen: /rails, the heading, then the block of one cell per Razorpay tool filling in.*
 
@@ -47,7 +47,7 @@ Replace **Naman** in the first line if someone else is narrating.
 >
 > Hand a model those credentials and there is nothing standing in between.
 
-## 0:21 – 0:46 · The gap
+## 0:36 – 0:58 · The gap
 
 *On screen: scroll into "The rail can hold three things. You meant twelve." Twelve conditions cascade in, each tagged.*
 
@@ -61,7 +61,7 @@ Replace **Naman** in the first line if someone else is narrating.
 > The other nine are just a sentence in a system prompt — and the prompt is not
 > what the attacker is writing into.
 
-## 0:46 – 1:00 · The limits
+## 0:58 – 1:12 · The limits
 
 *On screen: the ten limit cards, cursor passing across two of them.*
 
@@ -69,7 +69,7 @@ Replace **Naman** in the first line if someone else is narrating.
 > Ten kinds of limit, checked in order, on every single order — before any money
 > moves.
 
-## 1:00 – 1:21 · How it holds
+## 1:12 – 1:32 · How it holds
 
 *On screen: the order evaluation lattice, beam sweeping the gates in sequence.*
 
@@ -80,7 +80,7 @@ Replace **Naman** in the first line if someone else is narrating.
 > There is no language model anywhere in the payment path. Every one of those
 > gates is plain code. So there is nothing here to talk into changing its mind.
 
-## 1:21 – 1:34 · A normal order
+## 1:32 – 1:44 · A normal order
 
 *On screen: click into /try, run "A normal order", green.*
 
@@ -89,7 +89,7 @@ Replace **Naman** in the first line if someone else is narrating.
 > An ordinary order. One pack of dal, a hundred rupees. Checked against every
 > limit, and it goes through. The gateway is not a wall.
 
-## 1:34 – 2:01 · The attack
+## 1:44 – 2:11 · The attack
 
 *On screen: "Hidden instructions in a review". Refusal banner, the injected SYSTEM text highlighted red, the clause waterfall stopping at "Most per order".*
 
@@ -105,7 +105,7 @@ Replace **Naman** in the first line if someone else is narrating.
 > And beside it: what UPI Reserve Pay would have done. Three of your limits fit
 > that rail. Seven have nowhere to sit.
 
-## 2:01 – 2:23 · The audit chain
+## 2:11 – 2:32 · The audit chain
 
 *On screen: "Split it into many small orders" — four orders in one click, the ledger filling.*
 
@@ -117,7 +117,7 @@ Replace **Naman** in the first line if someone else is narrating.
 > And every attempt, allowed or refused, is written into a hash chain that the
 > agent itself cannot reach.
 
-## 2:23 – 3:06 · Same AI, both sides
+## 2:32 – 3:09 · Same AI, both sides
 
 *On screen: "Watch an AI shop", Run both sides. Refusals arriving live, then the side-by-side.*
 
@@ -139,7 +139,7 @@ Replace **Naman** in the first line if someone else is narrating.
 >
 > That gap is the whole product.
 
-## 3:06 – 3:34 · Your own rules
+## 3:09 – 3:37 · Your own rules
 
 *On screen: "Write your own rules", the compile, then an over-cap item refused.*
 
@@ -151,7 +151,7 @@ Replace **Naman** in the first line if someone else is narrating.
 > Then try to get something past your own cap. Refused — quoting your number,
 > not ours, through exactly the same gateway everything else here runs on.
 
-## 3:34 – 3:55 · The storefront
+## 3:37 – 3:57 · The storefront
 
 *On screen: /store, orders that landed and refusals with struck-through amounts.*
 
@@ -163,44 +163,38 @@ Replace **Naman** in the first line if someone else is narrating.
 >
 > Every refusal on this page is a rupee that stayed where it was.
 
-## 3:55 – 4:18 · The same tools, with the mandate in front
+## 3:57 – 4:16 · The same tools, with the mandate in front
 
 *On screen: back on /rails, the tool block, then the two wire panels side by side.*
 
-> Now, back to those forty-two tools — this is the same list, with the mandate
-> in front of it.
+> Back to those forty-two tools. Same list, with the mandate in front.
 >
-> Four are checked against your limits before they run. Twelve are refused
-> outright, because no limit you set can decide them. The rest only read.
+> Four get checked. Twelve are refused outright.
 >
-> Same request, same credentials, same server. On the left, a fifty thousand
-> rupee payment link gets created. On the right, it names the limit and never
-> makes the call.
+> Same request, same keys, same server. On the left, a fifty thousand rupee
+> link gets created. On the right, it names the limit and never makes the call.
 
-## 4:18 – 4:38 · The rails
+## 4:16 – 4:33 · The rails
 
 *On screen: the tally bars subtracting, the clause table, ending on the NOWHERE row.*
 
 > So where does the rest of this sit?
 >
-> A-P-two carries some of your conditions. Reserve Pay carries three.
+> A-P-two carries some. Reserve Pay carries three.
 >
-> And this one — an additional factor above fifteen thousand rupees — is the
-> regulator's own requirement, and it has nowhere to sit on either rail. The
-> gateway holds it, because the rails cannot.
+> This one, an extra check above fifteen thousand rupees, is the regulator's own
+> rule. It fits on neither rail. The gateway holds it because they cannot.
 
-## 4:38 – 5:00 · The rail's own mandate, and the close
+## 4:33 – 4:55 · The rail's own mandate, and the close
 
 *On screen: the exposure callout, then the button click, then a real QR code resolving.*
 
-> And here is what your two thousand rupees actually looks like on the rail.
-> One block names one shop — so covering all three means blocking six thousand
-> rupees of your money to authorise two.
+> And here is your two thousand rupees on the rail. One block names one shop,
+> so covering all three means blocking six thousand to authorise two.
 >
-> This is real. That is a live mandate on Razorpay's rail, created just now from
-> the signed policy. Scan it. A cap, one shop, an expiry.
+> This is live, created just now from the signed policy. Scan it.
 >
-> Three fields. You meant twelve.
+> A cap, one shop, an expiry. Three fields. You meant twelve.
 >
 > That's Mandate. Thank you for watching.
 

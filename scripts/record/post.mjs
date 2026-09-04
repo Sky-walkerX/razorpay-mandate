@@ -22,6 +22,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
 const val = (f, d) => { const i = argv.indexOf(f); return i >= 0 && argv[i + 1] ? argv[i + 1] : d; };
 
+import { rampRegions, savedSeconds } from './lib/ramp.mjs';
+
 const RAMP = Number(val('--ramp', '5'));
 const WIDTH = Number(val('--width', '1920'));
 
@@ -57,26 +59,19 @@ console.log(`  duration ${dur.toFixed(1)}s`);
 // sped-up region. Two exist: the unprotected agent shopping to its turn limit,
 // and the sandbox waiting on a real temperature-0 compile. Both are honest
 // waits worth showing, and neither is worth a minute of a five-minute video.
-const marks = manifest.marks ?? {};
-const regions = Object.keys(marks)
-  .filter((k) => k.endsWith('ramp_start'))
-  .map((k) => {
-    const end = k.replace(/ramp_start$/, 'ramp_end');
-    return { name: k.replace(/_?ramp_start$/, '') || 'agent', a: marks[k] / 1000, b: marks[end] / 1000 };
-  })
-  .filter((r) => Number.isFinite(r.a) && Number.isFinite(r.b) && r.b > r.a + 2 && r.b < dur)
-  .sort((x, y) => x.a - y.a);
+// Shared with sync-script.mjs, which needs the same mapping to place the
+// voiceover's timecodes in the cut rather than in the raw capture.
+const regions = rampRegions(manifest, dur);
 
 let filter;
 if (regions.length) {
   // Normal segments are whatever falls between the ramped ones.
   const parts = [];
   let cursor = 0;
-  let saved = 0;
+  const saved = savedSeconds(regions, RAMP);
   for (const r of regions) {
     if (r.a > cursor + 0.05) parts.push({ from: cursor, to: r.a, speed: 1 });
     parts.push({ from: r.a, to: r.b, speed: RAMP, name: r.name });
-    saved += (r.b - r.a) - (r.b - r.a) / RAMP;
     cursor = r.b;
   }
   parts.push({ from: cursor, to: null, speed: 1 });

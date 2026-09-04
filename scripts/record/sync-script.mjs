@@ -22,6 +22,8 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { rampRegions, savedSeconds, toFinal } from './lib/ramp.mjs';
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = join(HERE, 'out');
 const SCRIPT = resolve(HERE, '../../docs/video/voiceover-script.md');
@@ -66,10 +68,21 @@ if (times.dry || times.skipModel) {
   );
   process.exit(2);
 }
-const shots = times.shots.map((s) => ({
-  id: s.id,
-  seconds: s.actual ?? (s.tEnd - s.tStart) / 1000,
-}));
+// The script is read against `final.mp4`, not against the raw capture, so every
+// timestamp has to be mapped through the ramps. Reading the raw durations
+// straight out of the manifest is the bug this file shipped with: a 345.5s take
+// that cut to 4:57 produced a 5:46 script, and the agent section claimed
+// eighty-one seconds for thirty-seven seconds of video.
+const RAMP = Number(args.includes('--ramp') ? args[args.indexOf('--ramp') + 1] : 5);
+const regions = rampRegions(times, Infinity);
+
+let raw = 0;
+const shots = times.shots.map((s) => {
+  const seconds = s.actual ?? (s.tEnd - s.tStart) / 1000;
+  const from = raw;
+  raw += seconds;
+  return { id: s.id, start: toFinal(from, regions, RAMP), end: toFinal(raw, regions, RAMP) };
+});
 
 const md = readFileSync(SCRIPT, 'utf8');
 const headings = [...md.matchAll(/^## (\d:\d\d)\s*[–-]\s*(\d:\d\d)\s*·\s*(.*)$/gm)];
@@ -83,21 +96,23 @@ if (headings.length !== shots.length) {
   process.exit(1);
 }
 
-let t = 0;
 let out = md;
 const rows = [];
 for (const [i, h] of headings.entries()) {
-  const start = t;
-  t += shots[i].seconds;
-  const want = `## ${mmss(start)} – ${mmss(t)} · ${h[3]}`;
-  rows.push([shots[i].id, h[3], h[0] === want ? '' : `was ${h[1]}–${h[2]}`]);
+  const { id, start, end } = shots[i];
+  const want = `## ${mmss(start)} – ${mmss(end)} · ${h[3]}`;
+  rows.push([id, h[3], h[0] === want ? '' : `was ${h[1]}–${h[2]}`, end - start]);
   out = out.replace(h[0], want);
 }
+const t = shots[shots.length - 1].end;
 
 const stale = rows.filter((r) => r[2]).length;
-console.log(`\n  ${takeDir.split('/').pop()}  ${mmss(t)} total\n`);
-for (const [id, title, note] of rows) {
-  console.log(`   ${id.padEnd(18)} ${title.padEnd(42)} ${note}`);
+console.log(
+  `\n  ${takeDir.split('/').pop()}  ${mmss(t)} in the cut ` +
+  `(${mmss(raw)} raw, ${savedSeconds(regions, RAMP).toFixed(0)}s ramped out at ${RAMP}x)\n`,
+);
+for (const [id, title, note, window] of rows) {
+  console.log(`   ${id.padEnd(18)} ${String(Math.round(window)).padStart(3)}s  ${title.padEnd(42)} ${note}`);
 }
 
 if (check) {
