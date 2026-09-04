@@ -20,6 +20,12 @@ from mandate.gateway.audit import AuditLog
 from mandate.gateway.idem import EntryState
 from mandate.gateway.lattice import combine, evaluate_all, first_blocking
 from mandate.gateway.pricebook import PriceBook
+from mandate.gateway.quote import (
+    MerchantKeyring,
+    QuoteDisagrees,
+    QuoteError,
+    verify_quote,
+)
 from mandate.gateway.revocation import RevocationList
 from mandate.gateway.state import AccumulatedState, ClauseResult, EvalContext, Verdict
 from mandate.gateway.tokens import TokenError, verify_agent_token
@@ -88,6 +94,14 @@ def verify_capture_capability(
     return hmac.compare_digest(capability, expected)
 
 
+def _strip_quotes(prop: Proposal | Action) -> Proposal:
+    if not hasattr(prop, "items") or not prop.items:
+        return prop  # type: ignore[return-value]
+    return prop.model_copy(
+        update={"items": [it.model_copy(update={"quote": None}) for it in prop.items]}
+    )
+
+
 class Gateway:
     def __init__(
         self,
@@ -102,6 +116,7 @@ class Gateway:
         issuer_public_key: str | None = None,
         revocations: RevocationList | None = None,
         approvals=None,
+        merchant_keyring: MerchantKeyring | None = None,
     ) -> None:
         if not capability_secret:
             raise ValueError("capability_secret is required and cannot be empty")
@@ -121,6 +136,7 @@ class Gateway:
         # Out-of-band human approvals for afa.required. The agent has no path
         # to this store; approvals arrive on the principal's endpoint.
         self.approvals = approvals
+        self.merchant_keyring = merchant_keyring or MerchantKeyring()
         self._hash = policy_hash(policy)
         self._eval_lock = threading.Lock()
         self._spent_jtis: set[str] = set()
@@ -130,14 +146,14 @@ class Gateway:
             return self.ledger.state()
         return AccumulatedState()
 
-    def _resolve_to_action(self, prop: Proposal | Action) -> ResolvedAction:
+    def _resolve_to_action(
+        self, prop: Proposal | Action, now: datetime | None = None
+    ) -> tuple[ResolvedAction, ClauseResult | None]:
         """Resolve an untrusted wire proposal into an authoritative ResolvedAction.
 
-        Every price, title, category and total comes from the price book. There is
-        no branch that reads one from the agent: a gateway with no price book, or a
-        SKU the price book does not carry, raises rather than falling back to what
-        the agent claimed. Fail closed is the only safe direction here, because the
-        fallback would be exactly the vulnerability this class exists to remove.
+        Every price, title, category and total comes from the price book, unless a
+        valid merchant-signed quote is presented for the line. Invariant: quote sets
+        unit_price only; title, existence and category come from the price book.
         """
         if self.pricebook is None:
             raise PriceBookMissing(
@@ -146,20 +162,41 @@ class Gateway:
             )
 
         items: list[ResolvedLineItem] = []
+        has_quote = False
+        last_quote_price = 0
         for it in prop.items:
             pb = self.pricebook.lookup(it.sku)   # KeyError on an unknown SKU
+            unit_price = pb.unit_price
+            if getattr(it, "quote", None) is not None:
+                has_quote = True
+                quoted_price = verify_quote(
+                    it.quote,
+                    expected_merchant=prop.merchant,
+                    expected_sku=it.sku,
+                    keyring=self.merchant_keyring,
+                    now=now or datetime.now(UTC),
+                )
+                if quoted_price != int(pb.unit_price):
+                    raise QuoteDisagrees(
+                        f"quote price \u20b9{quoted_price/100:.2f} disagrees with price book \u20b9{int(pb.unit_price)/100:.2f}",
+                        observed=quoted_price,
+                        expected=int(pb.unit_price),
+                    )
+                last_quote_price = quoted_price
+                unit_price = Paise(quoted_price)
+
             items.append(
                 ResolvedLineItem(
                     sku=pb.sku,
                     title=pb.title,
                     qty=it.qty,
-                    unit_price=pb.unit_price,
-                    amount=Paise(it.qty * int(pb.unit_price)),
+                    unit_price=unit_price,
+                    amount=Paise(it.qty * int(unit_price)),
                     category=pb.category,
                 )
             )
         total = Paise(sum(int(i.amount) for i in items))
-        return ResolvedAction(
+        action = ResolvedAction(
             type=prop.type,
             amount=total,
             merchant=prop.merchant,
@@ -168,8 +205,18 @@ class Gateway:
             downstream_ref=prop.downstream_ref,
             capability=getattr(prop, "capability", None),
         )
+        quote_clause = None
+        if has_quote:
+            quote_clause = ClauseResult(
+                id="quote.confirmed",
+                result=Verdict.ALLOW,
+                observed=last_quote_price,
+                limit=last_quote_price,
+                detail="merchant quote confirmed against price book",
+            )
+        return action, quote_clause
 
-    def _resolve_raw_to_action(self, prop: RawProposal) -> ResolvedAction:
+    def _resolve_raw_to_action(self, prop: RawProposal) -> tuple[ResolvedAction, None]:
         """Identity-resolve a raw proposal. Same discipline, different source of truth.
 
         There is no catalog behind `create_payment_link(amount=...)`, so there is
@@ -182,12 +229,15 @@ class Gateway:
         the forwarder rebuilds the upstream arguments from it. The agent's own
         argument dict is discarded after this point and never consulted again.
         """
-        return ResolvedAction(
-            type=prop.type,
-            amount=prop.amount,
-            merchant=prop.merchant,
-            items=[],
-            downstream_ref=prop.ref,
+        return (
+            ResolvedAction(
+                type=prop.type,
+                amount=prop.amount,
+                merchant=prop.merchant,
+                items=[],
+                downstream_ref=prop.ref,
+            ),
+            None,
         )
 
     def _resolve(self, action: ResolvedAction) -> tuple[str | None, dict[str, str | None]]:
@@ -265,11 +315,20 @@ class Gateway:
                 )
 
             # 2. Resolve references into facts.
+            quote_clause: ClauseResult | None = None
             try:
-                action = (
-                    self._resolve_raw_to_action(proposal)
-                    if isinstance(proposal, RawProposal)
-                    else self._resolve_to_action(proposal)
+                if isinstance(proposal, RawProposal):
+                    action, _ = self._resolve_raw_to_action(proposal)
+                else:
+                    action, quote_clause = self._resolve_to_action(proposal, now)
+            except QuoteError as e:
+                action, _ = self._resolve_to_action(_strip_quotes(proposal), now)
+                quote_clause = ClauseResult(
+                    id=e.clause_id,
+                    result=Verdict.DENY,
+                    observed=e.observed,
+                    limit=e.expected,
+                    detail=str(e),
                 )
             except KeyError as e:
                 return Decision(
@@ -328,6 +387,8 @@ class Gateway:
                 afa_approved=approved,
             )
             clauses = evaluate_all(ctx)
+            if quote_clause is not None:
+                clauses.insert(0, quote_clause)
             verdict = combine(clauses)
             blocking = first_blocking(clauses)
 

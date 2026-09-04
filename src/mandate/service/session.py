@@ -16,6 +16,7 @@ from mandate.gateway.audit import AuditLog
 from mandate.gateway.core import Gateway, Mode
 from mandate.gateway.idem import Ledger
 from mandate.gateway.pricebook import PriceBook
+from mandate.gateway.quote import MerchantKeyring
 from mandate.gateway.revocation import RevocationList
 from mandate.gateway.tokens import TokenClaims
 from mandate.policy.models import ConstraintId as C
@@ -59,6 +60,7 @@ class SessionManager:
         base_dir: Path | str = Path("/tmp/sessions"),
         max_sessions: int = 100,
         idle_timeout_seconds: int = 1800,
+        merchant_keyring: MerchantKeyring | None = None,
     ) -> None:
         self.policy = policy
         self.pricebook = pricebook
@@ -69,6 +71,7 @@ class SessionManager:
         self.base_dir = Path(base_dir)
         self.max_sessions = max_sessions
         self.idle_timeout = timedelta(seconds=idle_timeout_seconds)
+        self.merchant_keyring = merchant_keyring or MerchantKeyring()
         self._sessions: dict[str, Session] = {}
         self._lock = threading.Lock()
 
@@ -113,6 +116,7 @@ class SessionManager:
                 capability_secret=self.capability_secret,
                 issuer_public_key=self.issuer_public_key,
                 revocations=self.revocations,
+                merchant_keyring=self.merchant_keyring,
             )
 
             now = datetime.now(UTC)
@@ -181,6 +185,7 @@ class SessionManager:
                 capability_secret=self.capability_secret,
                 issuer_public_key=self.issuer_public_key,
                 revocations=self.revocations,
+                merchant_keyring=self.merchant_keyring,
             )
             session.shadows[key] = shadow
             return shadow

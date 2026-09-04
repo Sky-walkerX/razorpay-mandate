@@ -28,6 +28,16 @@ NON_CONSTRAINT_CLAUSES = [
     "rail.divergence",
     "capture.binding",
     "capture.replay",
+    "quote.malformed",
+    "quote.unknown_merchant",
+    "quote.signature",
+    "quote.merchant_mismatch",
+    "quote.sku_mismatch",
+    "quote.expired",
+    "quote.not_yet_valid",
+    "quote.disagreement",
+    "quote.confirmed",
+    "quote.error",
 ]
 
 

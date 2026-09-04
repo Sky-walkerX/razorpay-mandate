@@ -432,6 +432,104 @@ def verify_cmd(
         raise typer.Exit(code=1)
 
 
+@app.command("quote-keygen")
+def quote_keygen(
+    merchant: Annotated[str, typer.Option("--merchant", help="Merchant identifier (e.g. blinkit, zepto)")],
+    out_dir: Annotated[Path, typer.Option("--out-dir", help="Directory to write key files")] = Path(".mandate/keys"),
+    keyring: Annotated[Path, typer.Option("--keyring", help="Path to merchants keyring JSON file")] = Path(".mandate/keys/merchants.json"),
+) -> None:
+    """Generate an Ed25519 keypair for a merchant and add the public key to keyring."""
+    import os
+
+    from mandate.gateway.quote import MerchantKeyring
+    from mandate.policy.crypto import generate_keypair
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    priv_hex, pub_hex = generate_keypair()
+
+    norm_m = merchant.strip().lower()
+    priv_path = out_dir / f"merchant_{norm_m}_private.key"
+    pub_path = out_dir / f"merchant_{norm_m}_public.key"
+
+    priv_path.write_text(priv_hex + "\n")
+    os.chmod(priv_path, 0o600)
+    pub_path.write_text(pub_hex + "\n")
+
+    ring = MerchantKeyring.from_file(keyring) if keyring.exists() else MerchantKeyring()
+    ring.add_key(norm_m, pub_hex)
+    ring.save(keyring)
+
+    typer.echo(f"Generated Ed25519 quote keypair for merchant {norm_m!r}:")
+    typer.echo(f"  private key (merchant secret): {priv_path} (mode 0600)")
+    typer.echo(f"  public key  (distribute)     : {pub_path}")
+    typer.echo(f"  public key hex               : {pub_hex}")
+    typer.echo(f"  keyring updated              : {keyring}")
+
+
+@app.command("quote-sign")
+def quote_sign(
+    merchant: Annotated[str, typer.Option("--merchant", help="Merchant identifier")],
+    sku: Annotated[str, typer.Option("--sku", help="SKU identifier")],
+    price: Annotated[int, typer.Option("--price", help="Unit price in paise (e.g. 5000 = Rs 50)")],
+    key: Annotated[str, typer.Option("--key", help="Merchant Ed25519 private key hex or path to private key file")],
+    ttl: Annotated[int, typer.Option("--ttl", help="Validity period in seconds")] = 900,
+) -> None:
+    """Mint an Ed25519-signed merchant quote."""
+    from datetime import UTC, datetime, timedelta
+
+    from mandate.gateway.quote import mint_quote
+
+    priv_hex = key.strip()
+    key_path = Path(priv_hex)
+    if key_path.exists():
+        priv_hex = key_path.read_text().strip()
+
+    now = datetime.now(UTC)
+    expires = now + timedelta(seconds=ttl)
+    token = mint_quote(
+        merchant=merchant,
+        sku=sku,
+        unit_price_paise=price,
+        private_key_hex=priv_hex,
+        issued=now,
+        expires=expires,
+    )
+    typer.echo(token)
+
+
+@app.command("quote-verify")
+def quote_verify(
+    quote: Annotated[str, typer.Option("--quote", help="Raw quote string <payload_b64>.<sig_hex>")],
+    merchant: Annotated[str, typer.Option("--merchant", help="Expected merchant identifier")],
+    sku: Annotated[str, typer.Option("--sku", help="Expected SKU identifier")],
+    keyring: Annotated[Path, typer.Option("--keyring", help="Path to merchants keyring JSON file")] = Path(".mandate/keys/merchants.json"),
+) -> None:
+    """Verify an Ed25519-signed merchant quote."""
+    from datetime import UTC, datetime
+
+    from mandate.gateway.quote import MerchantKeyring, QuoteError, verify_quote
+    from mandate.money import Paise, fmt
+
+    if not keyring.exists():
+        typer.echo(f"Error: keyring file {keyring} not found.")
+        raise typer.Exit(code=1)
+
+    ring = MerchantKeyring.from_file(keyring)
+    try:
+        now = datetime.now(UTC)
+        unit_price = verify_quote(
+            raw_quote=quote,
+            expected_merchant=merchant,
+            expected_sku=sku,
+            keyring=ring,
+            now=now,
+        )
+        typer.echo(f"Quote VALID: merchant={merchant} sku={sku} price={fmt(Paise(unit_price))} ({unit_price} paise)")
+    except QuoteError as e:
+        typer.echo(f"Quote INVALID ({e.clause_id}): {e}")
+        raise typer.Exit(code=1)
+
+
 @app.command("evidence")
 def evidence(
     out: Path = Path("web/src/data/evidence.json"),
@@ -597,6 +695,7 @@ def serve_cmd(
         help="Tokens bound to the reserved sandbox mandate. Absent, /v1/sandbox "
              "reports unavailable rather than falling back to the signed mandate.",
     )] = Path(".mandate/sandbox_pool.json"),
+    merchant_keys: Annotated[Path | None, typer.Option("--merchant-keys")] = Path(".mandate/keys/merchants.json"),
     capability_secret: Annotated[str | None, typer.Option("--capability-secret", envvar="MANDATE_CAPABILITY_SECRET")] = None,
     static_dir: Annotated[Path | None, typer.Option("--static-dir")] = Path("web/dist"),
     store: Annotated[Path | None, typer.Option("--store", envvar="MANDATE_STORE_PATH")] = None,
@@ -669,6 +768,7 @@ def serve_cmd(
         catalog=catalog,
         static_dir=static_dir if (static_dir and static_dir.exists()) else None,
         store_path=store or Path("/tmp/mandate-store/orders.jsonl"),
+        merchant_keys_path=merchant_keys if (merchant_keys and merchant_keys.exists()) else None,
     )
     uvicorn.run(app_instance, host=host, port=port, log_level="info")
 

@@ -103,6 +103,28 @@ far. `ApprovalStore` is keyed on the canonical intent hash of the resolved actio
 basket cannot release a different basket of the same value. All of that is built. What is missing
 is every piece that connects it to a human.
 
+### Correction, 5 Sep: the store is process-wide, not per-session
+
+The first draft of this spec put one `ApprovalStore` per session. That was wrong,
+and the reason is decisive rather than a preference: approvals are keyed on
+`canonical_intent`, which carries `mandate_id` and **not** `jti`
+(`action.py:145-149`). The key is already session-independent, so a per-session
+store buys no isolation at all — and it introduces a real bug, because
+`create_session` and `_evict_session_locked` both `rmtree` the session directory.
+A judge who escalates, walks to their phone, and comes back to a recreated session
+would lose the approval.
+
+One process-wide store, built beside `RevocationList` at `server.py:260` and handed
+to every session exactly as revocations already are. The argument is not
+convenience: **an approval is the principal's act, and the principal's acts do not
+live in the agent's session.** An approval is the mirror image of a revocation and
+deserves the same lifetime. Approvals must not outlive their usefulness, but that is
+expiry's job, not session teardown's, and conflating the two is how this goes wrong.
+
+`shadow_for` still gets `approvals=None`, explicitly and with a comment: Reserve Pay
+has no per-debit step-up, so handing the projection real approvals would make it
+claim a capability the rail lacks.
+
 ### The credential decision, which is the whole design
 
 The agent must not be able to approve its own escalation. That is `escalate.self` at a different
@@ -119,8 +141,37 @@ bearer.
 
 That is structural rather than argued, and it is what the service test pins.
 
-The QR encodes `https://<domain>/approve#<principal_key>`. The key goes in the **fragment**, which
-never reaches ALB access logs or a `Referer` header.
+**The two endpoints do not share an auth model, and that is deliberate.**
+
+- `GET /v1/pending` lists what is waiting and is the only place a ref is ever
+  readable. It needs the principal credential.
+- `POST /v1/approve` takes **the ref itself as the credential**, with no bearer at
+  all. This is the model `mint_capture_capability` already uses — the capability is
+  the authorisation. Requiring a principal secret as well would mean putting that
+  secret in the QR, which is strictly worse than putting a single-use 256-bit
+  challenge there.
+- `GET /v1/approve/{ref}` returns the amount and the merchant so the phone can show
+  what it is approving, and **does not consume**. Approving blind is absurd for a
+  step-up, and if GET redeemed, a link-preview crawler would burn the approval
+  before the human ever tapped it.
+
+Unknown ref answers **401, not 404**. A 404 confirms which refs do not exist and
+turns the endpoint into an enumeration oracle.
+
+**The ref is minted in the HTTP layer and `Decision` never carries it.** Every field
+of `Decision` flows to the agent through `/v1/orders`, the MCP `create_order` tool
+and `DirectClient`; adding a field there and remembering to strip it in three places
+is a design that fails the moment someone adds a fourth surface. `PendingApprovals.open()`
+returns `None`, so the handler cannot bind the ref to a name and cannot leak it by
+accident. A function that cannot hand you the secret cannot leak it.
+
+The test that proves this searches for the **literal secret value** in every
+agent-facing payload, rather than allowlisting field names — a name-based check
+passes while the value leaks under a different key.
+
+The QR encodes the absolute `https://<public-host>/approve?ref=<ref>`, with the host
+read from the forwarded headers, never hardcoded. That is the bug the single-API-base
+guard already documents.
 
 ### Two things that look like problems and are not
 
@@ -145,6 +196,11 @@ read, so an approval is permanent for that intent hash. Expiry is computed from 
 a default TTL; every record ever written carries `approved_at`, so nothing breaks, and a record
 carrying neither field fails closed. The ledger's idempotency already guarantees one execution per
 intent hash — single-use is the belt to its braces, and it is what `approve.replay` tests.
+
+One implementation trap, found by reading rather than by running: `_reload_if_changed`
+does `fresh[rec["intent"]] = rec`, last-write-wins. A consume record carries an
+`intent`, so it would *replace* the approval and lose `approver` and `factor`. The
+reload has to merge, not overwrite. Small, necessary, and easy to miss.
 
 ### Where the tests go, and why one of them is not a conformance attack
 

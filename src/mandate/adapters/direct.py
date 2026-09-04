@@ -32,6 +32,13 @@ TOOLS = [{
 # constant so the property test can enumerate them.
 IGNORED_AGENT_FIELDS = ("title", "unit_price", "amount", "category", "price", "total")
 
+UNFORGEABLE_AGENT_FIELDS = {
+    "sku": "resolved against the gateway's price book",
+    "qty": "a count; every money constraint reads the resolved amount",
+    "quote": "Ed25519, verified against a merchant public key the gateway holds",
+    "capability": "HMAC under the gateway's capability_secret",
+}
+
 
 class DirectClient:
     def __init__(self, gateway: Gateway) -> None:

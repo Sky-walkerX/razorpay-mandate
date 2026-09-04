@@ -23,6 +23,7 @@ from mandate.gateway.audit import AuditLog
 from mandate.gateway.core import Gateway, Mode
 from mandate.gateway.idem import Ledger
 from mandate.gateway.pricebook import DictPriceBook, PriceBookItem
+from mandate.gateway.quote import MerchantKeyring, mint_quote
 from mandate.gateway.revocation import RevocationList
 from mandate.gateway.state import Verdict
 from mandate.gateway.tokens import mint_agent_token
@@ -74,6 +75,12 @@ class Env:
                  require_token: bool = True):
         tmp_path.mkdir(parents=True, exist_ok=True)
         self.priv, self.pub = generate_keypair()
+        self.merchant_priv, self.merchant_pub = generate_keypair()
+        self.blinkit_priv, self.blinkit_pub = generate_keypair()
+        self.keyring = MerchantKeyring({
+            "zepto": [self.merchant_pub],
+            "blinkit": [self.blinkit_pub],
+        })
         self.policy = policy or _make_conformance_policy()
         self.policy_path = tmp_path / "policy.yaml"
         dump_policy(self.policy, self.policy_path, private_key_hex=self.priv)
@@ -90,6 +97,7 @@ class Env:
             capability_secret="conformance_secret",
             issuer_public_key=self.pub if require_token else None,
             revocations=self.revocations,
+            merchant_keyring=self.keyring,
         )
         self.witness_downstream = FakeDownstream()
         self.witness = UnhardenedGateway(self.policy, self.witness_downstream)
@@ -107,8 +115,12 @@ class Env:
         return len(self.downstream._orders)
 
 
-def _buy(sku="sku_01", qty=1, attempt=1) -> Proposal:
-    return Proposal(merchant="zepto", items=[ProposalItem(sku=sku, qty=qty)], attempt=attempt)
+def _buy(sku="sku_01", qty=1, attempt=1, quote=None) -> Proposal:
+    return Proposal(
+        merchant="zepto",
+        items=[ProposalItem(sku=sku, qty=qty, quote=quote)],
+        attempt=attempt,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -474,6 +486,147 @@ def attack_rail_divergence(tmp_path: Path) -> AttackResult:
     )
 
 
+# --------------------------------------------------------------------------
+# 10. quote.forge -- quote signed by an unknown/attacker key
+# --------------------------------------------------------------------------
+def attack_quote_forge(tmp_path: Path) -> AttackResult:
+    env = Env(tmp_path)
+    token = env.token()
+    other_priv, _ = generate_keypair()
+    forged_quote = mint_quote("zepto", "sku_01", 190000, other_priv, issued=NOW, expires=NOW + timedelta(minutes=10))
+
+    env.witness.propose(_buy(sku="sku_01", qty=1, quote=forged_quote), token=token, unit_prices=PRICES)
+    witness_orders = list(env.witness_downstream._orders.values())
+    witness_executed = len(witness_orders) == 1 and witness_orders[0]["amount"] == 190000
+
+    dec = env.gateway.propose(_buy(sku="sku_01", qty=1, quote=forged_quote), NOW, token=token)
+    audit_records = env.gateway.audit.records()
+    hardened_executed = (
+        dec.executed
+        or env.orders() > 0
+        or not any(c.id == "quote.signature" for c in audit_records[-1].clauses)
+    )
+
+    return AttackResult.judge(
+        "quote.forge", witness_executed, hardened_executed,
+        f"forged quote denied by {dec.clause_id!r} with verdict {dec.verdict}; "
+        f"{env.orders()} order(s) on the rail; witness allowed {len(witness_orders)} order(s) at {witness_orders[0]['amount'] if witness_orders else 0} paise",
+    )
+
+
+# --------------------------------------------------------------------------
+# 11. quote.expired -- genuinely signed quote with past expiration
+# --------------------------------------------------------------------------
+def attack_quote_expired(tmp_path: Path) -> AttackResult:
+    env = Env(tmp_path)
+    token = env.token()
+    expired_quote = mint_quote(
+        "zepto", "sku_01", 190000, env.merchant_priv,
+        issued=NOW - timedelta(days=365), expires=NOW - timedelta(days=364),
+    )
+
+    env.witness.propose(_buy(sku="sku_01", qty=1, quote=expired_quote), token=token, unit_prices=PRICES)
+    witness_orders = list(env.witness_downstream._orders.values())
+    witness_executed = len(witness_orders) == 1 and witness_orders[0]["amount"] == 190000
+
+    dec_expired = env.gateway.propose(_buy(sku="sku_01", qty=1, quote=expired_quote), NOW, token=token)
+
+    valid_quote = mint_quote(
+        "zepto", "sku_01", 50000, env.merchant_priv,
+        issued=NOW - timedelta(minutes=1), expires=NOW + timedelta(minutes=14),
+    )
+    dec_valid = env.gateway.propose(_buy(sku="sku_01", qty=1, quote=valid_quote), NOW, token=token)
+
+    hardened_executed = (
+        dec_expired.executed
+        or env.orders() != 1
+        or dec_expired.clause_id != "quote.expired"
+        or dec_valid.verdict is not Verdict.ALLOW
+    )
+
+    return AttackResult.judge(
+        "quote.expired", witness_executed, hardened_executed,
+        f"expired quote denied by {dec_expired.clause_id!r}; "
+        f"fresh quote was {dec_valid.verdict}; {env.orders()} order(s) on the rail",
+    )
+
+
+# --------------------------------------------------------------------------
+# 12. quote.sku_swap -- quote signed for sku_02 presented on sku_01 line
+# --------------------------------------------------------------------------
+def attack_quote_sku_swap(tmp_path: Path) -> AttackResult:
+    env = Env(tmp_path)
+    token = env.token()
+    swapped_quote = mint_quote("zepto", "sku_02", 150000, env.merchant_priv, issued=NOW, expires=NOW + timedelta(minutes=10))
+
+    env.witness.propose(_buy(sku="sku_01", qty=1, quote=swapped_quote), token=token, unit_prices=PRICES)
+    witness_orders = list(env.witness_downstream._orders.values())
+    witness_executed = len(witness_orders) == 1 and witness_orders[0]["amount"] == 150000
+
+    dec = env.gateway.propose(_buy(sku="sku_01", qty=1, quote=swapped_quote), NOW, token=token)
+    hardened_executed = dec.executed or env.orders() > 0 or dec.clause_id != "quote.sku_mismatch"
+
+    return AttackResult.judge(
+        "quote.sku_swap", witness_executed, hardened_executed,
+        f"swapped sku quote denied by {dec.clause_id!r}; {env.orders()} order(s) on the rail; "
+        f"witness executed at {witness_orders[0]['amount'] if witness_orders else 0} paise",
+    )
+
+
+# --------------------------------------------------------------------------
+# 13. quote.merchant_swap -- quote signed for blinkit presented for zepto
+# --------------------------------------------------------------------------
+def attack_quote_merchant_swap(tmp_path: Path) -> AttackResult:
+    env = Env(tmp_path)
+    token = env.token()
+    swapped_quote = mint_quote("blinkit", "sku_01", 190000, env.blinkit_priv, issued=NOW, expires=NOW + timedelta(minutes=10))
+
+    env.witness.propose(
+        Proposal(merchant="zepto", items=[ProposalItem(sku="sku_01", qty=1, quote=swapped_quote)]),
+        token=token, unit_prices=PRICES,
+    )
+    witness_orders = list(env.witness_downstream._orders.values())
+    witness_executed = len(witness_orders) == 1 and witness_orders[0]["amount"] == 190000
+
+    dec = env.gateway.propose(
+        Proposal(merchant="zepto", items=[ProposalItem(sku="sku_01", qty=1, quote=swapped_quote)]),
+        NOW, token=token,
+    )
+    hardened_executed = dec.executed or env.orders() > 0 or dec.clause_id != "quote.merchant_mismatch"
+
+    return AttackResult.judge(
+        "quote.merchant_swap", witness_executed, hardened_executed,
+        f"swapped merchant quote denied by {dec.clause_id!r}; {env.orders()} order(s) on the rail; "
+        f"witness allowed {witness_orders[0]['amount'] if witness_orders else 0} paise",
+    )
+
+
+# --------------------------------------------------------------------------
+# 14. quote.requote_idem -- re-quoting basket at different price mints separate naive keys
+# --------------------------------------------------------------------------
+def attack_quote_requote_idem(tmp_path: Path) -> AttackResult:
+    env = Env(tmp_path)
+    token = env.token()
+
+    quote_a = mint_quote("zepto", "sku_01", 50000, env.merchant_priv, issued=NOW, expires=NOW + timedelta(minutes=10))
+    quote_b = mint_quote("zepto", "sku_01", 90000, env.merchant_priv, issued=NOW, expires=NOW + timedelta(minutes=10))
+
+    env.witness.propose(_buy(sku="sku_01", qty=1, quote=quote_a), token=token, unit_prices=PRICES)
+    env.witness.propose(_buy(sku="sku_01", qty=1, quote=quote_b), token=token, unit_prices=PRICES)
+    witness_orders = len(env.witness_downstream._orders)
+    witness_executed = witness_orders == 2
+
+    d1 = env.gateway.propose(_buy(sku="sku_01", qty=1, quote=quote_a), NOW, token=token)
+    d2 = env.gateway.propose(_buy(sku="sku_01", qty=1, quote=quote_b), NOW, token=token)
+
+    hardened_executed = env.orders() > 1 or len({d1.idem_key, d2.idem_key}) > 1
+    return AttackResult.judge(
+        "quote.requote_idem", witness_executed, hardened_executed,
+        f"re-quoted basket collapsed to {len({d1.idem_key, d2.idem_key})} idempotency key(s) and {env.orders()} order(s); "
+        f"witness minted fresh keys and executed {witness_orders} order(s)",
+    )
+
+
 ATTACKS = (
     attack_replay_token,
     attack_replay_intent,
@@ -484,6 +637,11 @@ ATTACKS = (
     attack_delegate_split,
     attack_escalate_self,
     attack_rail_divergence,
+    attack_quote_forge,
+    attack_quote_expired,
+    attack_quote_sku_swap,
+    attack_quote_merchant_swap,
+    attack_quote_requote_idem,
 )
 
 

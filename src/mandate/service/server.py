@@ -43,6 +43,7 @@ from mandate.gateway.applicability import applicability_for_raw
 from mandate.gateway.audit import AuditChainBroken
 from mandate.gateway.core import Mode
 from mandate.gateway.pricebook import DictPriceBook, PriceBook
+from mandate.gateway.quote import MerchantKeyring
 from mandate.gateway.revocation import RevocationList
 from mandate.gateway.state import AccumulatedState, Verdict
 from mandate.gateway.tokens import (
@@ -233,6 +234,7 @@ def create_app(
     static_dir: Path | str | None = None,
     log_private_key_path: Path | str | None = Path(".mandate/keys/log_private.key"),
     store_path: Path | str | None = None,
+    merchant_keys_path: Path | str | None = Path(".mandate/keys/merchants.json"),
 ) -> Starlette:
     if not capability_secret:
         raise ServiceMisconfigured(
@@ -323,6 +325,8 @@ def create_app(
     if sbx_pool.is_revoked is None:
         sbx_pool.is_revoked = revocations.is_revoked
 
+    merchant_keyring = MerchantKeyring.from_file(merchant_keys_path) if merchant_keys_path else MerchantKeyring()
+
     session_manager = SessionManager(
         policy=policy,
         pricebook=pb,
@@ -330,6 +334,7 @@ def create_app(
         capability_secret=capability_secret,
         issuer_public_key=pub_hex,
         revocations=revocations,
+        merchant_keyring=merchant_keyring,
         # Sized so the token pools, not this cap, decide how many people can hold
         # a session at once. House and sandbox sessions share one budget, and the
         # cap evicts the least recently active when it is reached — so a cap below
@@ -359,6 +364,7 @@ def create_app(
             capability_secret=capability_secret,
             issuer_public_key=pub_hex,
             revocations=revocations,
+            merchant_keyring=merchant_keyring,
             base_dir=Path(session_manager.base_dir) / "razorpay",
             max_sessions=max(100, pool.total_count + sbx_pool.total_count),
         )
