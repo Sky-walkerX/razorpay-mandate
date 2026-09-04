@@ -3,8 +3,12 @@
  * Voiceover generation against ElevenLabs.
  *
  * Recording it yourself (the path we took):
- *   node voice.mjs clips                   cut the video into 12 per-section clips
- *   node voice.mjs assemble --from <dir>   lay 01..12 takes onto the timeline and mux
+ *   node voice.mjs clips                   cut the video into one clip per section
+ *   node voice.mjs assemble --from <dir>   lay the takes onto the timeline and mux
+ *
+ * Name a take after its section, the way clips/ names them. Assemble matches on
+ * that name; a bare number is a fallback that survives only until the shot list
+ * changes under it.
  *
  * Synthesising it instead (needs a paid ElevenLabs plan -- the free tier cannot
  * reach any library voice over the API, and every Indian-accent voice is one):
@@ -328,17 +332,41 @@ async function cmdClips() {
  */
 async function cmdAssemble() {
   const from = val('--from');
-  if (!from) { console.error('need --from <dir of 01.wav .. 12.wav>'); process.exit(1); }
+  if (!from) { console.error('need --from <dir of takes named after their sections>'); process.exit(1); }
   const script = loadScript(SCRIPT);
   const take = latestFinal();
   const work = join(take, 'vo-trimmed');
   mkdirSync(work, { recursive: true });
 
+  // Takes are matched to sections by name, never by position. The shot list
+  // gains and loses beats between cuts, and inserting `surface-problem` second
+  // moved nine of the ten carried-over takes down by one. A positional match
+  // answers that by laying the previous beat's narration under every picture,
+  // silently and plausibly. A numeric prefix is therefore only a fallback, and
+  // it says so out loud when it is what matched.
+  const files = readdirSync(from).filter((f) => /\.(wav|m4a|mp3|aiff?)$/i.test(f));
+  const slugOf = (f) => f
+    .replace(/\.[^.]+$/, '')
+    .replace(/^\d+[-_. ]*/, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
   const found = [];
+  const used = new Set();
+  let positional = 0;
   for (const s of script) {
     const n = String(s.index).padStart(2, '0');
-    const hit = readdirSync(from).find((f) => new RegExp(`^${n}\\b|^${n}[-_. ]|^${s.index}\\.`).test(f));
+    let hit = files.find((f) => slugOf(f) === s.id);
+    let how = 'name';
+    if (!hit) {
+      hit = files.find((f) => !slugOf(f) && new RegExp(`^${n}\\b|^${n}[-_. ]|^${s.index}\\.`).test(f));
+      how = 'number';
+    }
     if (!hit) { console.log(`    ${n} ${s.id.padEnd(24)} \x1b[33mno take found — will be silent\x1b[0m`); continue; }
+    used.add(hit);
+    if (how === 'number') {
+      positional++;
+      console.log(`    ${n} ${s.id.padEnd(24)} \x1b[33mmatched ${hit} by position only\x1b[0m`);
+    }
     const src = join(from, hit);
     const out = join(work, `${n}.wav`);
     // Trim silence from both ends, then normalise loudness so sections recorded
@@ -351,7 +379,13 @@ async function cmdAssemble() {
     if (r.status !== 0) { console.error(`    ${n} failed:\n` + r.stderr.toString().split('\n').slice(-8).join('\n')); continue; }
     found.push({ s, f: out, d: dur(out) });
   }
-  if (!found.length) { console.error('\n  no takes matched 01..12 in that folder\n'); process.exit(1); }
+  if (!found.length) { console.error('\n  nothing in that folder matched a section by name or number\n'); process.exit(1); }
+
+  const orphans = files.filter((f) => !used.has(f));
+  if (orphans.length) {
+    console.log(`\n  \x1b[33m${orphans.length} file(s) matched no section: ${orphans.join(', ')}\x1b[0m`);
+    console.log('  name a take after its section, as the clips in sections/ are named.');
+  }
 
   console.log();
   let over = 0;
@@ -386,6 +420,7 @@ async function cmdAssemble() {
   console.log(`\n  track: ${vo}`);
   console.log(`  video: ${out}  (${dur(out).toFixed(1)}s)`);
   if (over) console.log(`\n  \x1b[33m${over} section(s) run long — re-record those and run assemble again.\x1b[0m`);
+  if (positional) console.log(`  \x1b[33m${positional} take(s) placed by number alone — rename them after their sections.\x1b[0m`);
   console.log();
 }
 

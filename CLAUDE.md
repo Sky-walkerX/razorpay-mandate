@@ -1664,13 +1664,28 @@ and says nothing useful about duration.
 
 ### What is left on the video
 
-1. `npm run post` — writes `final.mp4` from the marks.
-2. `npm run sync-script` — rewrites the script's timecodes from this take. It refuses
-   a rehearsal manifest, so it has to run after `post`, against the real one.
-3. Re-read **four** voiceover sections: `surface-problem`, `surface-mediated`,
-   `mandate` (all new) and `rails` (words changed). The other ten takes carry over
-   untouched and `assemble` re-pins every one of them from the new timing.
-4. `node voice.mjs assemble --from <takes>`.
+`post`, `sync-script` and `clips` have run. `final.mp4` is **297.6s**, the script's
+fourteen headings are derived from it, and `out/vo/` holds the ten carried-over
+takes renamed after their sections. All ten fit their new windows measured, so the
+five that the pace rewrite shortened need no re-read.
+
+What is left is to read **four** sections against their clips — `surface-problem`,
+`surface-mediated`, `mandate` (all new) and `rails` (words changed) — drop them into
+`out/vo/` named after the section, and run
+`node voice.mjs assemble --from scripts/record/out/vo`.
+
+**Takes are matched to sections by name, and a bare number is only a fallback.**
+This bit once: the twelve-beat script's takes are numbered against a fourteen-beat
+cut, and `surface-problem` going in second moved nine of the ten down by one. The
+old positional match answered that by laying the previous beat's narration under
+every picture — the gap read over the surface beat, the limits over the gap — with
+nothing failing. `assemble` now matches `slugOf(filename)` against the section id,
+reports every take it had to place by number alone, and lists files that matched no
+section at all so a typo is not silence. Name a take the way `sections/` names its
+clip.
+
+The same shape as the timecode bug fixed the commit before: a positional assumption
+about a shot list that changes.
 
 ## Recording the pitch video, 3 Sep
 
