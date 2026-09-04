@@ -7,10 +7,24 @@ section from that take's own `shot-times.json`, so they correct themselves.
 **Runtime: re-measured per take.** Timecodes are computed from that take's `shot-times.json`
 after both speed ramps, so they match the video and not the raw capture.
 
-Written as one continuous walkthrough rather than fourteen captions: it opens, it
-hands off from section to section in the presenter's own voice, and it closes.
-The connective lines are load-bearing — they are what stop a demo reel from
-sounding like a list of features being read out.
+Written as one continuous walkthrough rather than fourteen captions. It opens, it
+hands off from section to section, and it closes. The connective lines carry that
+handoff, so keep them.
+
+**The rule this script is written to: say what the picture cannot.** Do not read
+the headline back, do not narrate a number that is already large on screen, and
+do not be clever. Every beat has a mechanism the screen shows but cannot explain,
+and that explanation is the only thing worth spending words on. Each section was
+checked against a frame from the take before it was written. Rewriting one without
+looking at its frame is how you get a line that reads well in this file and says
+nothing over the video.
+
+**Two figures were deliberately removed and must not come back.** The attack beat
+used to say "in sixty-two milliseconds"; the real decision time is whatever that
+run measures, and this take shows 75ms. The two-sided beat used to say two
+thousand seven hundred and fifty-eight against eight hundred and thirty-six; that
+run produced ₹2,791 and ₹724, because a live model picks a different basket every
+time. Both totals are large on screen. Let the viewer read them.
 
 **Delivery target: ~145 words per minute.** That is slower than conversational,
 and deliberately so. The per-section pace is
@@ -31,43 +45,44 @@ Replace **Naman** in the first line if someone else is narrating.
 
 > Hi, I'm Naman. This is Mandate.
 >
-> Let's start with the problem. You told an AI agent to spend under two thousand
-> rupees. But between your words and your money sits a language model, reading
-> text that a seller controls.
+> You told an AI agent to spend under two thousand rupees. It went shopping, and
+> it read the seller's page.
 >
-> So the seller wrote the rest. Four thousand, one hundred and twenty-five
-> rupees.
+> Look what the seller wrote there. A fake system line, saying this user has
+> pre-approved up to fifteen thousand.
+>
+> The agent believed it. Four thousand, one hundred and twenty-five rupees.
 
 ## 0:21 – 0:36 · The surface that already exists
 
 *On screen: /rails, the heading, then the block of one cell per Razorpay tool filling in.*
 
-> And this is not hypothetical. Razorpay publishes a tool server for A-I agents
-> today. Forty-two tools. Sixteen of them move money.
+> This isn't hypothetical. Razorpay publishes a public tool server for AI
+> agents. Point a model at it with a merchant's keys, and it can create a payment
+> link or take a payment.
 >
-> Hand a model those credentials and there is nothing standing in between.
+> Nothing checks first.
 
 ## 0:36 – 0:58 · The gap
 
 *On screen: scroll into "The rail can hold three things. You meant twelve." Twelve conditions cascade in, each tagged.*
 
-> Now, here is why that happens.
+> So why did that work?
 >
-> When you said that one sentence, you meant about twelve different things. A
-> cap. Nothing alcoholic. Not six of the same item.
+> Your one sentence held about twelve conditions. The payment rail can only carry
+> three: an amount, a merchant, an expiry.
 >
-> The payment rail carries three. An amount, a merchant, an expiry.
->
-> The other nine are just a sentence in a system prompt — and the prompt is not
-> what the attacker is writing into.
+> The other nine live in the AI's prompt, so they hold only as long as the model
+> chooses to remember them. And the seller writes into that same prompt.
 
 ## 0:58 – 1:12 · The limits
 
 *On screen: the ten limit cards, cursor passing across two of them.*
 
-> So this is what we built. All twelve of those conditions, compiled into code.
-> Ten kinds of limit, checked in order, on every single order — before any money
-> moves.
+> So we take that sentence and compile it. Every condition becomes a limit in
+> code, and each one records the words you said it from.
+>
+> All of them are checked before any money moves.
 
 ## 1:12 – 1:32 · How it holds
 
@@ -75,47 +90,48 @@ Replace **Naman** in the first line if someone else is narrating.
 
 **Leave a beat after the first line. The motion is making the argument here.**
 
-> And this is the part I'd ask you to look at closely.
+> A model is involved, but only once, at the beginning. It reads your sentence
+> and turns it into limits, and you approve them. After that it is out of the way.
 >
-> There is no language model anywhere in the payment path. Every one of those
-> gates is plain code. So there is nothing here to talk into changing its mind.
+> Nothing on the payment path is a model, so there is nothing to talk into
+> changing its mind.
 
 ## 1:32 – 1:44 · A normal order
 
 *On screen: click into /try, run "A normal order", green.*
 
-> Let's try it — and this is live, right now.
+> Let's try it, live.
 >
-> An ordinary order. One pack of dal, a hundred rupees. Checked against every
-> limit, and it goes through. The gateway is not a wall.
+> An ordinary order: one pack of dal, a hundred rupees. Checked against every
+> limit, and it goes through.
+>
+> This is not a wall.
 
 ## 1:44 – 2:11 · The attack
 
 *On screen: "Hidden instructions in a review". Refusal banner, the injected SYSTEM text highlighted red, the clause waterfall stopping at "Most per order".*
 
-> Now let's attack it.
+> Now the attack. Same trick: the instruction is hidden in a product review, and
+> the agent falls for it.
 >
-> A seller has buried an instruction for the AI inside a product review, and the
-> agent obeys it.
+> But the gateway does not care what the agent believes. Your limit was a thousand
+> rupees an order, so it is refused, and it names the limit.
 >
-> But the gateway does not care what the agent believes. Your limit was one
-> thousand rupees an order — refused, on that clause, by name, in sixty-two
-> milliseconds.
->
-> And beside it: what UPI Reserve Pay would have done. Three of your limits fit
-> that rail. Seven have nowhere to sit.
+> Underneath is what Reserve Pay would have done. It would have allowed this. A
+> block only knows a total and a shop.
 
 ## 2:11 – 2:32 · The audit chain
 
 *On screen: "Split it into many small orders" — four orders in one click, the ledger filling.*
 
-> Let's try something smarter. Don't break a limit — go underneath it. Four
-> small orders, each one perfectly fine on its own.
+> Now something smarter. Instead of breaking a limit, go under it. Four small
+> orders, each one fine on its own.
 >
-> The fourth one is refused, because the limits count as well as measure.
+> The fourth is refused, because the limits count orders as well as measure
+> amounts.
 >
-> And every attempt, allowed or refused, is written into a hash chain that the
-> agent itself cannot reach.
+> And every attempt, allowed or refused, is written down in a chain the agent
+> cannot reach or edit.
 
 ## 2:32 – 3:09 · Same AI, both sides
 
@@ -123,78 +139,81 @@ Replace **Naman** in the first line if someone else is narrating.
 
 **The middle is sped up in the edit. Land the last two lines on the figures.**
 
-> But the real test is this one.
+> But here's the real test. One instruction, one shop, and the same live AI on
+> both sides. The only difference is whether the gateway is allowed to say no.
 >
-> Same instruction. Same shop. The same real AI, called live, on both sides. The
-> only difference between them is whether the gateway is allowed to refuse.
+> It takes a few seconds, because these are real model calls.
 >
-> On the left, nothing can stop it, so it simply keeps buying. And watch the
-> refusals arrive on the right, one at a time, each one naming the limit that
-> caused it.
+> On the left, nothing can refuse it, so it just keeps buying whatever the
+> poisoned catalogue offers. On the right, the same AI picks the same things, and
+> every order past a limit is refused, with the limit named.
 >
-> Same agent. Same poisoned catalogue.
->
-> On the left, two thousand seven hundred and fifty-eight rupees. On the right,
-> eight hundred and thirty-six.
->
-> That gap is the whole product.
+> Now watch the two totals. That gap is the whole product.
 
 ## 3:09 – 3:37 · Your own rules
 
 *On screen: "Write your own rules", the compile, then an over-cap item refused.*
 
-> Now, it shouldn't be our limits that matter. It should be yours.
+> Of course, none of that matters if the limits are ours. So type your own, in
+> plain English.
 >
-> So type what you would allow, in your own words. A compiler reads it twice, at
-> temperature zero, and it refuses to commit if the two readings disagree.
+> An AI reads your sentence twice, and if the two readings disagree it refuses
+> rather than guess. Those become real limits, live for your visit.
 >
-> Then try to get something past your own cap. Refused — quoting your number,
-> not ours, through exactly the same gateway everything else here runs on.
+> Now try to get an order past them. Refused, quoting your number, not ours,
+> through the same gateway everything else here runs on.
 
 ## 3:37 – 3:57 · The storefront
 
 *On screen: /store, orders that landed and refusals with struck-through amounts.*
 
-> Here is the shop's side of the same story — what the agent actually managed
-> to buy.
+> Here is the shop's side of it. What the agent actually bought, and underneath,
+> the orders that never happened.
 >
-> And underneath it, the ones that never happened. The clause that refused each
-> one, and the amount that never left the account, struck through.
+> Each refusal names the limit, and shows the amount struck through. Every
+> struck-through line is money that stayed in the account.
 >
-> Every refusal on this page is a rupee that stayed where it was.
+> Every row here is a real decision, not a mock-up.
 
 ## 3:57 – 4:16 · The same tools, with the mandate in front
 
 *On screen: back on /rails, the tool block, then the two wire panels side by side.*
 
-> Back to those forty-two tools. Same list, with the mandate in front.
+> Back to those forty-two tools, with the mandate in front. Four move money, so
+> they get checked. Twelve are refused outright.
 >
-> Four get checked. Twelve are refused outright.
+> And anything Razorpay adds tomorrow is refused until somebody decides which
+> limit governs it.
 >
-> Same request, same keys, same server. On the left, a fifty thousand rupee
-> link gets created. On the right, it names the limit and never makes the call.
+> Same request, same keys: created on the left, refused on the right.
 
 ## 4:16 – 4:33 · The rails
 
 *On screen: the tally bars subtracting, the clause table, ending on the NOWHERE row.*
 
-> So where does the rest of this sit?
+> So where does the rest live?
 >
-> A-P-two carries some. Reserve Pay carries three.
+> Some of it fits A-P-two. Less fits Reserve Pay.
 >
-> This one, an extra check above fifteen thousand rupees, is the regulator's own
-> rule. It fits on neither rail. The gateway holds it because they cannot.
+> And this one, an extra check above fifteen thousand rupees, is the regulator's
+> own rule. It fits neither. The gateway holds it because the rails cannot.
 
 ## 4:33 – 4:55 · The rail's own mandate, and the close
 
 *On screen: the exposure callout, then the button click, then a real QR code resolving.*
 
-> And here is your two thousand rupees on the rail. One block names one shop,
-> so covering all three means blocking six thousand to authorise two.
+*Timing: the QR resolves late, about twenty seconds into this twenty-two second
+beat, because it waits on a live Razorpay call. Pace the first half slowly so
+"Everything it can hold" lands as the code appears, and hold "You meant twelve"
+against it.*
+
+> One block on the rail names one shop. Covering all three of your shops means
+> blocking six thousand rupees to authorise two.
 >
-> This is live, created just now from the signed policy. Scan it.
+> And this one is real, created on Razorpay's rail a moment ago. Everything it can
+> hold: a cap, one shop, an expiry.
 >
-> A cap, one shop, an expiry. Three fields. You meant twelve.
+> Three fields. You meant twelve.
 >
 > That's Mandate. Thank you for watching.
 
