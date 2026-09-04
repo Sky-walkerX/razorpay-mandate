@@ -12,7 +12,9 @@
     "clips": "node voice.mjs clips",
     "rehearse": "node voice.mjs rehearse",
     "assemble": "node voice.mjs assemble",
-    "voices": "node voice.mjs list"
+    "voices": "node voice.mjs list",
+    "sync-script": "node sync-script.mjs",
+    "check-script": "node sync-script.mjs --check"
   },
   "dependencies": {
     "playwright": "^1.49.0"

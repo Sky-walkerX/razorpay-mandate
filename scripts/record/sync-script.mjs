@@ -1,0 +1,90 @@
+/**
+ * Rewrite the voiceover script's timecodes from a take's own measured shots.
+ *
+ * The headings in `docs/video/voiceover-script.md` are `## M:SS - M:SS · Title`
+ * and a person reads against them. They are also the only numbers in the video
+ * pipeline that were maintained by hand, and on 4 Sep that is exactly what went
+ * wrong: inserting one beat left two sections both claiming 0:21 and every
+ * heading after them describing the old cut.
+ *
+ * So they are derived now, like every other number in this repo. Section N takes
+ * its window from shot N of the take, in order, and the two counts must match or
+ * this refuses rather than guessing which section moved.
+ *
+ * `assemble` still pins the audio from `shot-times.json` itself. This only fixes
+ * what the reader sees, so the page and the cut agree.
+ *
+ *   node sync-script.mjs                 newest take, write
+ *   node sync-script.mjs --check         exit 1 if the file is out of date
+ *   node sync-script.mjs --take <dir>    a specific take
+ */
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const OUT = join(HERE, 'out');
+const SCRIPT = resolve(HERE, '../../docs/video/voiceover-script.md');
+
+const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+
+function newestTake() {
+  const takes = readdirSync(OUT)
+    .filter((d) => d.startsWith('take-'))
+    .sort()
+    .reverse();
+  for (const t of takes) {
+    try {
+      readFileSync(join(OUT, t, 'shot-times.json'));
+      return join(OUT, t);
+    } catch { /* a take that never got far enough to write one */ }
+  }
+  throw new Error('no take with a shot-times.json in out/');
+}
+
+const args = process.argv.slice(2);
+const check = args.includes('--check');
+const takeDir = args.includes('--take') ? args[args.indexOf('--take') + 1] : newestTake();
+
+const times = JSON.parse(readFileSync(join(takeDir, 'shot-times.json'), 'utf8'));
+const shots = times.shots.map((s) => ({
+  id: s.id,
+  seconds: s.actual ?? (s.tEnd - s.tStart) / 1000,
+}));
+
+const md = readFileSync(SCRIPT, 'utf8');
+const headings = [...md.matchAll(/^## (\d:\d\d)\s*[–-]\s*(\d:\d\d)\s*·\s*(.*)$/gm)];
+
+if (headings.length !== shots.length) {
+  console.error(
+    `\n  ${headings.length} script sections against ${shots.length} shots.\n` +
+    `  Add or remove a section so they line up; this will not guess.\n\n` +
+    shots.map((s, i) => `   ${String(i + 1).padStart(2)}  ${s.id}`).join('\n') + '\n',
+  );
+  process.exit(1);
+}
+
+let t = 0;
+let out = md;
+const rows = [];
+for (const [i, h] of headings.entries()) {
+  const start = t;
+  t += shots[i].seconds;
+  const want = `## ${mmss(start)} – ${mmss(t)} · ${h[3]}`;
+  rows.push([shots[i].id, h[3], h[0] === want ? '' : `was ${h[1]}–${h[2]}`]);
+  out = out.replace(h[0], want);
+}
+
+const stale = rows.filter((r) => r[2]).length;
+console.log(`\n  ${takeDir.split('/').pop()}  ${mmss(t)} total\n`);
+for (const [id, title, note] of rows) {
+  console.log(`   ${id.padEnd(18)} ${title.padEnd(42)} ${note}`);
+}
+
+if (check) {
+  console.log(stale ? `\n  ${stale} heading(s) out of date\n` : '\n  in sync\n');
+  process.exit(stale ? 1 : 0);
+}
+
+writeFileSync(SCRIPT, out);
+console.log(stale ? `\n  rewrote ${stale} heading(s)\n` : '\n  already in sync\n');
