@@ -228,7 +228,23 @@ def build_razorpay_proxy_server(
             return {"allowed": True, "tool": tool, "upstream_error": str(e)}
 
     def _bound(tool: str, args: dict[str, Any], ctx: Context) -> dict[str, Any]:
-        session = session_for(headers_of(ctx))
+        # A raise here reaches the client as a bare "Error executing tool
+        # <name>" once the MCP server is configured to mask error detail, which
+        # it is in production. The caller then cannot tell an authentication
+        # problem from a broken gateway. Every other answer on this surface is a
+        # structured refusal, so this one is too.
+        try:
+            session = session_for(headers_of(ctx))
+        except PermissionError as e:
+            return {
+                "allowed": False,
+                "tool": tool,
+                "verdict": "DENY",
+                "clause": "authentication",
+                "message": str(e),
+                "mandate_id": policy.mandate_id,
+            }
+
         raw = args.get(_AMOUNT_ARG)
         if raw is None:
             return {"allowed": False, "tool": tool, "verdict": "DENY",

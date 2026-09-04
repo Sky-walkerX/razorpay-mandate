@@ -391,7 +391,8 @@ def test_a_money_moving_call_needs_a_mandate_token(service):
     reaches a real merchant account, so it may not."""
     client, made = service
     body = _rpc(client, "create_payment_link", {"amount": 30000, "currency": "INR"})
-    assert "needs a mandate token" in str(body)
+    assert body["allowed"] is False
+    assert "needs a mandate token" in body["message"]
     assert made[0].calls == []
 
 
@@ -416,4 +417,21 @@ def test_a_refused_call_still_never_reaches_razorpay(service):
                 {"amount": 5000000, "currency": "INR"}, token=_token())
     assert body["allowed"] is False
     assert body["clause"] == str(C.BUDGET_PER_TRANSACTION)
+    assert made[0].calls == []
+
+
+def test_a_missing_token_is_a_refusal_the_client_can_read(service):
+    """Not a raised exception, because the server masks those in production.
+
+    A raise reaches the client as a bare "Error executing tool
+    create_payment_link", so a judge cannot tell an authentication problem from
+    a broken gateway. Found on the deployed service, not locally, because the
+    local server does not mask error detail.
+    """
+    client, made = service
+    body = _rpc(client, "create_payment_link", {"amount": 30000, "currency": "INR"})
+    assert isinstance(body, dict), f"the refusal came back unstructured: {body!r}"
+    assert body["allowed"] is False
+    assert body["clause"] == "authentication"
+    assert "needs a mandate token" in body["message"]
     assert made[0].calls == []
