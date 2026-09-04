@@ -7,7 +7,7 @@
     "false_block_dir": "results-falseblock-hardened",
     "conformance_file": "results-conformance/conformance_results.json",
     "feed_file": "results-heldout-g37-hardened/enforce/budget_salami_005/audit.jsonl",
-    "generated": "2026-09-03T13:27:28+05:30"
+    "generated": "2026-09-04T18:32:38+05:30"
   },
   "policy": {
     "mandate_id": "mnd_groceries_01",
@@ -380,6 +380,16 @@
       "expiry": "2026-09-30T23:59:59+05:30",
       "mandate_ref": "mnd_groceries_01"
     },
+    "reserve_pay_exposure": {
+      "payees": 3,
+      "mandate_cap": 200000,
+      "blocks_needed": 3,
+      "blocked_total": 600000,
+      "refused_payees": [
+        "blinkit",
+        "instamart"
+      ]
+    },
     "regulatory": {
       "mandate_id": "mnd_groceries_01",
       "requirements": [
@@ -473,6 +483,80 @@
         }
       },
       "uap_status": "NPCI's Unified Agent Protocol is expected at the Global Fintech Fest on 9–11 September 2026. The specification is not published, so no clause in this policy is mapped onto it and none is claimed to survive it. What is public is that it is built on existing UPI rails including Reserve Pay, and that it means to let a customer set rule-based instructions for an agent covering when and how much to pay, with spending limits, audit trails and identity checks. Those three are what this project already produces and measures, which is a reason to expect the shapes to meet and not evidence that they do."
+    },
+    "razorpay_surface": {
+      "endpoint": "https://mcp.razorpay.com/mcp",
+      "mediated_path": "/mcp/razorpay",
+      "total": 42,
+      "destructive": 16,
+      "read_only": 26,
+      "bound": [
+        "capture_payment",
+        "create_order",
+        "create_payment_link",
+        "payment_link_upi_create"
+      ],
+      "refused": [
+        {
+          "tool": "create_qr_code",
+          "reason": "collects money from a third party. The mandate bounds what this agent spends, and has nothing to say about what it collects."
+        },
+        {
+          "tool": "create_registration_link",
+          "reason": "sets up a new mandate on the rail. An agent that could mint a mandate could raise its own cap, which is escalate.self by another route."
+        },
+        {
+          "tool": "fetch_tokens",
+          "reason": "enumerates the principal's saved payment instruments. The upstream flags it destructive because it can create a customer as a side effect, and the mandate does not delegate that."
+        },
+        {
+          "tool": "initiate_payment",
+          "reason": "charges a saved payment token directly. No clause bounds which instrument an agent may charge, so the mandate cannot decide it."
+        },
+        {
+          "tool": "payment_link_notify",
+          "reason": "sends SMS and email to customers. No clause bounds messaging, and the mandate must not be read as authorising it."
+        },
+        {
+          "tool": "resend_otp",
+          "reason": "drives an authentication flow the principal owns."
+        },
+        {
+          "tool": "revoke_token",
+          "reason": "revocation is the principal's control, not the agent's. An agent that could revoke could disable the limits it is spending under."
+        },
+        {
+          "tool": "submit_otp",
+          "reason": "submits an authentication factor. An agent completing its own step-up defeats afa.required, which exists to put a human in the loop."
+        },
+        {
+          "tool": "update_order",
+          "reason": "edits an order the gateway already decided and recorded."
+        },
+        {
+          "tool": "update_payment",
+          "reason": "edits a settled payment's notes. Audit fields on a completed payment are not the agent's to rewrite."
+        },
+        {
+          "tool": "update_payment_link",
+          "reason": "can change the amount of a link that was already authorised, which would let a checked figure diverge from an executed one."
+        },
+        {
+          "tool": "update_refund",
+          "reason": "edits refund records. Reversal is out of the agent's scope."
+        }
+      ],
+      "passthrough_count": 26,
+      "limits_on_a_raw_call": {
+        "evaluated": 5,
+        "not_applicable": 4,
+        "not_applicable_ids": [
+          "budget.per_item",
+          "category.deny",
+          "merchant.allow",
+          "quantity.max_per_item"
+        ]
+      }
     }
   },
   "feed": {

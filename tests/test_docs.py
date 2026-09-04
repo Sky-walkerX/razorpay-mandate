@@ -263,3 +263,76 @@ def test_only_one_module_maps_clause_ids_to_labels():
     assert holders == ["web/src/lib/plain.ts"], (
         "the clause label table is duplicated: " + ", ".join(holders)
     )
+
+
+def test_no_tsx_types_a_count_off_razorpays_tool_surface():
+    """The one number on the page that Razorpay owns, not us.
+
+    42 tools and 16 destructive are the upstream's own claims about itself, read
+    off the pinned snapshot's `destructiveHint` annotations. If Razorpay ships a
+    seventeenth money-moving tool, the classification test fails first and the
+    page then follows from `evidence.json` without anyone editing a component.
+
+    Typed into a `.tsx`, the page keeps saying 42 while the proxy serves 43, and
+    a judge who counts the cells finds the mismatch before we do. Same rule as
+    the policy bounds and the clause counts above it.
+    """
+    import re
+
+    from mandate.adapters.razorpay_proxy import BOUND, REFUSED, load_snapshot
+    from mandate.adapters.razorpay_upstream import destructive_names
+
+    tools = load_snapshot()
+    counts = {
+        len(tools),
+        len(destructive_names(tools)),
+        len(tools) - len(destructive_names(tools)),
+        len(BOUND),
+        len(REFUSED),
+    }
+    # A bare integer that happens to equal one of those counts is only a
+    # violation next to a word that makes it a claim about the surface.
+    claim = re.compile(
+        r"(?<![\w.-])(" + "|".join(str(c) for c in sorted(counts)) + r")\b"
+        r"[^.<>{}]{0,28}?\b(tool|destructive|read-only|refused|bound)s?\b",
+        re.IGNORECASE,
+    )
+
+    web_src = REPO_ROOT / "web" / "src"
+    offenders = []
+    for path in sorted(web_src.rglob("*.tsx")):
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if claim.search(line):
+                offenders.append(f"{path.relative_to(REPO_ROOT)}:{line_no}: {line.strip()[:90]}")
+
+    assert not offenders, (
+        "a component types a count off Razorpay's tool surface; read it from "
+        "SURFACE in @/data/alignment instead:\n" + "\n".join(offenders)
+    )
+
+
+def test_the_web_does_not_call_the_rail_mandate_reserve_pay():
+    """It is UPI Autopay, and someone from Razorpay will know the difference.
+
+    Reserve Pay's single-block-multiple-debit flow is gated: creating an order
+    with `token.type="single_block_multiple_debit"` on a plain test account
+    succeeds and silently drops the token spec. So no artefact this repo can
+    create is a Reserve Pay block, and a screen that labels the created link
+    "Reserve Pay" is making a claim the code cannot back.
+
+    The shadow gateway is a different thing and may still say Reserve Pay: it is
+    a projection of that rail's published vocabulary and is labelled as such.
+    This guards the created object only.
+    """
+    import re
+
+    surface = REPO_ROOT / "web" / "src" / "components" / "v2" / "MediatedSurface.tsx"
+    text = surface.read_text(encoding="utf-8")
+
+    # The component may name Reserve Pay when it is drawing the contrast, but it
+    # must never present the created link as one.
+    bad = re.compile(r"Reserve Pay[^.\n]{0,40}\b(link|mandate we|created|opened)\b", re.IGNORECASE)
+    assert not bad.search(text), "the created rail object is UPI Autopay, not Reserve Pay"
+    assert "UPI Autopay" in text or "product" in text, (
+        "the created object must name the product it actually is"
+    )

@@ -10,6 +10,7 @@ import {
 import type { Fate, Status } from '@/data/alignment';
 import { cn } from '@/lib/utils';
 import { PART_COUNT } from '@/data/policy';
+import { RazorpaySurface, RailMandate } from '@/components/v2/MediatedSurface';
 
 /**
  * Section: where this policy lives on the rails, and under the regulation.
@@ -138,6 +139,7 @@ export default function Alignment() {
             <MandateLockup />
           </Link>
           <div className="ml-3 hidden gap-[22px] text-[13.5px] text-ink-2 lg:flex">
+            <a href="#surface" className="transition-colors hover:text-ink">The surface today</a>
             <a href="#rails" className="transition-colors hover:text-ink">On the rails</a>
             <a href="#regulation" className="transition-colors hover:text-ink">Under the regulation</a>
             <a href="#export" className="transition-colors hover:text-ink">Export</a>
@@ -195,6 +197,12 @@ export default function Alignment() {
             <span>computed by mandate.policy.rails</span>
           </div>
         </header>
+
+        {/* ── what an agent can reach today ─────────────────────────────
+            First, and deliberately. Everything below this argues from a
+            projection of the rail's vocabulary; this argues from an endpoint
+            anyone in the room can curl. Evidence before the table. */}
+        <RazorpaySurface />
 
         {/* ── the two tallies ───────────────────────────────────────────── */}
         <section id="rails" className="scroll-mt-[76px] py-12">
@@ -300,6 +308,9 @@ export default function Alignment() {
             and this page {RAILS.totalClauses}.
           </p>
         </section>
+
+        {/* ── the rail's own mandate ────────────────────────────────────── */}
+        <RailMandate />
 
         {/* ── the regulation ────────────────────────────────────────────── */}
         <section id="regulation" className="scroll-mt-[76px] border-t border-rule py-12">

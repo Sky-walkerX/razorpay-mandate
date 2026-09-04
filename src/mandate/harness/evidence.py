@@ -13,6 +13,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from mandate.adapters.razorpay_proxy import (
+    BOUND,
+    REFUSED,
+    classify,
+    load_snapshot,
+)
+from mandate.adapters.razorpay_upstream import destructive_names
+from mandate.gateway.applicability import applicability_for_raw
 from mandate.policy import rails, regulatory
 from mandate.policy.canonical import policy_hash
 from mandate.policy.labels import PART_LABELS
@@ -190,7 +198,33 @@ def _alignment(pol, pol_hash: str) -> dict[str, Any]:
             "cli": "mandate ap2-export",
         },
         "reserve_pay": rails.to_reserve_pay(pol),
+        "reserve_pay_exposure": rails.reserve_pay_exposure(pol).model_dump(),
         "regulatory": reg.model_dump(),
+        "razorpay_surface": _razorpay_surface(pol),
+    }
+
+
+def _razorpay_surface(pol) -> dict[str, Any]:
+    """Razorpay's own agent surface, counted rather than described.
+
+    Every figure comes off the pinned tool snapshot and the upstream's own
+    `destructiveHint` annotations, so the screen cannot claim a count the
+    upstream does not make about itself. Same rule as every other number here:
+    nothing is retyped into a `.tsx`.
+    """
+    tools = load_snapshot()
+    buckets = classify([t["name"] for t in tools])
+    destructive = destructive_names(tools)
+    return {
+        "endpoint": "https://mcp.razorpay.com/mcp",
+        "mediated_path": "/mcp/razorpay",
+        "total": len(tools),
+        "destructive": len(destructive),
+        "read_only": len(tools) - len(destructive),
+        "bound": sorted(BOUND),
+        "refused": [{"tool": t, "reason": r} for t, r in sorted(REFUSED.items())],
+        "passthrough_count": sum(1 for b in buckets.values() if b == "passthrough"),
+        "limits_on_a_raw_call": applicability_for_raw(pol),
     }
 
 

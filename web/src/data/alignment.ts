@@ -111,3 +111,50 @@ export const AP2_EXPORT = {
 
 export const MANDATE_ID = evidence.policy.mandate_id;
 export const POLICY_HASH = evidence.policy.policy_hash.replace(/^sha256:/, '');
+
+/**
+ * Razorpay's own agent surface, and what a mandate in front of it does.
+ *
+ * Counted off the pinned tool snapshot and the upstream's own `destructiveHint`
+ * annotations rather than described, so the page cannot claim a count Razorpay
+ * does not make about itself. `mandate evidence` writes it; the numbers move
+ * when Razorpay's surface moves, and the classification test goes red first.
+ */
+export interface RefusedTool {
+  tool: string;
+  reason: string;
+}
+
+const s = a.razorpay_surface;
+
+export const SURFACE = {
+  endpoint: s.endpoint,
+  mediatedPath: s.mediated_path,
+  total: s.total,
+  destructive: s.destructive,
+  readOnly: s.read_only,
+  bound: s.bound as string[],
+  refused: s.refused as RefusedTool[],
+  passthroughCount: s.passthrough_count,
+  /** Of this mandate's limits, how many a call carrying only an amount can reach. */
+  evaluatedOnRawCall: s.limits_on_a_raw_call.evaluated,
+  notApplicableOnRawCall: s.limits_on_a_raw_call.not_applicable,
+  notApplicableIds: s.limits_on_a_raw_call.not_applicable_ids as string[],
+};
+
+/**
+ * What it costs to express this mandate as blocks on the rail.
+ *
+ * A block names one payee and carries its own amount, so an allowlist of three
+ * merchants under one total has two representations and both are wrong: one
+ * block refuses two allowed shops, and one block per shop blocks three times the
+ * money. Reporting only the first overstates the rail's rigidity; reporting only
+ * the second hides that blocked funds are money the user cannot spend elsewhere.
+ */
+export const EXPOSURE = {
+  payees: a.reserve_pay_exposure.payees,
+  mandateCapPaise: a.reserve_pay_exposure.mandate_cap,
+  blocksNeeded: a.reserve_pay_exposure.blocks_needed,
+  blockedTotalPaise: a.reserve_pay_exposure.blocked_total,
+  refusedPayees: a.reserve_pay_exposure.refused_payees as string[],
+};
