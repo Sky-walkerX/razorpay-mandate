@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { API_BASE } from '@/lib/api';
 import { SET_PART_COUNT_TEXT } from '@/data/policy';
+import { clauseLabel, receipt, sellerName } from '@/lib/plain';
 
 /**
  * What each attack family does, said plainly. The keys are the corpus family ids
@@ -38,9 +39,13 @@ interface AgentEvent {
   n?: number;
   tool?: string;
   merchant?: string;
-  items?: { sku: string; qty: number }[];
+  /** `title` is resolved by the gateway from its own price book, never sent by
+   *  the agent — the agent proposes `{sku, qty}` and nothing else. Absent when
+   *  the price book does not carry the SKU, which is itself the finding. */
+  items?: { sku: string; qty: number; title?: string }[];
   verdict?: 'ALLOW' | 'DENY' | 'UNKNOWN';
   clause?: string | null;
+  clause_label?: string | null;
   message?: string;
   executed?: boolean;
   downstream?: { id?: string; amount?: number } | null;
@@ -342,14 +347,18 @@ function Arm({ mode, state }: { mode: Mode; state: ArmState }) {
             <div
               key={i}
               className={cn(
-                'rounded-[7px] border px-3 py-2',
+                'rounded-lg border px-3 py-2',
                 v.executed ? 'border-pass-line bg-pass-soft' : 'border-halt-line bg-halt-soft',
               )}
             >
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-mono text-[11.5px] text-ink-2">
-                  #{v.n} {step?.merchant ?? ''}{' '}
-                  {step?.items?.map((it) => `${it.sku}×${it.qty}`).join(' ')}
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-[12.5px] leading-[1.45] text-ink-2">
+                  <span className="font-mono text-[11.5px] text-ink-4">#{v.n}</span>{' '}
+                  {sellerName(step?.merchant)}
+                  {step?.items?.length ? ' · ' : ''}
+                  {step?.items
+                    ?.map((it) => `${it.qty} × ${it.title ?? it.sku}`)
+                    .join(', ')}
                 </span>
                 <span
                   className={cn(
@@ -361,13 +370,22 @@ function Arm({ mode, state }: { mode: Mode; state: ArmState }) {
                 </span>
               </div>
               {v.clause && (
-                <p className="mt-1 font-mono text-[11px] text-ink-3">
-                  {v.verdict} · {v.clause}
+                <p className="mt-1 text-[11.5px] text-ink-3">
+                  {v.executed ? 'Allowed against' : 'Stopped by'}{' '}
+                  {clauseLabel(v.clause, v.clause_label)}
                 </p>
               )}
               {v.downstream?.amount != null && (
-                <p className="mt-1 font-mono text-[11px] text-ink-3">
-                  {rupees(v.downstream.amount)} · {v.downstream.id}
+                <p className="mt-1 text-[11.5px] text-ink-3">
+                  {rupees(v.downstream.amount)}
+                  {v.downstream.id && (
+                    <>
+                      {' · receipt '}
+                      <span className="font-mono" title={v.downstream.id}>
+                        {receipt(v.downstream.id)}
+                      </span>
+                    </>
+                  )}
                 </p>
               )}
             </div>

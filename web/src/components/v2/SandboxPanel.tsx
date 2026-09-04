@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { FileCode2, Lock, ShieldOff, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { clauseLabel, plainMessage } from '@/lib/plain';
 
 /**
  * Bring your own mandate: a visitor writes an intent, it compiles, and the same
@@ -23,6 +24,10 @@ import { cn } from '@/lib/utils';
 
 interface Constraint {
   id: string;
+  /** The clause's name for a reader, sent by the server from the signed
+   *  policy's own label map. `clauseLabel` falls back if an older build
+   *  answers without one. */
+  label?: string;
   spec: unknown;
   source: 'heard' | 'inferred' | 'regulatory';
 }
@@ -51,6 +56,7 @@ interface CatalogItem {
 interface Probe {
   verdict: string;
   clause_id: string | null;
+  clause_label: string | null;
   message: string;
   executed: boolean;
   amount_paise: number;
@@ -166,13 +172,14 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
       setProbe({
         verdict: dec.verdict ?? 'ERROR',
         clause_id: dec.clause_id ?? null,
+        clause_label: data.clause_label ?? dec.clause_label ?? null,
         message: dec.message ?? data.detail ?? '',
         executed: Boolean(dec.executed),
         amount_paise: data.record?.action?.amount ?? item.unit_price * qty,
       });
     } catch (e) {
       setProbe({
-        verdict: 'ERROR', clause_id: null,
+        verdict: 'ERROR', clause_id: null, clause_label: null,
         message: e instanceof Error ? e.message : 'no answer', executed: false,
         amount_paise: 0,
       });
@@ -312,7 +319,7 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
             <ul className="divide-y divide-hair">
               {sandbox.constraints.map((c) => (
                 <li key={c.id} className="flex items-center justify-between gap-3 px-5 py-[10px]">
-                  <span className="font-mono text-[11.5px] text-ink-2">{c.id}</span>
+                  <span className="text-[13px] text-ink-2">{clauseLabel(c.id, c.label)}</span>
                   <span className="flex items-center gap-2.5">
                     <span className="text-[13px] text-ink">{readBound(c.id, c.spec)}</span>
                     <span
@@ -395,7 +402,14 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
                   >
                     {probe.executed ? 'Went through' : 'Refused'}
                   </div>
-                  <p className="mt-1.5 text-[13px] leading-[1.5] text-ink">{probe.message}</p>
+                  {!probe.executed && probe.clause_id && (
+                    <p className="mt-1.5 text-[13px] font-medium leading-[1.5] text-ink">
+                      {clauseLabel(probe.clause_id, probe.clause_label)}
+                    </p>
+                  )}
+                  <p className="mt-1 text-[13px] leading-[1.5] text-ink-2">
+                    {plainMessage(probe.message)}
+                  </p>
                   <p className="mt-1.5 text-[12px] leading-[1.5] text-ink-2">
                     {probe.executed
                       ? 'Inside every limit you wrote, so the payment went through.'

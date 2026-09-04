@@ -11,6 +11,7 @@ from mandate.downstream.fake import DownstreamError, DownstreamTimeout
 from mandate.gateway.action import (
     Action,
     Proposal,
+    RawProposal,
     ResolvedAction,
     ResolvedLineItem,
     canonical_intent,
@@ -168,6 +169,27 @@ class Gateway:
             capability=getattr(prop, "capability", None),
         )
 
+    def _resolve_raw_to_action(self, prop: RawProposal) -> ResolvedAction:
+        """Identity-resolve a raw proposal. Same discipline, different source of truth.
+
+        There is no catalog behind `create_payment_link(amount=...)`, so there is
+        nothing to look the figure up in: the request is the action. What must
+        hold is not "no agent field is read" but "the checked figure is the
+        executed figure", and that is made structural here rather than promised.
+
+        `prop.amount` is read exactly once, on this line, and written to
+        `ResolvedAction.amount`. Every constraint reads the resolved action, and
+        the forwarder rebuilds the upstream arguments from it. The agent's own
+        argument dict is discarded after this point and never consulted again.
+        """
+        return ResolvedAction(
+            type=prop.type,
+            amount=prop.amount,
+            merchant=prop.merchant,
+            items=[],
+            downstream_ref=prop.ref,
+        )
+
     def _resolve(self, action: ResolvedAction) -> tuple[str | None, dict[str, str | None]]:
         if self.resolver is None:
             return action.merchant, {i.sku: i.category for i in action.items}
@@ -226,7 +248,7 @@ class Gateway:
 
     def propose(
         self,
-        proposal: Proposal | Action,
+        proposal: Proposal | Action | RawProposal,
         now: datetime,
         token: str | None = None,
     ) -> Decision:
@@ -244,7 +266,11 @@ class Gateway:
 
             # 2. Resolve references into facts.
             try:
-                action = self._resolve_to_action(proposal)
+                action = (
+                    self._resolve_raw_to_action(proposal)
+                    if isinstance(proposal, RawProposal)
+                    else self._resolve_to_action(proposal)
+                )
             except KeyError as e:
                 return Decision(
                     verdict=Verdict.DENY,
@@ -314,11 +340,16 @@ class Gateway:
 
         if may_execute:
             try:
+                # `action`, never `proposal`. A downstream that could see the
+                # proposal could execute a figure the constraints never saw,
+                # which is the whole failure this class exists to remove. Same
+                # rule `OrderStore.record()` already follows.
                 downstream_body = self.downstream.create_order(
                     action.amount,
                     receipt=idem,
                     notes={"mandate_id": self.policy.mandate_id},
                     skus=[i.sku for i in action.items],
+                    action=action,
                 )
                 downstream_amt = downstream_body.get("amount") if downstream_body else None
                 if downstream_amt is not None and int(downstream_amt) != int(action.amount):

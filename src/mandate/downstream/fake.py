@@ -37,6 +37,7 @@ class FakeDownstream:
         receipt: str,
         notes: dict,
         skus: list[str] | None = None,
+        action=None,
     ) -> dict:
         factor = max((self._mult.get(s, 1) for s in (skus or [])), default=1)
         charged = Paise(int(amount) * factor)

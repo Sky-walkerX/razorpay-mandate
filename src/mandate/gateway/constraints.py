@@ -58,6 +58,14 @@ def merchant_allow(ctx: EvalContext) -> ClauseResult:
     if (r := _absent(C.MERCHANT_ALLOW, ctx)):
         return r
     allowed = [str(m) for m in ctx.policy.constraints[C.MERCHANT_ALLOW]]
+    # No line items means no basket and no counterparty: a raw call like
+    # `create_payment_link` acts on the principal's own Razorpay account, so
+    # there is no payee for an allowlist to be about. Same shape as
+    # `budget_per_item` and `quantity_max_per_item` above, and it cannot loosen a
+    # basket, because a basket always carries items.
+    if not ctx.action.items:
+        return ClauseResult(id=C.MERCHANT_ALLOW, result=Verdict.ALLOW, limit=allowed,
+                            detail="no payee to check")
     if ctx.resolved_merchant is None:
         return ClauseResult(id=C.MERCHANT_ALLOW, result=Verdict.UNKNOWN,
                             observed=ctx.action.merchant, limit=allowed,

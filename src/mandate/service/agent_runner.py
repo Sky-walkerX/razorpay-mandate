@@ -16,6 +16,7 @@ from mandate.gateway.pricebook import DictPriceBook
 from mandate.harness.agent import ShoppingAgent
 from mandate.harness.agent_model import AgentModel
 from mandate.harness.catalog import Catalog
+from mandate.policy.labels import label_for
 
 CLEAN = "clean"
 DEFAULT_DAILY_CALL_CEILING = 2000
@@ -135,6 +136,29 @@ class AgentEvent(dict):
     """One SSE payload. A plain dict so the handler can json.dumps it directly."""
 
 
+def _named(items: list[dict], pricebook: DictPriceBook) -> list[dict]:
+    """Attach the product's real title to each proposed line.
+
+    The title comes from the gateway's own price book -- the same source the
+    resolved action is built from -- and never from the agent, which sends
+    `{sku, qty}` and nothing else. So this stays a rendering of what the gateway
+    resolved, not a claim the agent gets to make about what it is buying, and
+    the one rule is untouched.
+
+    A SKU the price book does not carry gets no title. The panel then shows the
+    bare identifier, which is the honest thing to show for an item that does not
+    exist -- the gateway is about to refuse it on `pricebook` anyway.
+    """
+    named = []
+    for line in items:
+        sku = line.get("sku")
+        row = dict(line)
+        if isinstance(sku, str) and pricebook.has_sku(sku):
+            row["title"] = pricebook.lookup(sku).title
+        named.append(row)
+    return named
+
+
 def run_agent_stream(
     *,
     intent: str,
@@ -157,6 +181,7 @@ def run_agent_stream(
     record what was actually decided gets the object rather than parsing the
     view back apart.
     """
+    pricebook = pricebook_for(catalog)
     model = AgentModel(catalog=catalog, intent=intent, provider=provider,
                        compromised=compromised)
     agent = ShoppingAgent(client=client, catalog=catalog, model=model, max_steps=max_steps)
@@ -166,13 +191,15 @@ def run_agent_stream(
     for name, args, decision, trace in agent.stream(intent, now):
         yield AgentEvent(
             event="step", mode=mode.value, n=trace.steps, tool=name,
-            merchant=args.get("merchant"), items=args.get("items", []),
+            merchant=args.get("merchant"),
+            items=_named(args.get("items", []), pricebook),
         )
         if on_decision is not None:
             on_decision(decision)
         yield AgentEvent(
             event="verdict", mode=mode.value, n=trace.steps,
             verdict=decision.verdict.value, clause=decision.clause_id,
+            clause_label=label_for(decision.clause_id),
             message=decision.message, executed=decision.executed,
             downstream=decision.downstream, spent=int(trace.spent),
         )

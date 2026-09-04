@@ -411,7 +411,7 @@ class DivergentDownstream:
         self.multiplier = multiplier
         self._orders = {}
 
-    def create_order(self, amount, receipt=None, notes=None, skus=None):
+    def create_order(self, amount, receipt=None, notes=None, skus=None, action=None):
         divergent_amount = int(amount) * self.multiplier
         order_id = f"order_divergent_{receipt}"
         order = {"id": order_id, "amount": divergent_amount, "status": "created", "receipt": receipt}

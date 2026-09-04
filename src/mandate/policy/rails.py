@@ -167,6 +167,41 @@ def diff(policy: Policy, policy_hash: str = "") -> RailDiff:
     )
 
 
+class ReservePayExposure(BaseModel):
+    """What it costs to express this mandate as Reserve Pay blocks."""
+    payees: int
+    mandate_cap: Paise
+    blocks_needed: int
+    blocked_total: Paise
+    refused_payees: list[str]
+
+
+def reserve_pay_exposure(policy: Policy) -> ReservePayExposure:
+    """The rail cannot say "Rs 2,000 across these three shops", and this is the bill.
+
+    A block names one payee and carries its own amount, so an allowlist of three
+    merchants under one total has exactly two representations and both are wrong:
+
+      one block   the intent is served at one shop and the other two are refused
+      per payee   all three shops work, and the user blocks three times the money
+
+    Reporting only the first overstates the rail's rigidity; reporting only the
+    second hides that blocked funds are real money the user cannot spend
+    elsewhere. So both are reported, and the honest statement is that neither
+    equals the mandate.
+    """
+    payees = [str(m) for m in (policy.constraints.get(C.MERCHANT_ALLOW) or [])]
+    cap = Paise(int(policy.constraints.get(C.BUDGET_TOTAL, {}).get("max", 0)))
+    n = max(len(payees), 1)
+    return ReservePayExposure(
+        payees=len(payees),
+        mandate_cap=cap,
+        blocks_needed=n,
+        blocked_total=Paise(int(cap) * n),
+        refused_payees=payees[1:],
+    )
+
+
 def money_at_risk(policy: Policy) -> Paise:
     """What a rail-only authorisation leaves spendable that the policy would refuse.
 
@@ -190,7 +225,7 @@ __all__ = [
 ]
 
 
-def project_to_reserve_pay(policy: Policy) -> Policy:
+def project_to_reserve_pay(policy: Policy, payee: str | None = None) -> Policy:
     """The same mandate as UPI Reserve Pay would hold it, and nothing more.
 
     Reserve Pay blocks an amount against one payee until an expiry. Every clause
@@ -198,6 +233,19 @@ def project_to_reserve_pay(policy: Policy) -> Policy:
     dropped rather than quietly enforced by us on the rail's behalf. The payee
     list narrows to one entry for the same reason: a block names a single payee,
     so carrying all three would credit the rail with a capability it lacks.
+
+    **Which one is `payee`, and it matters.** Narrowing to `payees[0]` models the
+    weakest possible Reserve Pay: a user who happened to set their block up at a
+    shop they are not currently using. Every refusal then lands on the payee and
+    the comparison says nothing about the shape of the rail's vocabulary, which
+    is the entire argument. The honest model is the strongest Reserve Pay, the
+    block a user would actually have opened for the shop being used, so callers
+    pass the payee being proposed against. A user shopping at three shops opens
+    three blocks; that is what the rail requires, and it is a finding rather than
+    an inconvenience.
+
+    An unknown or absent payee falls back to the first entry, because a block has
+    to name someone and inventing one the user never allowed would be worse.
 
     The projection reads the table above rather than restating it. Two opinions
     about the rail's vocabulary would let `/rails` and the shadow gateway drift
@@ -213,5 +261,7 @@ def project_to_reserve_pay(policy: Policy) -> Policy:
     }
     payees = kept.get(C.MERCHANT_ALLOW)
     if isinstance(payees, list) and payees:
-        kept[C.MERCHANT_ALLOW] = [payees[0]]
+        want = (payee or "").strip().lower()
+        match = next((p for p in payees if str(p).strip().lower() == want), None)
+        kept[C.MERCHANT_ALLOW] = [match if match is not None else payees[0]]
     return policy.model_copy(update={"constraints": kept})

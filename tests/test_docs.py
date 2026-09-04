@@ -197,3 +197,69 @@ def test_no_tsx_spells_out_how_many_limits_the_policy_carries():
         "Use PARTS.length (kinds the gateway checks) and the count of parts whose\n"
         "source is not 'unset' (kinds this mandate sets):\n" + "\n".join(offenders)
     )
+
+
+# Where rendering an identifier is the point rather than a leak: the ledger row
+# and the decision feed exist to be reconciled against the signed document, and
+# the clause reference table's whole subject is the vocabulary of the policy.
+IDENTIFIERS_BELONG_HERE = {
+    "components/v2/GapAndParts.tsx",
+    "components/dashboard/DecisionFeed.tsx",
+    "components/dashboard/LedgerChain.tsx",
+}
+
+
+def test_a_rendered_clause_id_goes_through_the_label_lookup():
+    """`budget.per_transaction` is a log line, not a sentence.
+
+    Every clause carries two names. The identifier belongs in the audit chain
+    and the policy contract view; everywhere else a first-time visitor should
+    read "Most per order". The API sends both, so a component that renders the
+    id straight is one that never asked for the label -- which is how the
+    sandbox and the storefront came to print identifiers while the console
+    beside them printed names.
+
+    The rule is the lookup, not the absence: a clause id passed into
+    `clauseLabel` is exactly right. Holding one is fine too -- a table keyed by
+    clause id is a table, and an attack preset carrying a payload has to carry
+    it. Printing one raw is the regression.
+    """
+    web_src = REPO_ROOT / "web" / "src"
+    # A JSX interpolation in a text position. Not `key={...}` or any other prop,
+    # and not a `${...}` inside a template literal, both of which are preceded
+    # by a character this excludes.
+    rendered = re.compile(r"(?<![=$\w])\{[^{}]*\.clause_id\b[^{}]*\}")
+
+    offenders = []
+    for path in sorted(web_src.rglob("*.tsx")):
+        if path.relative_to(web_src).as_posix() in IDENTIFIERS_BELONG_HERE:
+            continue
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            hit = rendered.search(line)
+            if hit and "clauseLabel" not in line:
+                offenders.append(f"{path.relative_to(REPO_ROOT)}:{line_no}: {hit.group(0)!r}")
+
+    assert not offenders, (
+        "a visitor-facing component renders a clause identifier raw.\n"
+        "Pass it through clauseLabel(id, served) from web/src/lib/plain.ts:\n"
+        + "\n".join(offenders)
+    )
+
+
+def test_only_one_module_maps_clause_ids_to_labels():
+    """The web-side label table lives in `lib/plain.ts` and nowhere else.
+
+    Server-side the same map had drifted into four copies, one of which spelled
+    the expiry clause `time_window` against the policy's `time.window`, so the
+    web could not match that one row to a label. A second copy on the web is the
+    same bug with a shorter fuse.
+    """
+    web_src = REPO_ROOT / "web" / "src"
+    holders = [
+        p.relative_to(REPO_ROOT).as_posix()
+        for p in sorted(web_src.rglob("*.ts*"))
+        if "'Most per order'" in p.read_text(encoding="utf-8")
+    ]
+    assert holders == ["web/src/lib/plain.ts"], (
+        "the clause label table is duplicated: " + ", ".join(holders)
+    )

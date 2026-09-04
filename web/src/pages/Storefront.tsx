@@ -7,6 +7,7 @@ import { SellerChip } from '@/components/v2/SellerMark';
 import { StatusBadge, type Tone } from '@/components/dashboard/StatusBadge';
 import { rupees, rupeesWhole } from '@/lib/money';
 import { API_BASE } from '@/lib/api';
+import { clauseLabel, familyName, plainMessage, receipt, sellerName } from '@/lib/plain';
 
 /**
  * The shop floor.
@@ -25,12 +26,6 @@ import { API_BASE } from '@/lib/api';
 const POLL_INTERVAL_MS = 1500;
 const TOKEN_KEY = 'mandate_judge_token';
 const EASE = [0.22, 0.61, 0.36, 1] as const;
-
-const SELLER_NAMES: Record<string, string> = {
-  zepto: 'Zepto',
-  blinkit: 'Blinkit',
-  instamart: 'Instamart',
-};
 
 const TONE_BY_STATUS: Record<string, Tone> = {
   EXECUTED: 'pass',
@@ -63,6 +58,10 @@ interface StoreOrder {
   status: 'EXECUTED' | 'REFUSED' | 'UNKNOWN';
   verdict: string;
   clause_id: string | null;
+  /** The clause's name for a reader, computed by the service from the signed
+   *  policy's label map at serialisation. Never persisted: a stored row keeps
+   *  the identifier, which is what a record is for. */
+  clause_label: string | null;
   message: string;
   downstream_id: string | null;
   source: string;
@@ -84,10 +83,6 @@ interface WeekBody {
   week: number;
   family: string;
   corpus_hash: string | null;
-}
-
-function sellerName(merchant: string): string {
-  return SELLER_NAMES[merchant.trim().toLowerCase()] ?? merchant;
 }
 
 /** A bearer for the one write on this page. Reused from the console if present. */
@@ -163,22 +158,31 @@ function OrderCard({
       >
         {refused ? (
           <>
-            <span className="font-mono text-[11px] uppercase tracking-[0.07em] text-halt">
-              {order.clause_id}
+            <span className="text-[13px] font-medium text-halt">
+              {clauseLabel(order.clause_id, order.clause_label)}
             </span>
-            <span className="text-[13px] text-ink-2">{order.message}</span>
+            <span className="text-[13px] text-ink-2">{plainMessage(order.message)}</span>
             <span className="ml-auto font-mono text-[13px] text-ink-4 line-through">
               {rupees(order.amount_paise)}
             </span>
           </>
         ) : (
           <>
-            <span className="font-mono text-[11px] uppercase tracking-[0.07em] text-ink-3">
-              {order.downstream_id ?? 'no rail reference'}
+            <span className="text-[12px] text-ink-3">
+              {order.downstream_id ? (
+                <>
+                  Receipt{' '}
+                  <span className="font-mono tracking-[0.02em]" title={order.downstream_id}>
+                    {receipt(order.downstream_id)}
+                  </span>
+                </>
+              ) : (
+                'No receipt from the payment network'
+              )}
             </span>
             {order.verdict === 'DENY' && (
               <span className="text-[13px] text-refer">
-                Executed unenforced, against {order.clause_id}
+                Went through unchecked, past {clauseLabel(order.clause_id, order.clause_label)}
               </span>
             )}
             <span className="ml-auto font-mono text-[13px] font-medium text-ink">
@@ -312,9 +316,9 @@ export default function Storefront() {
           <div>
             <h1 className="text-[27px] font-medium tracking-[-0.025em] text-ink">Your orders</h1>
             <p className="mt-1.5 max-w-[46ch] text-[13.5px] leading-[1.55] text-ink-2">
-              Placed by an agent shopping under your mandate. It names a SKU and a
-              quantity. Everything else on these rows, prices included, is the
-              gateway&rsquo;s.
+              Placed by an agent shopping under your mandate. All it gets to say is
+              which item and how many. Everything else on these rows, the prices
+              included, is the gateway&rsquo;s.
             </p>
           </div>
           <div className="flex items-end gap-8">
@@ -329,7 +333,7 @@ export default function Storefront() {
               this strip carries only the provenance and the control. */}
           {week?.corpus_hash && (
             <span className="font-mono text-[10.5px] uppercase tracking-[0.07em] text-ink-3">
-              Shelves drawn from corpus{' '}
+              Shelves drawn from test catalogue{' '}
               <span className="normal-case text-ink-4">{week.corpus_hash.slice(7, 21)}</span>
             </span>
           )}
@@ -376,7 +380,7 @@ export default function Storefront() {
               <div className="mb-3 flex items-baseline gap-3">
                 <h2 className="text-[15px] font-medium tracking-[-0.015em] text-ink">Week {n}</h2>
                 <span className="font-mono text-[10.5px] uppercase tracking-[0.07em] text-ink-3">
-                  {familyOf(n) === 'clean' ? 'clean shelf' : `seller text: ${familyOf(n)}`}
+                  {familyOf(n) === 'clean' ? 'an ordinary shelf' : familyName(familyOf(n))}
                 </span>
               </div>
               <ul className="flex flex-col gap-3">

@@ -33,6 +33,7 @@ class RazorpayDownstream:
         receipt: str,
         notes: dict,
         skus: list[str] | None = None,
+        action=None,
     ) -> dict:
         try:
             return self._c.order.create({"amount": int(amount), "currency": "INR",

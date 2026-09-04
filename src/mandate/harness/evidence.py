@@ -15,33 +15,8 @@ from typing import Any
 
 from mandate.policy import rails, regulatory
 from mandate.policy.canonical import policy_hash
+from mandate.policy.labels import PART_LABELS
 from mandate.policy.loader import load as load_policy
-
-# The nine parts in evaluation order. Only the human-readable half lives here:
-# labels and prose belong to the interface, bounds and provenance are read from
-# the signed policy so the two can never disagree.
-PART_LABELS: list[dict[str, Any]] = [
-    {"key": "budget.total", "label": "Total budget", "kind": "limit",
-     "shape": "{max: paise}", "against": "everything committed so far"},
-    {"key": "budget.per_transaction", "label": "Most per order", "kind": "limit",
-     "shape": "{max: paise}", "against": "the amount of this order"},
-    {"key": "budget.per_item", "label": "Most per item", "kind": "limit",
-     "shape": "{max: paise}", "against": "the dearest line item"},
-    {"key": "velocity", "label": "Orders allowed", "kind": "limit",
-     "shape": "{max_actions, window}", "against": "orders already committed"},
-    {"key": "quantity.max_per_item", "label": "Most of any one item", "kind": "limit",
-     "shape": "{max: int}", "against": "the quantity on each line"},
-    {"key": "merchant.allow", "label": "Shops you allow", "kind": "rule",
-     "shape": "[merchant_id]", "against": "the seller this order resolves to"},
-    {"key": "category.deny", "label": "Never buy", "kind": "rule",
-     "shape": "[category]", "against": "the category each item resolves to"},
-    {"key": "time.window", "label": "Rules expire", "kind": "rule",
-     "shape": "{before, after}", "against": "the gateway's clock"},
-    {"key": "item.deny_recent", "label": "Repeat orders", "kind": "rule",
-     "shape": "{window_days, source}", "against": "your recent order history"},
-    {"key": "afa.required", "label": "Ask me first above", "kind": "limit",
-     "shape": "{threshold: paise}", "against": "the amount of this order"},
-]
 
 VERDICT = {"ALLOW": "allow", "DENY": "deny", "UNKNOWN": "unknown"}
 

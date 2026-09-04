@@ -39,6 +39,7 @@ from mandate.gateway.tokens import (
 from mandate.harness.catalog import Catalog
 from mandate.policy.canonical import policy_hash
 from mandate.policy.crypto import SignatureInvalid, sign_bytes
+from mandate.policy.labels import PART_LABELS, label_for
 from mandate.policy.loader import load as load_policy
 from mandate.policy.models import ConstraintId as C
 from mandate.policy.models import Policy
@@ -77,7 +78,7 @@ def _compute_headroom(policy: Policy, state: AccumulatedState) -> list[dict[str,
         used = int(state.spent)
         headroom.append({
             "clause_id": "budget.total",
-            "label": "Total budget",
+            "label": label_for("budget.total"),
             "used_paise": used,
             "limit_paise": lim,
             "remaining_paise": max(0, lim - used),
@@ -89,7 +90,7 @@ def _compute_headroom(policy: Policy, state: AccumulatedState) -> list[dict[str,
         lim = int(c[C.BUDGET_PER_TRANSACTION]["max"])
         headroom.append({
             "clause_id": "budget.per_transaction",
-            "label": "Most per order",
+            "label": label_for("budget.per_transaction"),
             "used_paise": 0,
             "limit_paise": lim,
             "remaining_paise": lim,
@@ -101,7 +102,7 @@ def _compute_headroom(policy: Policy, state: AccumulatedState) -> list[dict[str,
         lim = int(c[C.BUDGET_PER_ITEM]["max"])
         headroom.append({
             "clause_id": "budget.per_item",
-            "label": "Most per item",
+            "label": label_for("budget.per_item"),
             "used_paise": 0,
             "limit_paise": lim,
             "remaining_paise": lim,
@@ -114,7 +115,7 @@ def _compute_headroom(policy: Policy, state: AccumulatedState) -> list[dict[str,
         used = int(state.action_count)
         headroom.append({
             "clause_id": "velocity",
-            "label": "Orders allowed",
+            "label": label_for("velocity"),
             "used_count": used,
             "limit_count": lim,
             "remaining_count": max(0, lim - used),
@@ -126,7 +127,7 @@ def _compute_headroom(policy: Policy, state: AccumulatedState) -> list[dict[str,
         lim = int(c[C.QUANTITY_MAX_PER_ITEM]["max"])
         headroom.append({
             "clause_id": "quantity.max_per_item",
-            "label": "Most of any one item",
+            "label": label_for("quantity.max_per_item"),
             "used_count": 0,
             "limit_count": lim,
             "remaining_count": lim,
@@ -163,7 +164,7 @@ def _source(cid, policy) -> str:
     return "inferred"
 
 
-def _reserve_pay_shadow(session, prop, now, token: str) -> dict | None:
+def _reserve_pay_shadow(session, prop, now, token: str, shadow_for=None) -> dict | None:
     """Answer the same proposal as UPI Reserve Pay would, for the panel beside
     the verdict.
 
@@ -176,7 +177,11 @@ def _reserve_pay_shadow(session, prop, now, token: str) -> dict | None:
     This is a projection of Reserve Pay's published vocabulary, not an emulation
     of Razorpay's implementation, and the UI says so.
     """
-    shadow = getattr(session, "shadow", None)
+    if shadow_for is None:
+        return None
+    # The block a user would actually have opened for the shop being used, not
+    # whichever payee happened to sort first. See `project_to_reserve_pay`.
+    shadow = shadow_for(session, getattr(prop, "merchant", None))
     if shadow is None:
         return None
     dec = shadow.propose(prop, now=now, token=token)
@@ -186,6 +191,7 @@ def _reserve_pay_shadow(session, prop, now, token: str) -> dict | None:
     return {
         "verdict": str(dec.verdict),
         "clause_id": dec.clause_id,
+        "clause_label": label_for(dec.clause_id),
         "message": dec.message,
         "executed": dec.executed,
         "payee": payees[0] if payees else None,
@@ -372,77 +378,60 @@ def create_app(
         ]
         return JSONResponse(items)
 
-    async def get_policy(req: Request):
-        # Human-readable parts
-        parts = []
+    def _bound(key: str) -> tuple[str, int | None] | None:
+        """The clause's bound as a person reads it, and as a number.
+
+        Returns None for a clause this policy does not set, so the caller drops
+        the row rather than printing a bound nobody signed.
+        """
         c = policy.constraints
-        # 1. Total budget
-        if C.BUDGET_TOTAL in c:
-            val = c[C.BUDGET_TOTAL]
-            lim = int(val["max"]) if "max" in val else 200000
+        if key == "budget.total" and C.BUDGET_TOTAL in c:
+            lim = int(c[C.BUDGET_TOTAL].get("max", 200000))
+            return f"\u20b9{lim/100:,.2f}", lim
+        if key == "budget.per_transaction" and C.BUDGET_PER_TRANSACTION in c:
+            lim = int(c[C.BUDGET_PER_TRANSACTION].get("max", 100000))
+            return f"\u20b9{lim/100:,.2f}", lim
+        if key == "budget.per_item" and C.BUDGET_PER_ITEM in c:
+            lim = int(c[C.BUDGET_PER_ITEM].get("max", 50000))
+            return f"\u20b9{lim/100:,.2f}", lim
+        if key == "velocity" and C.VELOCITY in c:
+            lim = int(c[C.VELOCITY].get("max_actions", 3))
+            return f"{lim} orders", lim
+        if key == "quantity.max_per_item" and C.QUANTITY_MAX_PER_ITEM in c:
+            lim = int(c[C.QUANTITY_MAX_PER_ITEM].get("max", 5))
+            return f"{lim} per item", lim
+        if key == "merchant.allow" and C.MERCHANT_ALLOW in c:
+            return ", ".join(s.title() for s in c[C.MERCHANT_ALLOW]), None
+        if key == "category.deny" and C.CATEGORY_DENY in c:
+            return ", ".join(ct.title() for ct in c[C.CATEGORY_DENY]), None
+        if key == "time.window" and (C.TIME_WINDOW in c or policy.expires):
+            return policy.expires.strftime("%-d %b %Y") if policy.expires else "Session", None
+        return None
+
+    async def get_policy(req: Request):
+        """The signed document, part by part.
+
+        Driven off `PART_LABELS` rather than a hand-written block per clause.
+        The block it replaces retyped every label, every Part number and the key
+        itself, and one of those copies had drifted: it filed the expiry clause
+        under `time_window` while the policy, the audit log and `evidence.json`
+        all call it `time.window`, so the web could not match that row to a
+        label and showed the bare identifier for it.
+        """
+        parts = []
+        for n, part in enumerate(PART_LABELS, start=1):
+            bound = _bound(part["key"])
+            if bound is None:
+                continue
+            text, maximum = bound
             parts.append({
-                "n": 1, "key": "budget.total", "label": "Total budget",
-                "kind": "limit", "bound": f"₹{lim/100:,.2f}", "max": lim,
-                "source": _source(C.BUDGET_TOTAL, policy),
-            })
-        # 2. Max per order
-        if C.BUDGET_PER_TRANSACTION in c:
-            val = c[C.BUDGET_PER_TRANSACTION]
-            lim = int(val["max"]) if "max" in val else 100000
-            parts.append({
-                "n": 2, "key": "budget.per_transaction", "label": "Most per order",
-                "kind": "limit", "bound": f"₹{lim/100:,.2f}", "max": lim,
-                "source": _source(C.BUDGET_PER_TRANSACTION, policy),
-            })
-        # 3. Max per item
-        if C.BUDGET_PER_ITEM in c:
-            val = c[C.BUDGET_PER_ITEM]
-            lim = int(val["max"]) if "max" in val else 50000
-            parts.append({
-                "n": 3, "key": "budget.per_item", "label": "Most per item",
-                "kind": "limit", "bound": f"₹{lim/100:,.2f}", "max": lim,
-                "source": _source(C.BUDGET_PER_ITEM, policy),
-            })
-        # 4. Orders per mandate
-        if C.VELOCITY in c:
-            val = c[C.VELOCITY]
-            lim = int(val["max_actions"]) if "max_actions" in val else 3
-            parts.append({
-                "n": 4, "key": "velocity", "label": "Orders allowed",
-                "kind": "limit", "bound": f"{lim} per mandate", "max": lim,
-                "source": _source(C.VELOCITY, policy),
-            })
-        # 5. Max qty per item
-        if C.QUANTITY_MAX_PER_ITEM in c:
-            val = c[C.QUANTITY_MAX_PER_ITEM]
-            lim = int(val["max"]) if "max" in val else 5
-            parts.append({
-                "n": 5, "key": "quantity.max_per_item", "label": "Most of any one item",
-                "kind": "limit", "bound": f"{lim} per item", "max": lim,
-                "source": _source(C.QUANTITY_MAX_PER_ITEM, policy),
-            })
-        # 6. Allowed sellers
-        if C.MERCHANT_ALLOW in c:
-            sellers = c[C.MERCHANT_ALLOW]
-            parts.append({
-                "n": 6, "key": "merchant.allow", "label": "Shops you allow",
-                "kind": "rule", "bound": ", ".join(s.title() for s in sellers), "max": None,
-                "source": _source(C.MERCHANT_ALLOW, policy),
-            })
-        # 7. Blocked categories
-        if C.CATEGORY_DENY in c:
-            cats = c[C.CATEGORY_DENY]
-            parts.append({
-                "n": 7, "key": "category.deny", "label": "Never buy",
-                "kind": "rule", "bound": ", ".join(ct.title() for ct in cats), "max": None,
-                "source": _source(C.CATEGORY_DENY, policy),
-            })
-        # 8. Valid until
-        if C.TIME_WINDOW in c or policy.expires:
-            parts.append({
-                "n": 8, "key": "time_window", "label": "Rules expire",
-                "kind": "rule", "bound": policy.expires.strftime("%-d %b %Y") if policy.expires else "Session", "max": None,
-                "source": _source(C.TIME_WINDOW, policy),
+                "n": n,
+                "key": part["key"],
+                "label": part["label"],
+                "kind": part["kind"],
+                "bound": text,
+                "max": maximum,
+                "source": _source(C(part["key"]), policy),
             })
 
         return JSONResponse({
@@ -505,7 +494,8 @@ def create_app(
         # Always after the real decision, and never able to disturb it. The
         # shadow is a talking point; the gateway is the product.
         try:
-            reserve_pay = _reserve_pay_shadow(session, prop, now, token)
+            reserve_pay = _reserve_pay_shadow(
+                session, prop, now, token, shadow_for=session_manager.shadow_for)
         except Exception:  # a comparison must never cost a verdict
             reserve_pay = None
 
@@ -517,6 +507,7 @@ def create_app(
             # Backwards compatibility top-level fields
             "verdict": dec_json["verdict"],
             "clause_id": dec_json["clause_id"],
+            "clause_label": label_for(dec_json["clause_id"]),
             "message": dec_json["message"],
             "idem_key": dec_json["idem_key"],
             "downstream": dec_json["downstream"],
@@ -550,6 +541,7 @@ def create_app(
             return JSONResponse({
                 "error": "invalid_capture_capability",
                 "clause_id": dec.clause_id,
+                "clause_label": label_for(dec.clause_id),
                 "detail": dec.message,
             }, status_code=403)
         return JSONResponse({"status": "captured", "result": dec.downstream})
@@ -629,7 +621,8 @@ def create_app(
                     "mandate_id": compiled_pol.mandate_id,
                     "policy_hash": policy_hash(compiled_pol),
                     "constraints": [
-                        {"id": str(cid), "spec": spec, "source": _source(cid, compiled_pol)}
+                        {"id": str(cid), "label": label_for(str(cid)), "spec": spec,
+                         "source": _source(cid, compiled_pol)}
                         for cid, spec in compiled_pol.constraints.items()
                     ],
                     "compiled": True,
@@ -769,7 +762,8 @@ def create_app(
             "source_text": sbx_policy.source_text,
             "expires_at": claims.exp,
             "constraints": [
-                {"id": str(cid), "spec": spec, "source": _source(cid, sbx_policy)}
+                {"id": str(cid), "label": label_for(str(cid)), "spec": spec,
+                 "source": _source(cid, sbx_policy)}
                 for cid, spec in sbx_policy.constraints.items()
             ],
             "questions": [q.model_dump(mode="json") for q in (res.questions or [])],
@@ -792,7 +786,10 @@ def create_app(
             "week": week if week is not None else store.current_week,
             "weeks": [w.model_dump(mode="json") for w in store.weeks()],
             "family": store.week_family(week),
-            "orders": [r.model_dump(mode="json") for r in rows],
+            "orders": [
+                {**r.model_dump(mode="json"), "clause_label": label_for(r.clause_id)}
+                for r in rows
+            ],
             "totals": {
                 "executed_paise": sum(r.amount_paise for r in executed),
                 "executed_count": len(executed),

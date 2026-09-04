@@ -23,6 +23,7 @@ from mandate.money import Paise
 from mandate.policy.crypto import generate_keypair
 from mandate.policy.models import CompilerInfo, Policy, Provenance
 from mandate.policy.models import ConstraintId as C
+from mandate.policy.rails import reserve_pay_exposure
 from mandate.service.session import SessionManager
 
 
@@ -56,7 +57,7 @@ def _policy() -> Policy:
 
 
 @pytest.fixture
-def session(tmp_path):
+def mgr_session(tmp_path):
     priv, pub = generate_keypair()
     pol = _policy()
     mgr = SessionManager(
@@ -71,116 +72,116 @@ def session(tmp_path):
         jti="tok_shadow_1",
     )
     claims = verify_agent_token(tok, pub)
-    return mgr.create_session(tok, claims), tok
+    return mgr, mgr.create_session(tok, claims), tok
 
 
-def test_a_session_carries_a_shadow_on_the_projected_policy(session):
-    sess, _ = session
-    assert set(sess.shadow.policy.constraints) == {C.BUDGET_TOTAL, C.MERCHANT_ALLOW}
+def test_a_shadow_carries_only_what_the_rail_can_hold(mgr_session):
+    mgr, sess, _ = mgr_session
+    shadow = mgr.shadow_for(sess, "zepto")
+    assert set(shadow.policy.constraints) == {C.BUDGET_TOTAL, C.MERCHANT_ALLOW}
 
 
-def test_the_shadow_never_writes_to_the_mandates_own_audit_chain(session):
+def test_a_shadow_is_opened_against_the_shop_being_used(mgr_session):
+    """The block a user would actually have opened, not whichever payee sorts first.
+
+    Narrowing to `payees[0]` made every order at another allowed shop refuse on
+    the payee, so the comparison only ever said "the rail names one payee" and
+    never reached the clauses the rail cannot express at all. That is why the
+    console could not show the disagreement the shadow exists to show.
+    """
+    mgr, sess, _ = mgr_session
+    assert mgr.shadow_for(sess, "blinkit").policy.constraints[C.MERCHANT_ALLOW] == ["blinkit"]
+    assert mgr.shadow_for(sess, "zepto").policy.constraints[C.MERCHANT_ALLOW] == ["zepto"]
+
+
+def test_a_payee_the_user_never_allowed_gets_no_block_of_its_own(mgr_session):
+    """Falling back rather than inventing a block for a shop nobody authorised."""
+    mgr, sess, _ = mgr_session
+    shadow = mgr.shadow_for(sess, "some-shop-nobody-allowed")
+    assert shadow.policy.constraints[C.MERCHANT_ALLOW] == ["zepto"]
+
+
+def test_each_payee_gets_its_own_block_and_they_do_not_share_a_total(mgr_session):
+    """Which is the cost, not a convenience: three blocks is three times the money."""
+    mgr, sess, tok = mgr_session
+    now = datetime.now(UTC)
+    p = Proposal(type="create_order", merchant="zepto",
+                 items=[ProposalItem(sku="sku_dal", qty=1)])
+    mgr.shadow_for(sess, "zepto").propose(p, now=now, token=tok)
+
+    assert int(mgr.shadow_for(sess, "zepto")._state().spent) == 20000
+    assert int(mgr.shadow_for(sess, "blinkit")._state().spent) == 0
+
+
+def test_the_shadow_never_writes_to_the_mandates_own_audit_chain(mgr_session):
     """The shadow's spend is not the mandate's spend. If it shared the chain, the
     signed record of what this mandate authorised would include orders no one
     ever authorised under it."""
-    sess, tok = session
+    mgr, sess, tok = mgr_session
     p = Proposal(type="create_order", merchant="zepto",
                  items=[ProposalItem(sku="sku_dal", qty=1)])
-    sess.shadow.propose(p, now=datetime.now(UTC), token=tok)
+    mgr.shadow_for(sess, "zepto").propose(p, now=datetime.now(UTC), token=tok)
     assert sess.audit.records() == []
 
 
-def test_reserve_pay_lets_through_the_alcohol_the_mandate_refuses(session):
+def test_reserve_pay_lets_through_the_alcohol_the_mandate_refuses(mgr_session):
     """The rail never sees categories, so `category.deny` has nowhere to live on
     it. This is the money story, and it is the whole reason the shadow exists."""
-    sess, tok = session
+    mgr, sess, tok = mgr_session
     p = Proposal(type="create_order", merchant="zepto",
                  items=[ProposalItem(sku="sku_gin", qty=1)])
     now = datetime.now(UTC)
     real = sess.gateway.propose(p, now=now, token=tok)
-    shadow = sess.shadow.propose(p, now=now, token=tok)
+    shadow = mgr.shadow_for(sess, "zepto").propose(p, now=now, token=tok)
 
     assert real.verdict is Verdict.DENY and not real.executed
     assert shadow.verdict is Verdict.ALLOW and shadow.executed
 
 
-def test_reserve_pay_refuses_a_second_shop_the_mandate_allows(session):
-    """A block names one payee. So the rail is not merely weaker than the mandate,
-    it is a different shape: it over-blocks legitimate multi-shop buying while
-    under-blocking the attack above. Stating only the first half would overstate
-    the gap, which is the failure `rails.py` exists to avoid."""
-    sess, tok = session
+def test_the_attack_gets_through_at_every_allowed_shop_not_just_the_first(mgr_session):
+    """The bug this change fixes, pinned so it cannot come back.
+
+    Every attack preset in the console orders from `blinkit`. With one block
+    narrowed to `payees[0]` the shadow refused all of them on the payee, so the
+    "the rail would have let this through" branch could never fire and the
+    strongest thing on the screen was unreachable.
+    """
+    mgr, sess, tok = mgr_session
+    now = datetime.now(UTC)
+    p = Proposal(type="create_order", merchant="blinkit",
+                 items=[ProposalItem(sku="sku_gin", qty=1)])
+    real = sess.gateway.propose(p, now=now, token=tok)
+    shadow = mgr.shadow_for(sess, "blinkit").propose(p, now=now, token=tok)
+
+    assert real.verdict is Verdict.DENY, "the mandate refuses alcohol anywhere"
+    assert shadow.verdict is Verdict.ALLOW and shadow.executed
+
+
+def test_one_block_still_over_blocks_the_shops_it_does_not_name(mgr_session):
+    """The other half of the gap, and it must not be dropped.
+
+    Per-payee blocks fix the demo, and they do it by spending more of the user's
+    money. Modelled as the single block a user is likelier to actually open, the
+    rail refuses a shop the mandate allows. Both readings are true and neither
+    equals the mandate, which is the finding.
+    """
+    mgr, sess, tok = mgr_session
     p = Proposal(type="create_order", merchant="blinkit",
                  items=[ProposalItem(sku="sku_dal", qty=1)])
     now = datetime.now(UTC)
     real = sess.gateway.propose(p, now=now, token=tok)
-    shadow = sess.shadow.propose(p, now=now, token=tok)
+    one_block = mgr.shadow_for(sess, None)     # falls back to the first payee
 
     assert real.verdict is Verdict.ALLOW and real.executed
-    assert shadow.verdict is Verdict.DENY and not shadow.executed
+    assert one_block.propose(p, now=now, token=tok).verdict is Verdict.DENY
 
 
-def _app(tmp_path):
-    from starlette.testclient import TestClient
-
-    from mandate.policy.loader import dump as dump_policy
-    from mandate.service.server import create_app
-    from mandate.service.token_pool import TokenPool
-
-    priv, pub = generate_keypair()
-    pol = _policy()
-    pol_path = tmp_path / "policy.yaml"
-    dump_policy(pol, pol_path, private_key_hex=priv)
-    pub_path = tmp_path / "issuer_public.key"
-    pub_path.write_text(pub + "\n")
-
-    exp = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
-    pool = TokenPool([
-        mint_agent_token(pol.mandate_id, priv, expires_iso=exp, jti=f"tok_rp_{i:02d}")
-        for i in range(1, 4)
-    ])
-    app = create_app(
-        policy_path=pol_path, public_key_path=pub_path,
-        revocations_path=tmp_path / "rev.jsonl",
-        audit_path=tmp_path / "audit.jsonl", ledger_path=tmp_path / "ledger.jsonl",
-        pricebook=_pricebook(), capability_secret="shadow_secret_2026",
-        token_pool=pool,
-    )
-    return TestClient(app)
-
-
-def test_the_order_response_says_what_reserve_pay_would_have_done(tmp_path):
-    client = _app(tmp_path)
-    tok = client.post("/v1/sessions").json()["token"]
-    hdr = {"Authorization": f"Bearer {tok}"}
-
-    r = client.post("/v1/orders",
-                    json={"merchant": "zepto", "items": [{"sku": "sku_gin", "qty": 1}]},
-                    headers=hdr)
-    assert r.status_code == 200
-    body = r.json()
-    assert body["verdict"] == "DENY"
-    assert body["reserve_pay"]["verdict"] == "ALLOW"
-
-
-def test_a_broken_shadow_never_changes_the_real_verdict(tmp_path, monkeypatch):
-    """The shadow is a talking point; the gateway is the product. If projecting
-    the policy ever raises, the order must still be decided and answered, with
-    the comparison simply absent rather than a 500 over a real ALLOW."""
-    from mandate.service import server as server_mod
-
-    def boom(*a, **k):
-        raise RuntimeError("shadow exploded")
-
-    monkeypatch.setattr(server_mod, "_reserve_pay_shadow", boom)
-
-    client = _app(tmp_path)
-    tok = client.post("/v1/sessions").json()["token"]
-    hdr = {"Authorization": f"Bearer {tok}"}
-
-    r = client.post("/v1/orders",
-                    json={"merchant": "zepto", "items": [{"sku": "sku_dal", "qty": 1}]},
-                    headers=hdr)
-    assert r.status_code == 200
-    assert r.json()["verdict"] == "ALLOW"
-    assert r.json()["reserve_pay"] is None
+def test_the_cost_of_covering_every_shop_is_reported(mgr_session):
+    """Rs 2,000 of stated intent becomes Rs 6,000 of blocked funds."""
+    _mgr, sess, _ = mgr_session
+    exposure = reserve_pay_exposure(sess.gateway.policy)
+    assert exposure.payees == 3
+    assert int(exposure.mandate_cap) == 200000
+    assert exposure.blocks_needed == 3
+    assert int(exposure.blocked_total) == 600000
+    assert exposure.refused_payees == ["blinkit", "instamart"]

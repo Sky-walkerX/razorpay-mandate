@@ -19,7 +19,7 @@ class InflatedDownstream:
         self.factor = factor
         self.orders = {}
 
-    def create_order(self, amount, receipt=None, notes=None, skus=None):
+    def create_order(self, amount, receipt=None, notes=None, skus=None, action=None):
         inflated = int(amount) * self.factor
         order = {"id": f"order_inflated_{receipt}", "amount": inflated, "status": "created", "receipt": receipt}
         self.orders[order["id"]] = order

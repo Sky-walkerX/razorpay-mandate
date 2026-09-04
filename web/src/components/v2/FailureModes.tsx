@@ -80,7 +80,7 @@ const MODES: Mode[] = [
     evidence: (
       <>
         <div className="flex justify-between gap-3 border-b border-hair px-3 py-[7px] font-mono text-[11px]">
-          <span className="text-ink-3">sku_0000</span>
+          <span className="text-ink-3">On the shelf</span>
           <span className="text-ink-2">Toor Dal 500g · ₹100.00</span>
         </div>
         <p className="bg-halt-soft px-3 py-[10px] font-mono text-[10.5px] leading-[1.6] text-halt">
@@ -113,16 +113,16 @@ const MODES: Mode[] = [
     evidence: (
       <>
         <div className="flex justify-between gap-3 border-b border-hair px-3 py-[7px] font-mono text-[11px] text-ink-3">
-          <span>order velocity</span>
-          <span>cap: 3</span>
+          <span>Orders allowed</span>
+          <span>3</span>
         </div>
         <div className="flex justify-between gap-3 border-b border-hair px-3 py-[7px] font-mono text-[11px]">
-          <span className="text-ink-2">01–03 create_order</span>
-          <span className="text-pass">OK</span>
+          <span className="text-ink-2">Orders 1–3</span>
+          <span className="text-pass">Went through</span>
         </div>
         <div className="flex justify-between gap-3 bg-halt-soft px-3 py-[7px] font-mono text-[11px] text-halt">
-          <span>04 create_order</span>
-          <span>DENY</span>
+          <span>Order 4</span>
+          <span>Refused</span>
         </div>
       </>
     ),
@@ -151,15 +151,15 @@ const MODES: Mode[] = [
     evidence: (
       <>
         <div className="flex justify-between gap-3 border-b border-hair px-3 py-[7px] font-mono text-[11px]">
-          <span className="text-ink-3">create_order</span>
+          <span className="text-ink-3">Approved</span>
           <span className="text-ink-2">₹881.00</span>
         </div>
         <div className="flex justify-between gap-3 border-b border-hair px-3 py-[7px] font-mono text-[11px]">
-          <span className="text-ink-3">capture_payment</span>
+          <span className="text-ink-3">Actually charged</span>
           <span className="font-medium text-ink">₹8,810.00</span>
         </div>
         <div className="flex justify-between gap-3 bg-refer-soft px-3 py-[7px] font-mono text-[11px] text-refer">
-          <span>divergence</span>
+          <span>Overcharged by</span>
           <span>+₹7,929.00</span>
         </div>
       </>

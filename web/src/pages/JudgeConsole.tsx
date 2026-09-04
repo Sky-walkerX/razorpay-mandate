@@ -13,6 +13,7 @@ import { MandateLockup } from '@/components/brand/MandateLockup';
 import SandboxPanel from '@/components/v2/SandboxPanel';
 import { ReservePayShadow, type ReservePayVerdict } from '@/components/ReservePayShadow';
 import { API_BASE } from '@/lib/api';
+import { clauseLabel, plainMessage } from '@/lib/plain';
 
 /**
  * The live console: nine ways in, and a gateway that has to answer for itself.
@@ -324,17 +325,6 @@ function ModelMark({
 const EASE = [0.22, 0.61, 0.36, 1] as const;
 
 /** How a finished run reads in the attack list. Never shown before one. */
-/**
- * The gateway names the clause it refused on, which is the right thing for it to
- * do and the wrong thing to lead a visitor with: `quantity.max_per_item: limit 5
- * per item, attempted 6` is a log line. The label beside it already says which
- * limit refused, so the identifier is redundant here and stays in the audit rows
- * and the policy view, where the identifier IS the point.
- */
-function plainMessage(rec: DecisionRecord): string {
-  const m = rec.message ?? '';
-  return m.replace(/^[a-z_]+(?:\.[a-z_]+)+:\s*/i, '');
-}
 
 function outcomeChip(rec: DecisionRecord) {
   if (rec.executed) return { label: 'went through', cls: 'bg-pass-soft text-pass' };
@@ -403,14 +393,39 @@ export default function JudgeConsole() {
     }
   };
 
+  /**
+   * Headroom when the service is unreachable, so the page still reads.
+   *
+   * The bounds come from the signed policy through `PARTS`, and the labels from
+   * `clauseLabel`, because this block used to retype both. It was the third
+   * copy of the label table and the second of the bounds -- the shape of bug
+   * that once had the console claiming a max quantity of 4 against a policy
+   * that says 5.
+   */
   const initFallbackData = () => {
-    setHeadroom({
-      'budget.total': { clause_id: 'budget.total', label: 'Total budget', used_paise: 0, limit_paise: 200000, remaining_paise: 200000, unit: 'paise' },
-      'budget.per_transaction': { clause_id: 'budget.per_transaction', label: 'Most per order', limit_paise: 100000, remaining_paise: 100000, unit: 'paise' },
-      'budget.per_item': { clause_id: 'budget.per_item', label: 'Most per item', limit_paise: 50000, remaining_paise: 50000, unit: 'paise' },
-      velocity: { clause_id: 'velocity', label: 'Orders allowed', used_count: 0, limit_count: 3, remaining_count: 3, unit: 'count' },
-      'quantity.max_per_item': { clause_id: 'quantity.max_per_item', label: 'Most of any one item', limit_count: 5, remaining_count: 5, unit: 'count' },
-    });
+    const fallback: Record<string, LiveHeadroom> = {};
+    for (const part of PARTS) {
+      if (part.max === null || part.source === 'unset') continue;
+      const money = part.key.startsWith('budget.');
+      fallback[part.key] = money
+        ? {
+            clause_id: part.key,
+            label: clauseLabel(part.key),
+            used_paise: 0,
+            limit_paise: part.max,
+            remaining_paise: part.max,
+            unit: 'paise',
+          }
+        : {
+            clause_id: part.key,
+            label: clauseLabel(part.key),
+            used_count: 0,
+            limit_count: part.max,
+            remaining_count: part.max,
+            unit: 'count',
+          };
+    }
+    setHeadroom(fallback);
   };
 
   useEffect(() => {
@@ -1058,7 +1073,7 @@ export default function JudgeConsole() {
                     <span className="text-[13.5px] leading-[1.5] text-ink-2">
                       {stoppedPart
                         ? `Your limit is ${stoppedPart.bound.toLowerCase()} on ${stoppedPart.label.toLowerCase()}.`
-                        : plainMessage(currentDisplay)}
+                        : plainMessage(currentDisplay.message)}
                     </span>
                   </div>
 

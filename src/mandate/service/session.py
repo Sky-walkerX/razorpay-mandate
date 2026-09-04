@@ -7,7 +7,7 @@ and revocation list.
 """
 import shutil
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -37,7 +37,13 @@ class Session:
     # The same proposal answered as UPI Reserve Pay would answer it. A real
     # Gateway on a projected policy, with its own rail, ledger and chain, so its
     # spend is never confused for the mandate's and the block drains honestly.
-    shadow: Gateway | None = None
+    #
+    # One per payee, because a Reserve Pay block names one payee and a user who
+    # shops at three shops opens three blocks. Modelling a single block against
+    # `payees[0]` made every refusal land on the payee, which said nothing about
+    # the rail's vocabulary and was the whole point of the comparison. Built
+    # lazily by `SessionManager.shadow_for`.
+    shadows: dict[str, Gateway] = field(default_factory=dict)
 
 
 class SessionManager:
@@ -109,22 +115,6 @@ class SessionManager:
             )
 
             now = datetime.now(UTC)
-            shadow_dir = session_dir / "shadow"
-            shadow_dir.mkdir(parents=True, exist_ok=True)
-            shadow = Gateway(
-                policy=project_to_reserve_pay(gw.policy),
-                # Its own rail. The shadow's orders are a projection, not money
-                # this mandate authorised, and must not reach the real one.
-                downstream=FakeDownstream(),
-                audit=AuditLog(shadow_dir / "audit.jsonl"),
-                mode=Mode.ENFORCE,
-                ledger=Ledger(shadow_dir / "ledger.jsonl"),
-                pricebook=gw.pricebook,
-                capability_secret=self.capability_secret,
-                issuer_public_key=self.issuer_public_key,
-                revocations=self.revocations,
-            )
-
             session = Session(
                 jti=claims.jti,
                 token=token,
@@ -136,10 +126,42 @@ class SessionManager:
                 audit=audit,
                 ledger=ledger,
                 mode=mode,
-                shadow=shadow,
             )
             self._sessions[claims.jti] = session
             return session
+
+    def shadow_for(self, session: Session, payee: str | None) -> Gateway:
+        """The Reserve Pay block this payee would have been shopped under.
+
+        One block per payee, cached for the life of the session so its own total
+        drains across successive orders exactly as a real block would. A block
+        opened for a shop the user never allowed is not modelled: an unknown
+        payee falls back to the first allowed one, which is `project_to_reserve_pay`'s
+        own rule rather than a second opinion about it.
+        """
+        key = (payee or "").strip().lower()
+        with self._lock:
+            existing = session.shadows.get(key)
+            if existing is not None:
+                return existing
+
+            shadow_dir = session.dir_path / "shadow" / (key or "_default")
+            shadow_dir.mkdir(parents=True, exist_ok=True)
+            shadow = Gateway(
+                policy=project_to_reserve_pay(session.gateway.policy, payee=key),
+                # Its own rail. The shadow's orders are a projection, not money
+                # this mandate authorised, and must not reach the real one.
+                downstream=FakeDownstream(),
+                audit=AuditLog(shadow_dir / "audit.jsonl"),
+                mode=Mode.ENFORCE,
+                ledger=Ledger(shadow_dir / "ledger.jsonl"),
+                pricebook=session.gateway.pricebook,
+                capability_secret=self.capability_secret,
+                issuer_public_key=self.issuer_public_key,
+                revocations=self.revocations,
+            )
+            session.shadows[key] = shadow
+            return shadow
 
     def get_session(self, jti: str) -> Session | None:
         with self._lock:
