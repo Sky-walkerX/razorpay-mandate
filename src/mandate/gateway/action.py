@@ -26,6 +26,7 @@ class ProposalItem(BaseModel):
     """Untrusted wire item sent by the agent. No prices, no titles, no totals."""
     sku: str
     qty: int = 1
+    quote: str | None = None
 
     @model_validator(mode="after")
     def _check(self) -> "ProposalItem":

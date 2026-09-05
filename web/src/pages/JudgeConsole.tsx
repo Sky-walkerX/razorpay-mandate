@@ -12,6 +12,7 @@ import { SellerChip } from '@/components/v2/SellerMark';
 import { MandateLockup } from '@/components/brand/MandateLockup';
 import SandboxPanel from '@/components/v2/SandboxPanel';
 import { ReservePayShadow, type ReservePayVerdict } from '@/components/ReservePayShadow';
+import { ReceiptVerifier } from '@/components/ReceiptVerifier';
 import { API_BASE } from '@/lib/api';
 import { clauseLabel, plainMessage } from '@/lib/plain';
 
@@ -340,6 +341,8 @@ export default function JudgeConsole() {
   const reduced = useReducedMotion() ?? false;
 
   const [session, setSession] = useState<{ token: string; jti: string; expires?: string } | null>(null);
+  /** The receipt currently open in the verifier, held by its own hash. */
+  const [verifying, setVerifying] = useState<string | null>(null);
   const [isRevoked, setIsRevoked] = useState(false);
   const [headroom, setHeadroom] = useState<Record<string, LiveHeadroom>>({});
   const [decisions, setDecisions] = useState<DecisionRecord[]>([]);
@@ -367,6 +370,11 @@ export default function JudgeConsole() {
       setSession({ token: data.token, jti: data.jti, expires: data.expires });
       sessionStorage.setItem('mandate_judge_token', data.token);
       sessionStorage.setItem('mandate_judge_jti', data.jti);
+      // The human's half of the session. The agent is handed the bearer token and
+      // never this; it is what opens the approval queue and nothing else.
+      if (data.principal_key) {
+        sessionStorage.setItem('mandate_principal_key', data.principal_key);
+      }
       fetchHeadroom(data.token);
     } catch (err) {
       console.warn('Gateway unreachable; console will label its results as simulated.', err);
@@ -1277,11 +1285,20 @@ export default function JudgeConsole() {
                       >
                         {d.clause_label ?? (d.executed ? `all ${SET_PART_COUNT_TEXT} passed` : '')}
                       </span>
-                      <span className="ml-auto shrink-0 font-mono text-[11.5px] text-ink-4 max-sm:hidden">
-                        {d.record_hash
-                          ? `${d.record_hash.replace(/^sha256:/, '').slice(0, 6)}…`
-                          : '—'}
-                      </span>
+                      {d.record_hash ? (
+                        <button
+                          type="button"
+                          onClick={() => setVerifying(d.record_hash ?? null)}
+                          title="Check this receipt against the log, in your browser"
+                          className="ml-auto shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[11.5px] text-ink-4 underline decoration-dotted underline-offset-2 transition-colors hover:bg-sunk hover:text-ink max-sm:hidden"
+                        >
+                          {d.record_hash.replace(/^sha256:/, '').slice(0, 6)}…
+                        </button>
+                      ) : (
+                        <span className="ml-auto shrink-0 font-mono text-[11.5px] text-ink-4 max-sm:hidden">
+                          —
+                        </span>
+                      )}
                     </motion.li>
                   ))}
                 </ul>
@@ -1293,6 +1310,13 @@ export default function JudgeConsole() {
         /* ── Sandbox: the visitor's own mandate, compiled and enforced ── */
         <SandboxPanel apiBase={API_BASE} />
       )}
+
+      <ReceiptVerifier
+        recordHashRef={verifying}
+        token={session?.token ?? null}
+        open={verifying !== null}
+        onOpenChange={(next) => !next && setVerifying(null)}
+      />
     </div>
   );
 }

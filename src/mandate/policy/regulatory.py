@@ -68,6 +68,30 @@ class Requirement(BaseModel):
 
 STATUSES = ("held", "partial", "gap", "out_of_scope")
 
+#: The AFA threshold in paise. RBI's e-mandate framework processes recurring
+#: transactions up to Rs 15,000 without an additional factor and requires one above
+#: it. The framework allows Rs 1 lakh for insurance premiums, mutual fund
+#: subscriptions and card bills; a grocery mandate takes the Rs 15,000 floor.
+AFA_THRESHOLD_PAISE = 1_500_000
+
+#: What every mandate carries because a regulator requires it, whatever the person
+#: dictating the intent said or did not say.
+#:
+#: This exists because the floor used to live in one hand-written `policies/policy.yaml`
+#: and in nothing else. The compiler emits neither of these clauses -- it never hears
+#: them, correctly, because a statutory obligation is not something a user states --
+#: so every mandate compiled by `mandate compile`, `/v1/compile` or `/v1/sandbox` came
+#: out without them. Measured on a live sandbox session before the fix: a visitor
+#: mandate authorising Rs 50,000 an order executed Rs 18,600 straight to the rail with
+#: the clause reading `constraint not in policy`.
+#:
+#: `time.window` is `{}` because the validity period lives on `Policy.expires`; the
+#: clause is the marker that a period is required at all.
+REGULATORY_FLOOR: dict[C, dict] = {
+    C.AFA_REQUIRED: {"threshold": AFA_THRESHOLD_PAISE},
+    C.TIME_WINDOW: {},
+}
+
 # The RBI framework's obligations, in the order a reader meets them: register, then
 # transact, then get out. Statuses are deliberately conservative; two of these are
 # gaps and they are the reason this table is worth publishing.

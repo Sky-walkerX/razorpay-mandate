@@ -19,12 +19,14 @@ def results(tmp_path_factory):
     return run_conformance_suite(tmp_path_factory.mktemp("conformance"), trials=CI_TRIALS)
 
 
-def test_the_suite_runs_all_nine_attacks(results):
-    assert len(results) == len(ATTACKS) == 9
+def test_the_suite_runs_all_seventeen_attacks(results):
+    assert len(results) == len(ATTACKS) == 17
     assert {r.attack_id for r in results} == {
         "replay.token", "replay.intent", "idem.forge", "race.velocity",
         "race.budget", "capture.divergence", "delegate.split", "escalate.self",
-        "rail.divergence",
+        "rail.divergence", "quote.forge", "quote.expired", "quote.sku_swap",
+        "quote.merchant_swap", "quote.requote_idem",
+        "approve.self", "approve.replay", "approve.swap",
     }
 
 

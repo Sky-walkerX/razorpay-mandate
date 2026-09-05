@@ -13,7 +13,7 @@ from typing import ClassVar
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
-from mandate.adapters.direct import IGNORED_AGENT_FIELDS
+from mandate.adapters.direct import IGNORED_AGENT_FIELDS, UNFORGEABLE_AGENT_FIELDS
 from mandate.adapters.mcp_server import MUTATING_TOOLS, TOOL_NAMES, build_mcp_server
 from mandate.downstream.fake import FakeDownstream
 from mandate.gateway.audit import AuditLog
@@ -111,9 +111,14 @@ def test_no_tool_asks_the_agent_for_a_field_the_gateway_will_not_read(tmp_path):
     person to read the code has to work out that it is discarded.
     """
     server, *_ = _build(tmp_path)
+    structural = {"merchant", "items", "query", "limit", "category_filter", "week", "idem_key"}
+    allowed = set(UNFORGEABLE_AGENT_FIELDS) | structural
     for tool in asyncio.run(server.list_tools()):
-        leaked = _properties(tool.input_schema) & set(IGNORED_AGENT_FIELDS)
+        props = _properties(tool.input_schema)
+        leaked = props & set(IGNORED_AGENT_FIELDS)
         assert not leaked, f"{tool.name} accepts {leaked}"
+        unclassified = props - allowed
+        assert not unclassified, f"{tool.name} accepts unclassified fields: {unclassified}"
 
 
 def test_every_mutating_tool_reaches_the_gateway(tmp_path):

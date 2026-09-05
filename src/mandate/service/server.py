@@ -8,7 +8,8 @@ import asyncio
 import contextlib
 import json
 import os
-from datetime import UTC, datetime
+import secrets
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -40,9 +41,11 @@ from mandate.downstream.rail_mandate import (
 from mandate.downstream.razorpay_mcp import RazorpayMCPDownstream
 from mandate.gateway.action import ActionType, Proposal, ProposalItem
 from mandate.gateway.applicability import applicability_for_raw
+from mandate.gateway.approval import ApprovalStore
 from mandate.gateway.audit import AuditChainBroken
 from mandate.gateway.core import Mode
 from mandate.gateway.pricebook import DictPriceBook, PriceBook
+from mandate.gateway.quote import MerchantKeyring
 from mandate.gateway.revocation import RevocationList
 from mandate.gateway.state import AccumulatedState, Verdict
 from mandate.gateway.tokens import (
@@ -71,12 +74,14 @@ from mandate.service.agent_runner import (
     run_agent_stream,
 )
 from mandate.service.order_store import OrderStore
+from mandate.service.pending import PendingApprovals
 from mandate.service.sandbox import (
     SANDBOX_MANDATE_ID,
     SIGN_COMMAND,
     to_sandbox_policy,
 )
 from mandate.service.session import SessionManager
+from mandate.service.shop import Shop, ShopUnavailable
 from mandate.service.token_pool import PoolExhausted, TokenPool
 
 
@@ -149,6 +154,18 @@ def _compute_headroom(policy: Policy, state: AccumulatedState) -> list[dict[str,
             "limit_count": lim,
             "remaining_count": lim,
             "unit": "count",
+        })
+
+    # 6. afa.required
+    if C.AFA_REQUIRED in c and "threshold" in c[C.AFA_REQUIRED]:
+        lim = int(c[C.AFA_REQUIRED]["threshold"])
+        headroom.append({
+            "clause_id": "afa.required",
+            "label": label_for("afa.required"),
+            "used_paise": 0,
+            "limit_paise": lim,
+            "remaining_paise": lim,
+            "unit": "paise",
         })
 
     return headroom
@@ -233,6 +250,10 @@ def create_app(
     static_dir: Path | str | None = None,
     log_private_key_path: Path | str | None = Path(".mandate/keys/log_private.key"),
     store_path: Path | str | None = None,
+    merchant_keys_path: Path | str | None = Path(".mandate/keys/merchants.json"),
+    approval_store: ApprovalStore | None = None,
+    approval_store_path: Path | str | None = None,
+    shop: Shop | None = None,
 ) -> Starlette:
     if not capability_secret:
         raise ServiceMisconfigured(
@@ -251,9 +272,18 @@ def create_app(
     # The log signs its own tree heads with a key distinct from the issuer's, so the
     # issuer key can stay offline. Absent, /v1/audit/head reports 503 rather than
     # serving an unsigned head that would look verified.
+    #
+    # The environment path is not a convenience. `test_docker_image_ships_no_signing_key`
+    # rejects any COPY whose source contains "private", so the deployed image carries no
+    # log key by construction, and without this branch the signed tree head can never run
+    # in production -- which is exactly where it was found answering 503. File first, then
+    # environment: locally the key you just generated wins over a stale exported variable,
+    # and production is unaffected because it has no file to prefer.
     log_private_key_hex = None
     if log_private_key_path and Path(log_private_key_path).exists():
         log_private_key_hex = Path(log_private_key_path).read_text().strip()
+    elif os.environ.get("MANDATE_LOG_PRIVATE_KEY", "").strip():
+        log_private_key_hex = os.environ["MANDATE_LOG_PRIVATE_KEY"].strip()
 
     policy = load_policy(Path(policy_path), public_key_hex=pub_hex)
     pol_hash = policy_hash(policy)
@@ -314,6 +344,30 @@ def create_app(
     if sbx_pool.is_revoked is None:
         sbx_pool.is_revoked = revocations.is_revoked
 
+    merchant_keyring = MerchantKeyring.from_file(merchant_keys_path) if merchant_keys_path else MerchantKeyring()
+
+    # The shop is built here and handed to nothing. `session_manager` below gets the
+    # keyring (public keys) and never this object, so no gateway holds a reference to
+    # a merchant's private key. That is the whole separation, and
+    # `test_the_gateway_never_reads_a_merchant_private_key` is what keeps it.
+    #
+    # Injectable for the same reason the pricebook and the downstream are: reading
+    # the ambient filesystem made two tests pass or fail on whether the developer
+    # happened to have run `mandate quote-keygen`, which is a test that measures the
+    # machine rather than the code.
+    the_shop = shop if shop is not None else Shop.from_environment()
+
+    app_approvals = approval_store
+    if app_approvals is None:
+        app_approvals = ApprovalStore(approval_store_path)
+
+    pending_approvals = PendingApprovals()
+    # principal_key -> jti. The approval channel's identity, deliberately distinct
+    # from the agent's bearer token: the agent's credential cannot approve, and the
+    # principal's credential cannot spend. Per session rather than one service-wide
+    # secret, so one visitor cannot list -- or approve -- another visitor's basket.
+    principal_keys: dict[str, str] = {}
+
     session_manager = SessionManager(
         policy=policy,
         pricebook=pb,
@@ -321,6 +375,8 @@ def create_app(
         capability_secret=capability_secret,
         issuer_public_key=pub_hex,
         revocations=revocations,
+        merchant_keyring=merchant_keyring,
+        approvals=app_approvals,
         # Sized so the token pools, not this cap, decide how many people can hold
         # a session at once. House and sandbox sessions share one budget, and the
         # cap evicts the least recently active when it is reached — so a cap below
@@ -350,6 +406,8 @@ def create_app(
             capability_secret=capability_secret,
             issuer_public_key=pub_hex,
             revocations=revocations,
+            merchant_keyring=merchant_keyring,
+            approvals=app_approvals,
             base_dir=Path(session_manager.base_dir) / "razorpay",
             max_sessions=max(100, pool.total_count + sbx_pool.total_count),
         )
@@ -404,6 +462,8 @@ def create_app(
             }, status_code=503)
 
         session_manager.create_session(token, claims)
+        principal_key = secrets.token_urlsafe(32)
+        principal_keys[principal_key] = claims.jti
         return JSONResponse({
             "token": token,
             "jti": claims.jti,
@@ -411,6 +471,9 @@ def create_app(
             "policy_hash": pol_hash,
             "expires_at": claims.exp,
             "remaining_tokens": pool.available_count,
+            # The human's half of the session. Never sent to the agent, and no
+            # agent-facing surface accepts it.
+            "principal_key": principal_key,
         })
 
     async def get_catalog(req: Request):
@@ -427,6 +490,59 @@ def create_app(
             for p in cat.products
         ]
         return JSONResponse(items)
+
+    async def get_quote(req: Request):
+        """The shop's current signed price for one item. Not a gateway answer.
+
+        The caller names the item; the shop names the price. Signing whatever figure
+        was asked for would turn this into an oracle an agent could use to mint its
+        own Rs 1,900 quote through the front door, which would hollow out every quote
+        attack in the conformance suite.
+
+        With no signing key this is 503 with a reason, never a fabricated quote or a
+        bare list price dressed up as one. Same rule as /v1/compile: a component that
+        answers a question it could not answer hides the outage.
+        """
+        _token, claims, err_resp = _extract_and_verify_token(req)
+        if err_resp is not None:
+            return err_resp
+        assert claims is not None
+
+        merchant = (req.query_params.get("merchant") or "zepto").strip().lower()
+        sku = (req.query_params.get("sku") or "").strip()
+        if not sku:
+            return JSONResponse(
+                {"error": "missing_sku", "detail": "'sku' is required"}, status_code=400
+            )
+
+        session = session_manager.get_session(claims.jti)
+        book = session.gateway.pricebook if session else pb
+        if book is None:
+            return JSONResponse(
+                {"error": "no_pricebook", "detail": "this deployment stocks nothing to quote"},
+                status_code=503,
+            )
+
+        try:
+            return JSONResponse(the_shop.quote(merchant, sku, book))
+        except ShopUnavailable:
+            return JSONResponse(
+                {
+                    "error": "shop_unavailable",
+                    "detail": (
+                        f"no shop signing key for {merchant!r} in this deployment; "
+                        f"run 'mandate quote-keygen --merchant {merchant}' and set "
+                        f"MANDATE_SHOP_PRIVATE_KEYS"
+                    ),
+                    "merchants": the_shop.merchants,
+                },
+                status_code=503,
+            )
+        except KeyError:
+            return JSONResponse(
+                {"error": "unknown_sku", "detail": f"{merchant} does not stock {sku!r}"},
+                status_code=404,
+            )
 
     def _bound(key: str) -> tuple[str, int | None] | None:
         """The clause's bound as a person reads it, and as a number.
@@ -456,6 +572,9 @@ def create_app(
             return ", ".join(ct.title() for ct in c[C.CATEGORY_DENY]), None
         if key == "time.window" and (C.TIME_WINDOW in c or policy.expires):
             return policy.expires.strftime("%-d %b %Y") if policy.expires else "Session", None
+        if key == "afa.required" and C.AFA_REQUIRED in c:
+            lim = int(c[C.AFA_REQUIRED].get("threshold", 1500000))
+            return f"\u20b9{lim/100:,.2f}", lim
         return None
 
     async def get_policy(req: Request):
@@ -530,6 +649,38 @@ def create_app(
 
         rec = _audit_row_for(session, dec)
         rec_json = rec.model_dump(mode="json") if rec is not None else None
+
+        if dec.verdict is Verdict.UNKNOWN and dec.clause_id == "afa.required":
+            c = session.gateway.policy.constraints
+            threshold = int(c.get(C.AFA_REQUIRED, {}).get("threshold", 1500000)) if C.AFA_REQUIRED in c else 1500000
+            order_items = []
+            amount = 0
+            if rec is not None and rec.action is not None:
+                amount = int(rec.action.amount)
+                order_items = [
+                    {
+                        "sku": it.sku,
+                        "qty": it.qty,
+                        "unit_price": int(it.unit_price),
+                        "title": it.title,
+                        "category": it.category,
+                    }
+                    for it in rec.action.items
+                ]
+            else:
+                order_items = [{"sku": it.sku, "qty": it.qty} for it in prop.items]
+
+            pending_approvals.open(
+                intent=dec.idem_key,
+                jti=claims.jti,
+                mandate_id=session.gateway.policy.mandate_id,
+                merchant=prop.merchant,
+                amount=amount,
+                items=order_items,
+                threshold=threshold,
+                now=now,
+            )
+
         # The session's own policy, not the service's. A sandbox order filed
         # under the signed mandate's id would make the order history claim the
         # signed document authorised something a visitor typed.
@@ -639,6 +790,76 @@ def create_app(
         session_manager.evict_session(claims.jti)
 
         return JSONResponse({"status": "revoked", "jti": claims.jti})
+
+    async def get_pending(req: Request):
+        """The principal's queue. The only place an approval ref is ever readable.
+
+        This is the whole boundary. Served unauthenticated, it hands any caller --
+        the agent included -- the ref that approves the agent's own escalation, which
+        is `escalate.self` with extra steps. The agent's bearer token is deliberately
+        not accepted here.
+        """
+        key = req.headers.get("x-principal-key", "").strip()
+        jti = principal_keys.get(key) if key else None
+        if not jti:
+            return JSONResponse(
+                {"error": "principal_key_required",
+                 "detail": "this is the principal's channel; an agent token does not open it"},
+                status_code=401,
+            )
+        return JSONResponse({
+            "pending": [
+                it.to_dict(include_ref=True)
+                for it in pending_approvals.list_for_principal(jti)
+            ]
+        })
+
+    async def preview_approval(req: Request):
+        ref = req.path_params.get("ref", "")
+        item = pending_approvals.get(ref)
+        if item is None:
+            return JSONResponse({"error": "not_found", "detail": "approval reference not found or expired"}, status_code=404)
+        return JSONResponse(item.to_dict())
+
+    async def submit_approval(req: Request):
+        try:
+            body = await req.json()
+            ref = str(body.get("ref", "")).strip()
+            decision = str(body.get("decision", "")).strip().lower()
+        except (ValueError, KeyError, json.JSONDecodeError):
+            return JSONResponse({"error": "malformed_request", "detail": "JSON body required with 'ref' and 'decision'"}, status_code=400)
+
+        if not ref:
+            return JSONResponse({"error": "missing_ref", "detail": "'ref' is required"}, status_code=400)
+        if decision not in ("approve", "reject"):
+            return JSONResponse({"error": "invalid_decision", "detail": "'decision' must be 'approve' or 'reject'"}, status_code=400)
+
+        item = pending_approvals.get(ref)
+        if item is None:
+            return JSONResponse({"error": "not_found", "detail": "approval reference not found"}, status_code=404)
+        if item.status == "expired":
+            return JSONResponse({"error": "expired", "status": "expired", "detail": "approval request has expired"}, status_code=410)
+        if item.status in ("approved", "rejected"):
+            return JSONResponse({"error": "already_resolved", "status": item.status, "detail": f"approval request already {item.status}"}, status_code=409)
+
+        resolved = pending_approvals.resolve(ref, decision=decision)
+        if resolved is None:
+            return JSONResponse({"error": "resolve_failed"}, status_code=500)
+
+        if decision == "approve":
+            app_approvals.approve(
+                intent=resolved.intent,
+                approver="human",
+                factor="web_oob",
+                ttl=timedelta(minutes=15),
+            )
+
+        return JSONResponse({
+            "status": resolved.status,
+            "ref": resolved.ref,
+            "intent": resolved.intent,
+            "decision": decision,
+        })
 
     async def compile_policy(req: Request):
         try:
@@ -797,6 +1018,17 @@ def create_app(
             )
 
         session_manager.create_session(token, claims, policy=sbx_policy)
+        # The visitor's half of the session, issued for the same reason /v1/sessions
+        # issues one: without it there is no authenticated channel to list a held
+        # order on, and `afa.required` can only ever be reached on a mandate whose
+        # caps a visitor set -- the signed one's budget.total is Rs 2,000, far below
+        # the Rs 15,000 statutory threshold. A visitor who typed the mandate is at
+        # least as much the principal as one who pressed "start session".
+        #
+        # It stays the principal's credential: /v1/pending and /v1/approve take it,
+        # no agent-facing surface does, and the agent is handed only the bearer.
+        sbx_principal_key = secrets.token_urlsafe(32)
+        principal_keys[sbx_principal_key] = claims.jti
 
         return JSONResponse({
             "compiled": True,
@@ -817,6 +1049,7 @@ def create_app(
                 for cid, spec in sbx_policy.constraints.items()
             ],
             "questions": [q.model_dump(mode="json") for q in (res.questions or [])],
+            "principal_key": sbx_principal_key,
             "sandbox_tokens_remaining": sbx_pool.available_count,
         })
 
@@ -1271,11 +1504,15 @@ def create_app(
         Route("/v1/mandate/ap2", get_ap2_mandate, methods=["GET"]),
         Route("/v1/orders", create_order, methods=["POST"]),
         Route("/v1/payments/capture", capture_payment, methods=["POST"]),
+        Route("/v1/quote", get_quote, methods=["GET"]),
         Route("/v1/audit", get_audit, methods=["GET"]),
         Route("/v1/audit/head", get_audit_head, methods=["GET"]),
         Route("/v1/audit/proof", get_audit_proof, methods=["GET"]),
         Route("/v1/audit/consistency", get_audit_consistency, methods=["GET"]),
         Route("/v1/headroom", get_headroom, methods=["GET"]),
+        Route("/v1/pending", get_pending, methods=["GET"]),
+        Route("/v1/approve", submit_approval, methods=["POST"]),
+        Route("/v1/approve/{ref}", preview_approval, methods=["GET"]),
         Route("/v1/revoke", revoke_token, methods=["POST"]),
         Route("/v1/compile", compile_policy, methods=["POST"]),
         Route("/v1/sandbox", create_sandbox, methods=["POST"]),

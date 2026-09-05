@@ -54,6 +54,10 @@ def _bound(key: str, spec: dict | list | None) -> str:
         return f"{spec['max']} per item"
     if key.startswith("budget."):
         return _rupees(int(spec["max"]))
+    if key == "afa.required":
+        # `threshold`, not `max`. Reading `max` here would fall through to "Set"
+        # while /v1/policy printed a figure, which is how these two drifted apart.
+        return _rupees(int(spec["threshold"]))
     if isinstance(spec, list):
         return ", ".join(s.title() for s in spec) if spec else "Not set"
     return "Set"
@@ -78,6 +82,8 @@ def _parts(pol) -> list[dict[str, Any]]:
         # compare the two without parsing prose.
         if isinstance(spec, dict) and "max" in spec:
             part["max"] = int(spec["max"])
+        if isinstance(spec, dict) and "threshold" in spec:
+            part["max"] = int(spec["threshold"])
         if isinstance(spec, list):
             part["values"] = list(spec)
         if key == "velocity" and spec:
@@ -234,12 +240,20 @@ def build_evidence(
     false_block_dir: str = "results-falseblock-hardened",
     conformance: str = "results-conformance/conformance_results.json",
     feed_run: str = DEFAULT_FEED_RUN,
+    log_public_key: str = ".mandate/keys/log_public.key",
 ) -> dict[str, Any]:
     root = Path(root)
     pol = load_policy(root / "policies" / "policy.yaml")
     cont = _arm_scores(root / containment_dir / "scores.json")
     fb = _arm_scores(root / false_block_dir / "scores.json")
     conf = json.loads((root / conformance).read_text())
+
+    # Pinned at build time on purpose. A page that fetched this key from the same
+    # service that signed the tree head would be verifying a signature against a key
+    # its adversary chose. Absent, the page reports that it cannot verify rather than
+    # accepting a head on the server's word.
+    log_key_path = root / log_public_key
+    log_key = log_key_path.read_text().strip() if log_key_path.exists() else None
 
     def _run_id(d: str) -> str:
         rows = (root / d / "results.jsonl").read_text().splitlines()
@@ -259,6 +273,9 @@ def build_evidence(
             "conformance_file": conformance,
             "feed_file": f"{containment_dir}/{feed_run}/audit.jsonl",
             "generated": datetime.now().astimezone().isoformat(timespec="seconds"),
+        },
+        "log": {
+            "public_key": log_key,
         },
         "policy": {
             "mandate_id": pol.mandate_id,

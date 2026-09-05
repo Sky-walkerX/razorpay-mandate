@@ -19,7 +19,8 @@ from mandate.service.server import create_app
 from tests.policy.test_models import _policy
 
 
-def _setup(tmp_path, *, with_log_key: bool = True):
+def _setup(tmp_path, *, with_log_key: bool = True, monkeypatch=None,
+           env_key_hex: str | None = None):
     priv_hex, pub_hex = generate_keypair()
     pol = _policy()
     pol_path = tmp_path / "policy.yaml"
@@ -31,6 +32,8 @@ def _setup(tmp_path, *, with_log_key: bool = True):
     log_key_path = tmp_path / "log_private.key"
     if with_log_key:
         log_key_path.write_text(log_priv + "\n")
+    if env_key_hex is not None:
+        monkeypatch.setenv("MANDATE_LOG_PRIVATE_KEY", env_key_hex)
 
     pb = DictPriceBook({
         "sku_tea": PriceBookItem(
@@ -92,6 +95,46 @@ def test_head_refuses_rather_than_serving_an_unsigned_head(tmp_path):
     res = client.get("/v1/audit/head", headers=headers)
     assert res.status_code == 503
     assert "log signing key" in res.json()["error"]
+
+
+def test_the_log_key_can_arrive_as_an_environment_variable(tmp_path, monkeypatch):
+    """Production has no key file and cannot get one.
+
+    `test_docker_image_ships_no_signing_key` rejects any COPY whose source contains
+    "private", so the deployed image carries no log key by construction. Without an
+    environment path the signed tree head can never run in production, which is
+    exactly where it was found returning 503.
+    """
+    env_priv, env_pub = generate_keypair()
+    client, headers, _unused = _setup(
+        tmp_path, with_log_key=False, monkeypatch=monkeypatch, env_key_hex=env_priv,
+    )
+    _place_orders(client, headers, 2)
+
+    res = client.get("/v1/audit/head", headers=headers)
+    assert res.status_code == 200, res.json()
+    head = res.json()
+    msg = f"{head['size']}:{head['root']}:{head['ts']}".encode()
+    assert verify_bytes(msg, head["sig"], env_pub)
+
+
+def test_a_key_file_wins_over_the_environment(tmp_path, monkeypatch):
+    """Precedence is file, then environment, and it is pinned so it cannot flip.
+
+    Production has a variable and no file; a developer has a file and possibly a
+    stale exported variable. This ordering means the key you just generated always
+    wins locally, and production is unaffected because it has no file to prefer.
+    """
+    env_priv, env_pub = generate_keypair()
+    client, headers, file_pub = _setup(
+        tmp_path, with_log_key=True, monkeypatch=monkeypatch, env_key_hex=env_priv,
+    )
+    _place_orders(client, headers, 1)
+
+    head = client.get("/v1/audit/head", headers=headers).json()
+    msg = f"{head['size']}:{head['root']}:{head['ts']}".encode()
+    assert verify_bytes(msg, head["sig"], file_pub)
+    assert not verify_bytes(msg, head["sig"], env_pub)
 
 
 def test_inclusion_proof_verifies_against_the_served_head(tmp_path):

@@ -16,6 +16,7 @@ vacuous and the suite stops testing anything, which is why
 `tests/conformance/test_unhardened_gateway_is_exploitable.py` asserts that it can
 still be broken.
 """
+import base64
 import hashlib
 import json
 import time
@@ -23,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 
-from mandate.gateway.action import Proposal
+from mandate.gateway.action import Proposal, ProposalItem
 from mandate.gateway.state import Verdict
 from mandate.money import Paise
 
@@ -94,6 +95,19 @@ class UnhardenedGateway:
     spent_by_token: dict = field(default_factory=dict)
     order_count: int = 0
 
+    @staticmethod
+    def _stated_price(item: ProposalItem, prices: dict[str, int]) -> int:
+        if getattr(item, "quote", None):
+            try:
+                parts = item.quote.split(".")
+                pad = len(parts[0]) % 4
+                s = parts[0] + ("=" * (4 - pad) if pad else "")
+                payload = json.loads(base64.urlsafe_b64decode(s).decode("utf-8"))
+                return int(payload.get("unit_price_paise", prices.get(item.sku, 0)))
+            except (json.JSONDecodeError, ValueError, TypeError, KeyError):
+                pass
+        return prices.get(item.sku, 0)
+
     # -- the agent-steerable idempotency key -------------------------------
     def naive_intent(self, prop: Proposal, unit_prices: dict[str, int]) -> str:
         """Hashes agent-controlled fields, so perturbing one mints a fresh key."""
@@ -103,7 +117,7 @@ class UnhardenedGateway:
             "attempt": prop.attempt,            # agent-controlled
             "items": [
                 {"sku": i.sku, "qty": i.qty,
-                 "unit_price": unit_prices.get(i.sku, 0)}   # agent-controlled
+                 "unit_price": self._stated_price(i, unit_prices)}   # agent-controlled
                 for i in prop.items
             ],
         }
@@ -126,8 +140,9 @@ class UnhardenedGateway:
                 downstream=self.committed[idem], message="duplicate suppressed by luck",
             )
 
-        # The agent says what things cost.
-        amount = sum(prices.get(i.sku, 0) * i.qty for i in proposal.items)
+        # The witness reads the quote's stated price without checking a signature.
+        # This is the vulnerability the hardened gateway removes. Do not fix it.
+        amount = sum(self._stated_price(i, prices) * i.qty for i in proposal.items)
 
         # Budget is tracked per token, not per mandate: two tokens, two budgets.
         key = token or "anonymous"

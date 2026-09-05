@@ -25,6 +25,7 @@ export default function Landing() {
               scrolled to sections of this same page, which a visitor reaches by
               scrolling anyway. */}
           <div className="ml-3 hidden gap-[22px] text-[13.5px] text-ink-2 lg:flex">
+            <Link to="/approve" className="whitespace-nowrap transition-colors hover:text-ink">Approvals</Link>
             <Link to="/rails" className="whitespace-nowrap transition-colors hover:text-ink">Rails &amp; regulation</Link>
             <Link to="/pitch" className="whitespace-nowrap font-medium text-[#2F5EFF] transition-colors hover:text-ink">Pitch deck</Link>
           </div>

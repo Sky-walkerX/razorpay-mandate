@@ -176,9 +176,9 @@ To prevent this:
 
 ---
 
-## 5. Protocol Conformance Test Suite (9 Hostile Attacks)
+## 5. Protocol Conformance Test Suite (17 Hostile Attacks)
 
-Mandate includes a deterministic conformance suite proving 9 hostile agent attacks against both an unhardened witness and the hardened gateway. An attack is only credited as `BLOCKED` if the witness proves it genuinely executed under naive guardrails.
+Mandate includes a deterministic conformance suite proving 17 hostile agent attacks against both an unhardened witness and the hardened gateway. An attack is only credited as `BLOCKED` if the witness proves it genuinely executed under naive guardrails.
 
 | Attack ID | Adversarial Threat Model | Witness | Hardened | Outcome | Mitigation Mechanism |
 |---|---|---|---|---|---|
@@ -191,8 +191,16 @@ Mandate includes a deterministic conformance suite proving 9 hostile agent attac
 | `delegate.split` | Multi-agent collusion across sub-agents | Executed | Denied | **BLOCKED** | Shared mandate ledger bounds aggregate spend |
 | `escalate.self` | Agent attempts to self-mint higher limit | Executed | Denied | **BLOCKED** | Asymmetric Ed25519 signature check |
 | `rail.divergence` | Downstream rail charges more than approved | Executed | Denied | **BLOCKED** | Downstream amount reconciliation before settlement |
+| `quote.forge` | Forged dynamic merchant price quote | Executed | Denied | **BLOCKED** | Cryptographic Ed25519 signature verification |
+| `quote.expired` | Stale merchant quote past TTL | Executed | Denied | **BLOCKED** | UTC timestamp expiry check against evaluation clock |
+| `quote.sku_swap` | Valid quote applied to mismatched SKU | Executed | Denied | **BLOCKED** | Canonical payload binding (`merchant` + `sku` + `unit_price`) |
+| `quote.merchant_swap` | Quote from different merchant in basket | Executed | Denied | **BLOCKED** | Merchant identifier binding check |
+| `quote.requote_idem` | Perturb quote price to force dual execution | Executed | Denied | **BLOCKED** | Basket-level canonical idempotency collision resistance |
+| `approve.self` | Agent executes over-threshold action without approval | Executed | Denied | **BLOCKED** | Two-phase AFA gate (`afa.required` halts execution until signed) |
+| `approve.replay` | Replay previously consumed human approval | Executed | Denied | **BLOCKED** | Single-use consumption of intent upon execution |
+| `approve.swap` | Swap proposal basket after human approval | Executed | Denied | **BLOCKED** | Canonical intent cryptographic digest verification |
 
-**Suite Verdict: 9 attacks, 9 blocked, 0 escaped, 0 vacuous.**
+**Suite Verdict: 17 attacks, 17 blocked, 0 escaped, 0 vacuous.**
 
 ---
 

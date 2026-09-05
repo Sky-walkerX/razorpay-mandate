@@ -7,7 +7,10 @@
     "false_block_dir": "results-falseblock-hardened",
     "conformance_file": "results-conformance/conformance_results.json",
     "feed_file": "results-heldout-g37-hardened/enforce/budget_salami_005/audit.jsonl",
-    "generated": "2026-09-04T18:32:38+05:30"
+    "generated": "2026-09-05T15:13:53+05:30"
+  },
+  "log": {
+    "public_key": "305f6590fced7edf97865596c358e522d6d8023ad810e6deb307cf1c399d3a0d"
   },
   "policy": {
     "mandate_id": "mnd_groceries_01",
@@ -130,7 +133,8 @@
         "against": "the amount of this order",
         "n": 10,
         "source": "regulatory",
-        "bound": "Set"
+        "bound": "₹15,000.00",
+        "max": 1500000
       }
     ]
   },
@@ -220,8 +224,8 @@
       }
     },
     "conformance": {
-      "total": 9,
-      "blocked": 9,
+      "total": 17,
+      "blocked": 17,
       "escaped": 0,
       "vacuous": 0,
       "race_trials": 200

@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import { FileCode2, Lock, ShieldOff, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { clauseLabel, plainMessage } from '@/lib/plain';
+import { HeldForApproval, type HeldItem } from './HeldForApproval';
 
 /**
  * Bring your own mandate: a visitor writes an intent, it compiles, and the same
@@ -43,6 +44,11 @@ interface Sandbox {
   source_text: string;
   constraints: Constraint[];
   sandbox_tokens_remaining: number;
+  /** The visitor's half of the session. `/v1/pending` and `/v1/approve` take it and
+   *  no agent-facing surface does, so it is what turns a held order into something
+   *  a person can act on. Absent on an older build, and then a held order says so
+   *  rather than showing a QR that would not resolve. */
+  principal_key?: string;
 }
 
 interface CatalogItem {
@@ -107,6 +113,8 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
   const [qty, setQty] = useState(1);
   const [probe, setProbe] = useState<Probe | null>(null);
   const [probing, setProbing] = useState(false);
+  /** Set only when the gateway answered UNKNOWN on `afa.required`. */
+  const [held, setHeld] = useState<HeldItem | null>(null);
 
   useEffect(() => {
     fetch(`${apiBase}/v1/catalog`)
@@ -125,6 +133,7 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
     setRefusal(null);
     setSandbox(null);
     setProbe(null);
+    setHeld(null);
     try {
       const res = await fetch(`${apiBase}/v1/sandbox`, {
         method: 'POST',
@@ -153,11 +162,33 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
     }
   };
 
+  /** The ref lives only on the principal's channel, so this is the one place the
+   *  page asks with a credential the agent does not have. A 401 here means the
+   *  deployment predates the sandbox principal key, not that the order is fine. */
+  const findHeldOrder = async () => {
+    if (!sandbox?.principal_key) return;
+    try {
+      const res = await fetch(`${apiBase}/v1/pending`, {
+        headers: { 'X-Principal-Key': sandbox.principal_key },
+      });
+      if (!res.ok) return;
+      const body = await res.json();
+      const first = (body.pending || []).find(
+        (it: HeldItem) => it.status === 'pending',
+      );
+      if (first) setHeld(first);
+    } catch {
+      // No queue is not the same as no held order, so the panel says nothing
+      // rather than claiming the order went through.
+    }
+  };
+
   const runProbe = async () => {
     if (!sandbox) return;
     const item = catalog.find((c) => c.sku === sku);
     if (!item) return;
     setProbing(true);
+    setHeld(null);
     try {
       const res = await fetch(`${apiBase}/v1/orders`, {
         method: 'POST',
@@ -177,6 +208,10 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
         executed: Boolean(dec.executed),
         amount_paise: data.record?.action?.amount ?? item.unit_price * qty,
       });
+      // UNKNOWN is the only verdict with a way out that is not a different basket.
+      if (dec.verdict === 'UNKNOWN' && dec.clause_id === 'afa.required') {
+        await findHeldOrder();
+      }
     } catch (e) {
       setProbe({
         verdict: 'ERROR', clause_id: null, clause_label: null,
@@ -388,7 +423,9 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
                     'mt-3 rounded-lg border px-4 py-3',
                     probe.executed
                       ? 'border-pass-line bg-pass-soft'
-                      : 'border-halt-line bg-halt-soft',
+                      : probe.verdict === 'UNKNOWN'
+                        ? 'border-refer-line bg-refer-soft'
+                        : 'border-halt-line bg-halt-soft',
                   )}
                   initial={reduced ? false : { opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -397,10 +434,20 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
                   <div
                     className={cn(
                       'font-mono text-[10px] uppercase tracking-[0.1em]',
-                      probe.executed ? 'text-pass' : 'text-halt',
+                      probe.executed
+                        ? 'text-pass'
+                        : probe.verdict === 'UNKNOWN'
+                          ? 'text-refer'
+                          : 'text-halt',
                     )}
                   >
-                    {probe.executed ? 'Went through' : 'Refused'}
+                    {/* Three words for three verdicts. Calling a held order
+                        "refused" would say the gateway decided when it did not. */}
+                    {probe.executed
+                      ? 'Went through'
+                      : probe.verdict === 'UNKNOWN'
+                        ? 'Held for you'
+                        : 'Refused'}
                   </div>
                   {!probe.executed && probe.clause_id && (
                     <p className="mt-1.5 text-[13px] font-medium leading-[1.5] text-ink">
@@ -413,9 +460,20 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
                   <p className="mt-1.5 text-[12px] leading-[1.5] text-ink-2">
                     {probe.executed
                       ? 'Inside every limit you wrote, so the payment went through.'
-                      : 'Your limit, your number, and the same gateway the demo runs on.'}
+                      : probe.verdict === 'UNKNOWN'
+                        ? 'This one is not yours to have set. It is the rule a regulator requires.'
+                        : 'Your limit, your number, and the same gateway the demo runs on.'}
                   </p>
                 </motion.div>
+              )}
+
+              {held && sandbox && (
+                <HeldForApproval
+                  item={held}
+                  apiBase={apiBase}
+                  principalKey={sandbox.principal_key ?? null}
+                  onApproved={() => setHeld({ ...held, status: 'approved' })}
+                />
               )}
             </div>
           </motion.div>

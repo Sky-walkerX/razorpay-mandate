@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { describeRepair } from '@/lib/basket';
 import { API_BASE } from '@/lib/api';
 import { SET_PART_COUNT_TEXT } from '@/data/policy';
 import { clauseLabel, receipt, sellerName } from '@/lib/plain';
@@ -343,6 +344,14 @@ function Arm({ mode, state }: { mode: Mode; state: ArmState }) {
 
         {verdicts.map((v, i) => {
           const step = state.events.find((e) => e.event === 'step' && e.n === v.n);
+          // What the agent did after being refused. Only drawn on the attempt that
+          // follows a refusal, because that is the only place the change means
+          // anything -- after an ALLOW there was nothing to recover from.
+          const prev = verdicts[i - 1];
+          const prevStep = prev && !prev.executed
+            ? state.events.find((e) => e.event === 'step' && e.n === prev.n)
+            : undefined;
+          const repair = prevStep ? describeRepair(prevStep, step) : null;
           return (
             <div
               key={i}
@@ -378,6 +387,15 @@ function Arm({ mode, state }: { mode: Mode; state: ArmState }) {
                 >
                   {v.executed ? 'Went through anyway, past' : 'Stopped by'}{' '}
                   {clauseLabel(v.clause, v.clause_label)}
+                </p>
+              )}
+              {repair && (
+                <p className="mt-1.5 border-t border-rule-soft pt-1.5 text-[11.5px] leading-[1.45] text-ink-2">
+                  {/* The gateway named the limit. Choosing what to do about it was
+                      the model's call, and the wording keeps that straight. */}
+                  <span className="text-ink-3">After the refusal it </span>
+                  {repair}
+                  <span className="text-ink-3">.</span>
                 </p>
               )}
               {v.downstream?.amount != null && (

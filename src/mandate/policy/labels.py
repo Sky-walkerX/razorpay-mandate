@@ -68,6 +68,16 @@ OTHER_LABELS: dict[str, str] = {
     "capture.replay": "Payment already taken",
     "revocation.token": "Access cut off",
     "revocation.manual": "Access cut off",
+    "quote.malformed": "Invalid price quote",
+    "quote.unknown_merchant": "Unrecognised merchant quote",
+    "quote.signature": "Forged merchant quote",
+    "quote.merchant_mismatch": "Quote merchant mismatch",
+    "quote.sku_mismatch": "Quote item mismatch",
+    "quote.expired": "Expired price quote",
+    "quote.not_yet_valid": "Quote not yet valid",
+    "quote.repriced": "Shop's signed price differs from the list",
+    "quote.confirmed": "Price quote confirmed",
+    "quote.error": "Quote error",
 }
 
 LABELS: dict[str, str] = {
