@@ -1018,6 +1018,17 @@ def create_app(
             )
 
         session_manager.create_session(token, claims, policy=sbx_policy)
+        # The visitor's half of the session, issued for the same reason /v1/sessions
+        # issues one: without it there is no authenticated channel to list a held
+        # order on, and `afa.required` can only ever be reached on a mandate whose
+        # caps a visitor set -- the signed one's budget.total is Rs 2,000, far below
+        # the Rs 15,000 statutory threshold. A visitor who typed the mandate is at
+        # least as much the principal as one who pressed "start session".
+        #
+        # It stays the principal's credential: /v1/pending and /v1/approve take it,
+        # no agent-facing surface does, and the agent is handed only the bearer.
+        sbx_principal_key = secrets.token_urlsafe(32)
+        principal_keys[sbx_principal_key] = claims.jti
 
         return JSONResponse({
             "compiled": True,
@@ -1038,6 +1049,7 @@ def create_app(
                 for cid, spec in sbx_policy.constraints.items()
             ],
             "questions": [q.model_dump(mode="json") for q in (res.questions or [])],
+            "principal_key": sbx_principal_key,
             "sandbox_tokens_remaining": sbx_pool.available_count,
         })
 

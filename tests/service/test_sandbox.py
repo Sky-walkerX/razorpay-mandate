@@ -24,6 +24,7 @@ from mandate.harness.catalog import generate_catalog
 from mandate.policy.crypto import generate_keypair
 from mandate.policy.loader import dump as dump_policy
 from mandate.policy.models import ConstraintId, Provenance
+from mandate.policy.regulatory import REGULATORY_FLOOR
 from mandate.service.sandbox import (
     SANDBOX_JTI_PREFIX,
     SANDBOX_MANDATE_ID,
@@ -346,7 +347,12 @@ def test_compile_still_answers_normally_when_the_compiler_works(tmp_path, monkey
     body = client.post("/v1/compile", json={"prompt": "under Rs 300 an order"}).json()
     assert body["compiled"] is True
     assert body["fallback"] is False
-    assert {c["id"] for c in body["constraints"]} == set(JUDGE_READING["constraints"])
+    ids = {c["id"] for c in body["constraints"]}
+    # Everything the compiler heard, plus the floor a regulator requires and the
+    # compiler never emits. The floor is not the user's to decline, so a compiled
+    # mandate carries it whether or not the prompt mentioned it.
+    assert set(JUDGE_READING["constraints"]) <= ids
+    assert {str(c) for c in REGULATORY_FLOOR} <= ids
     assert body["mandate_id"] != pol.mandate_id
 
 
