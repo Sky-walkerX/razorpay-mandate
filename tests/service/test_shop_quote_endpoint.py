@@ -50,7 +50,7 @@ def shop_keys(tmp_path: Path) -> tuple[Path, str]:
     return keyring_path, json.dumps({"zepto": merchant_priv})
 
 
-def _app(tmp_path: Path, keyring_path: Path, monkeypatch, shop_keys_json: str):
+def _app(tmp_path: Path, keyring_path: Path, shop_keys_json: str):
     priv_hex, pub_hex = generate_keypair()
     pol = _policy(
         constraints={
@@ -65,9 +65,11 @@ def _app(tmp_path: Path, keyring_path: Path, monkeypatch, shop_keys_json: str):
     pub_path = tmp_path / "issuer_public.key"
     pub_path.write_text(pub_hex + "\n")
 
-    # The shop reads its key from the environment here, which is the path a
-    # deployment takes: the image cannot carry a file whose name says "private".
-    monkeypatch.setenv("MANDATE_SHOP_PRIVATE_KEYS", shop_keys_json)
+    # Injected rather than read from the ambient filesystem. `Shop.from_environment`
+    # prefers a real `.mandate/keys/shop_private.json`, so a test relying on it
+    # measures whether the developer has run `mandate quote-keygen` -- these two did,
+    # and went red the moment the key was generated on this machine.
+    keys = json.loads(shop_keys_json) if shop_keys_json else {}
 
     return create_app(
         policy_path=pol_path,
@@ -78,6 +80,7 @@ def _app(tmp_path: Path, keyring_path: Path, monkeypatch, shop_keys_json: str):
         pricebook=_pricebook(),
         capability_secret="secret_test_42",
         merchant_keys_path=keyring_path,
+        shop=Shop(private_keys=keys),
         token_pool=TokenPool.from_tokens([
             mint_agent_token(
                 pol.mandate_id, priv_hex,
@@ -110,11 +113,9 @@ def test_the_gateway_never_reads_a_merchant_private_key():
     assert "mint_quote" not in gw_source, "the gateway must verify quotes, never mint them"
 
 
-def test_the_shop_signs_its_own_price_and_the_gateway_honours_it(
-    tmp_path: Path, shop_keys, monkeypatch
-):
+def test_the_shop_signs_its_own_price_and_the_gateway_honours_it(tmp_path: Path, shop_keys):
     keyring_path, shop_keys_json = shop_keys
-    client = TestClient(_app(tmp_path, keyring_path, monkeypatch, shop_keys_json))
+    client = TestClient(_app(tmp_path, keyring_path, shop_keys_json))
     session = client.post("/v1/sessions").json()
     headers = {"Authorization": f"Bearer {session['token']}"}
 
@@ -147,7 +148,7 @@ def test_the_shop_signs_its_own_price_and_the_gateway_honours_it(
     )
 
 
-def test_the_shop_will_not_sign_a_price_the_caller_names(tmp_path: Path, shop_keys, monkeypatch):
+def test_the_shop_will_not_sign_a_price_the_caller_names(tmp_path: Path, shop_keys):
     """The caller names the item; the shop names the price.
 
     A shop that signed whatever figure it was handed would be a signing oracle, and
@@ -155,7 +156,7 @@ def test_the_shop_will_not_sign_a_price_the_caller_names(tmp_path: Path, shop_ke
     forging one -- which would hollow out every quote attack in the suite.
     """
     keyring_path, shop_keys_json = shop_keys
-    client = TestClient(_app(tmp_path, keyring_path, monkeypatch, shop_keys_json))
+    client = TestClient(_app(tmp_path, keyring_path, shop_keys_json))
     session = client.post("/v1/sessions").json()
     headers = {"Authorization": f"Bearer {session['token']}"}
 
@@ -166,11 +167,11 @@ def test_the_shop_will_not_sign_a_price_the_caller_names(tmp_path: Path, shop_ke
 
 
 def test_a_deployment_with_no_shop_key_refuses_rather_than_inventing_a_quote(
-    tmp_path: Path, shop_keys, monkeypatch
+    tmp_path: Path, shop_keys
 ):
     """Prefer the loud failure. This is the /v1/compile lesson at another endpoint."""
     keyring_path, _ = shop_keys
-    client = TestClient(_app(tmp_path, keyring_path, monkeypatch, ""))
+    client = TestClient(_app(tmp_path, keyring_path, ""))
     session = client.post("/v1/sessions").json()
     headers = {"Authorization": f"Bearer {session['token']}"}
 
@@ -180,9 +181,9 @@ def test_a_deployment_with_no_shop_key_refuses_rather_than_inventing_a_quote(
     assert "quote" not in res.json(), "a refusal must not carry a quote"
 
 
-def test_an_unknown_sku_is_a_404_and_not_a_signed_price(tmp_path: Path, shop_keys, monkeypatch):
+def test_an_unknown_sku_is_a_404_and_not_a_signed_price(tmp_path: Path, shop_keys):
     keyring_path, shop_keys_json = shop_keys
-    client = TestClient(_app(tmp_path, keyring_path, monkeypatch, shop_keys_json))
+    client = TestClient(_app(tmp_path, keyring_path, shop_keys_json))
     session = client.post("/v1/sessions").json()
     headers = {"Authorization": f"Bearer {session['token']}"}
 
@@ -191,9 +192,9 @@ def test_an_unknown_sku_is_a_404_and_not_a_signed_price(tmp_path: Path, shop_key
     assert "quote" not in res.json()
 
 
-def test_the_quote_endpoint_needs_the_agent_token(tmp_path: Path, shop_keys, monkeypatch):
+def test_the_quote_endpoint_needs_the_agent_token(tmp_path: Path, shop_keys):
     keyring_path, shop_keys_json = shop_keys
-    client = TestClient(_app(tmp_path, keyring_path, monkeypatch, shop_keys_json))
+    client = TestClient(_app(tmp_path, keyring_path, shop_keys_json))
     assert client.get("/v1/quote?sku=sku_oil").status_code == 401
 
 

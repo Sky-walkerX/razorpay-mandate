@@ -253,6 +253,7 @@ def create_app(
     merchant_keys_path: Path | str | None = Path(".mandate/keys/merchants.json"),
     approval_store: ApprovalStore | None = None,
     approval_store_path: Path | str | None = None,
+    shop: Shop | None = None,
 ) -> Starlette:
     if not capability_secret:
         raise ServiceMisconfigured(
@@ -349,7 +350,12 @@ def create_app(
     # keyring (public keys) and never this object, so no gateway holds a reference to
     # a merchant's private key. That is the whole separation, and
     # `test_the_gateway_never_reads_a_merchant_private_key` is what keeps it.
-    shop = Shop.from_environment()
+    #
+    # Injectable for the same reason the pricebook and the downstream are: reading
+    # the ambient filesystem made two tests pass or fail on whether the developer
+    # happened to have run `mandate quote-keygen`, which is a test that measures the
+    # machine rather than the code.
+    the_shop = shop if shop is not None else Shop.from_environment()
 
     app_approvals = approval_store
     if app_approvals is None:
@@ -518,7 +524,7 @@ def create_app(
             )
 
         try:
-            return JSONResponse(shop.quote(merchant, sku, book))
+            return JSONResponse(the_shop.quote(merchant, sku, book))
         except ShopUnavailable:
             return JSONResponse(
                 {
@@ -528,7 +534,7 @@ def create_app(
                         f"run 'mandate quote-keygen --merchant {merchant}' and set "
                         f"MANDATE_SHOP_PRIVATE_KEYS"
                     ),
-                    "merchants": shop.merchants,
+                    "merchants": the_shop.merchants,
                 },
                 status_code=503,
             )
