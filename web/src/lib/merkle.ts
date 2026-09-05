@@ -10,6 +10,8 @@
  * field carried in the proof. A verifier that reads its own instructions out of the
  * document it is checking is not verifying anything.
  */
+import { verifyAsync } from '@noble/ed25519';
+
 import { pythonJsonDumps } from './canonical.ts';
 
 const PREFIX = 'sha256:';
@@ -109,4 +111,28 @@ export async function recordHash(record: Record<string, unknown>): Promise<strin
   const body: Record<string, unknown> = { ...record };
   delete body.record_hash;
   return sha256(new TextEncoder().encode(pythonJsonDumps(body)));
+}
+
+/**
+ * Verify the log's signed tree head against a public key the page was built with.
+ *
+ * The signed message is `f"{size}:{root}:{ts}"` (server.py), signed by a key
+ * deliberately distinct from the issuer's so the issuer key can stay offline.
+ *
+ * `publicKeyHex` must come from `evidence.json`, which `mandate evidence` fills from
+ * the key file at build time. Fetching it from the service that produced the
+ * signature would be checking a signature against a key the signer chose, which is
+ * not a check at all. A production key that differs from the built-in one fails
+ * here, loudly, which is the correct outcome.
+ */
+export async function verifyTreeHead(
+  head: { size: number; root: string; ts: string; sig: string },
+  publicKeyHex: string,
+): Promise<boolean> {
+  const message = new TextEncoder().encode(`${head.size}:${head.root}:${head.ts}`);
+  try {
+    return await verifyAsync(hexToBytes(head.sig), message, hexToBytes(publicKeyHex));
+  } catch {
+    return false;
+  }
 }

@@ -138,3 +138,115 @@ process.stdin.on('end', async () => {
     for (good, bad), case in zip(got, cases, strict=True):
         assert good is True, f"valid proof rejected at index {case['index']}/{case['treeSize']}"
         assert bad is False, f"tampered root accepted at index {case['index']}/{case['treeSize']}"
+
+
+def test_the_browser_verifier_checks_a_real_gateway_receipt_and_catches_a_tamper():
+    """End to end against the real endpoints, in the shapes the browser receives.
+
+    The unit fixtures above prove the port. This proves the integration: a receipt
+    the gateway actually wrote, its real inclusion proof, and its real signed head,
+    verified by the same TypeScript the page runs -- and then the same receipt with
+    one field edited, which must stop reaching the root.
+    """
+    import tempfile
+    from datetime import UTC, datetime, timedelta
+
+    from starlette.testclient import TestClient
+
+    from mandate.gateway.pricebook import DictPriceBook, PriceBookItem
+    from mandate.gateway.tokens import mint_agent_token
+    from mandate.money import Paise
+    from mandate.policy.crypto import generate_keypair
+    from mandate.policy.loader import dump as dump_policy
+    from mandate.service.server import create_app
+    from tests.policy.test_models import _policy
+
+    work = Path(tempfile.mkdtemp())
+    priv, pub = generate_keypair()
+    pol = _policy()
+    pol_path = work / "policy.yaml"
+    dump_policy(pol, pol_path, private_key_hex=priv)
+    (work / "pub.key").write_text(pub + "\n")
+    log_priv, log_pub = generate_keypair()
+    (work / "log.key").write_text(log_priv + "\n")
+
+    pb = DictPriceBook({
+        "sku_tea": PriceBookItem(sku="sku_tea", title="Assam Tea 500g",
+                                 unit_price=Paise(25000), category="grocery",
+                                 merchant="zepto")
+    })
+    app = create_app(
+        policy_path=pol_path, public_key_path=work / "pub.key",
+        revocations_path=work / "rev.jsonl", audit_path=work / "a.jsonl",
+        ledger_path=work / "l.jsonl", pricebook=pb, capability_secret="s3cret",
+        log_private_key_path=work / "log.key",
+    )
+    client = TestClient(app)
+    exp = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+    headers = {"Authorization": f"Bearer {mint_agent_token(pol.mandate_id, priv, expires_iso=exp, jti='tok_ts_01')}"}
+
+    for qty in (1, 2, 3):
+        client.post("/v1/orders",
+                    json={"merchant": "zepto", "items": [{"sku": "sku_tea", "qty": qty}]},
+                    headers=headers)
+
+    head = client.get("/v1/audit/head", headers=headers).json()
+    records = client.get("/v1/audit", headers=headers).json()["records"]
+    assert len(records) >= 2, "need a tree deeper than one leaf to exercise the walk"
+    target = records[1]
+    proof = client.get(f"/v1/audit/proof?seq={target['seq']}", headers=headers).json()
+
+    payload = json.dumps({
+        "head": head, "record": target, "proof": proof, "logPublicKey": log_pub,
+    })
+
+    script = """
+import { verifyTreeHead, recordHash, leafHash, nodeHash } from './merkle.ts';
+
+async function climb(leaf, seq, treeSize, proof) {
+  let current = await leafHash(leaf);
+  let fn = seq - 1, sn = treeSize - 1;
+  for (const s of proof) {
+    if (sn === 0) break;
+    if (fn % 2 === 1 || fn === sn) {
+      current = await nodeHash(s.node, current);
+      while (fn !== 0 && fn % 2 === 0) { fn = Math.floor(fn / 2); sn = Math.floor(sn / 2); }
+    } else {
+      current = await nodeHash(current, s.node);
+    }
+    fn = Math.floor(fn / 2); sn = Math.floor(sn / 2);
+  }
+  return { root: current, done: sn === 0 };
+}
+
+let raw = '';
+process.stdin.on('data', (c) => { raw += c; });
+process.stdin.on('end', async () => {
+  const { head, record, proof, logPublicKey } = JSON.parse(raw);
+  const headOk = await verifyTreeHead(head, logPublicKey);
+  const headWrongKey = await verifyTreeHead(head, '00'.repeat(32));
+
+  const honest = await recordHash(record);
+  const honestClimb = await climb(honest, proof.seq, proof.tree_size, proof.proof);
+
+  const edited = { ...record, action: { ...record.action, amount: 1 } };
+  const tamperedHash = await recordHash(edited);
+  const tamperedClimb = await climb(tamperedHash, proof.seq, proof.tree_size, proof.proof);
+
+  console.log(JSON.stringify({
+    headOk,
+    headWrongKey,
+    leafMatches: honest === proof.leaf_record_hash,
+    reachesRoot: honestClimb.done && honestClimb.root === head.root,
+    tamperedLeafDiffers: tamperedHash !== proof.leaf_record_hash,
+    tamperedReachesRoot: tamperedClimb.done && tamperedClimb.root === head.root,
+  }));
+});
+"""
+    got = json.loads(_run_node(script, payload))
+    assert got["headOk"] is True, "the browser could not verify a head the gateway signed"
+    assert got["headWrongKey"] is False, "a head verified against the wrong key"
+    assert got["leafMatches"] is True, "recomputed record hash differs from the published leaf"
+    assert got["reachesRoot"] is True, "an honest receipt did not reach the signed root"
+    assert got["tamperedLeafDiffers"] is True, "editing the amount did not change the hash"
+    assert got["tamperedReachesRoot"] is False, "a tampered receipt still reached the root"
