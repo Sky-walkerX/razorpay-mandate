@@ -889,6 +889,202 @@ The remaining work is not features. In order of what costs most if skipped:
 Do not retype any number into a `.tsx`; regenerate `evidence.json` with
 `mandate evidence`.
 
+## 5 Sep: receipts, an approval channel, and prices the shop signs
+
+Session handoff. Read this before picking the work back up.
+
+Design in `docs/superpowers/specs/2026-09-05-receipts-approvals-and-signed-quotes-design.md`.
+It answers a reviewer's "why not 10.0" note that `PriceBook` assumes a tamper-proof
+catalog, and folds the four proposed x-factor features into one arc: **prices move,
+the shop signs the new one, the true price breaks a limit, the agent repairs or the
+human is summoned, and every step is a receipt the visitor verifies themselves.**
+
+### State right now
+
+On branch `feat/receipts-approvals-quotes`, not `dev`. **577 tests pass, ruff 13,
+conformance 17 attacks / 17 blocked / 0 vacuous.** Web builds clean.
+
+Landed: the log signing key path, merchant-signed quotes (`gateway/quote.py`), the
+AFA approval loop (`service/pending.py`, `/v1/pending`, `/v1/approve`), the
+`/approve` SPA page, and seven new conformance attacks.
+
+**Not started: the whole client-side receipt verifier.** No `web/src/lib/merkle.ts`,
+no `canonical.ts`, no `ui/dialog.tsx`, no `ReceiptVerifier.tsx`. Also missing:
+`GET /v1/quote` (so there is no live surge on stage) and any QR on `/try` (so the
+approval loop has no demo path even though the backend works end to end).
+
+### Three live gaps, found by running things rather than reading them
+
+**`/v1/audit/head` was 503 in production and always had been.** Curled the custom
+domain: `"gateway holds no log signing key; run 'mandate keygen --log'"`. The signed
+tree head, the inclusion proofs and `mandate verify` are all real, all tested, and
+none had ever run in a deployment. Same shape as the `GEMINI_VERTEX_PROJECT` outage.
+
+The cause is structural. `test_docker_image_ships_no_signing_key` rejects any `COPY`
+whose source contains `private` — correctly, since `COPY .mandate/` once shipped the
+issuer key — so the image cannot carry a log key and `create_app` had no other way to
+find one. It now falls back to **`MANDATE_LOG_PRIVATE_KEY`**, file first then
+environment, both directions pinned.
+
+**This needs a fourth thing set GCP-side that is not in the repo**, beside
+`GEMINI_VERTEX_PROJECT`, `MANDATE_CAPABILITY_SECRET` and the `aiplatform.user` role:
+
+```
+gcloud run services update mandate-gateway \
+  --update-env-vars MANDATE_LOG_PRIVATE_KEY=<hex from .mandate/keys/log_private.key>
+```
+
+`--update-env-vars`, never `--set-env-vars`. The keypair lives on this machine only
+and is gitignored, so a deploy from anywhere else ships a gateway that cannot sign a
+head.
+
+**`mandate evidence` now writes `log.public_key` into `evidence.json`.** The verifier
+must pin the key at build time. A page that fetched the key from the same service
+that signed the head would be checking a signature against a key its adversary chose.
+
+**`ApprovalStore` was wired into nothing.** `afa.required` landed in `702cf60` and
+`session.py` never passed `approvals=`, so on the deployed service every order above
+Rs 15,000 was permanently UNKNOWN with no path out.
+
+### The approval channel had no door on it
+
+`GET /v1/pending` had **no authentication of any kind** and returned each item as
+`asdict()`, ref included. `POST /v1/approve` asks for nothing but that ref.
+
+Proven end to end before fixing: the agent held a Rs 20,000 order at `afa.required`,
+listed `/v1/pending` with no credential at all, approved the ref it found, retried,
+and got `order_000000000001` on the rail. **That is `escalate.self` with extra
+steps**, against the one clause that exists because a regulator required it.
+
+What let it survive is the part worth remembering. `pending.py`'s own module
+docstring states the invariant it was breaking — "visible only to the principal via
+authenticated channel" — and `test_approval_ref_never_reaches_the_agent` asserted the
+ref is absent from the agent's *order response*, which was true. The test checked the
+narrow claim while the hole sat one endpoint over. **A stated invariant with a test
+beside it is not the same as a tested invariant.**
+
+**The fix is a second credential, not a check.** `/v1/sessions` issues a
+`principal_key` beside the agent token; the page keeps the key and hands the agent
+only the bearer.
+
+> The agent's credential cannot approve, and the principal's credential cannot spend.
+
+Both directions are tested. Three consequences that are easy to undo by accident:
+
+- **Pending items are scoped by `jti`.** An unscoped queue on a public deployment
+  shows one visitor another visitor's basket together with the ref that approves it.
+- **`PendingItem.to_dict()` withholds the ref unless asked**, so the next surface
+  that forgets to think about it leaks nothing.
+- **A session auto-created by `/v1/orders` has no principal channel at all**, because
+  the key is only issued at `/v1/sessions`. That is correct — there was no human
+  handshake — but it means **any test touching approvals needs a `TokenPool` and must
+  go through `/v1/sessions`.** Two tests had to be rewritten for this.
+
+The QR path needs none of it: a phone arriving at `/approve/<ref>` carries the ref,
+which is the credential for that one order. The key is read from the URL **fragment**
+first, which is never sent to a server and never lands in an access log.
+
+### The quote ladder does not yet do what it claims. Decided, not yet built.
+
+`_resolve_to_action` currently raises `QuoteDisagrees` whenever a quote differs from
+the price book at all, so **a quote can only confirm the price the book already had.**
+Measured:
+
+```
+shop raises Rs 500 -> Rs 850 and signs it : DENY | quote.disagreement
+quote that just restates the book price   : ALLOW | executed: True
+```
+
+Surge pricing — the reviewer's actual critique — does not work.
+
+**It also hollows out the four `quote.*` conformance attacks, and only mutation
+testing showed it.** Break the signature check entirely and `quote.forge` is still
+refused with **0 orders on the rail**; it reports ESCAPED purely because the clause
+*name* changed from `quote.signature` to `quote.disagreement`. The hardened judge
+asserts on the clause id, not on money moving. So the signature check protects
+nothing the price book does not already protect, and all four attacks are the VACUOUS
+problem at another layer — the same shape as `price.flip` scoring containments on
+runs its mutation never touched.
+
+**Decided 5 Sep: the quote wins, and the constraints bind on the true price.** The
+counter-argument — that a signed quote is a signed instruction to spend more of the
+principal's money, and the agent chooses which quote to present — is answered by the
+caps: an agent shopping for the highest quote is still bounded by `budget.per_item`,
+which is what caps are for. Refusing on disagreement does not protect against that
+anyway; it only makes the feature inert. When this lands:
+
+- Surge works, which is the point of the feature.
+- A forged quote at Rs 1,900 would execute, so the signature check becomes
+  load-bearing and the four attacks demonstrate real money loss.
+- A surged item over the cap is refused **at its true price**, which is the trigger
+  for the agent repairing the basket or the human being summoned. That is what makes
+  the three workstreams one story rather than three features.
+
+**Each quote attack must then price its hostile quote so that only the check under
+test can catch it**, exactly as each race attack already slackens the constraint it
+is not testing. And the judge must assert on the rail, not on the clause id.
+
+### Six defects fixed in the same pass, all found by reading the diff
+
+- `MerchantKeyring.from_file` fell off the end and returned **`None`** when the file
+  parsed but was not an object.
+- An unknown-merchant refusal carried `list(keyring._keys.keys())` into the clause,
+  which reaches the agent verbatim and the audit record, so a hostile caller could
+  enumerate the keyring one refusal at a time.
+- `verify_quote`'s `max_age` was accepted and **never passed by the gateway**, so a
+  merchant stamping `expires` a year out minted a price good for a year. `Gateway`
+  now applies its own 15-minute ceiling on top of whatever the merchant signed.
+- `quote.confirmed` reported the **last line's** unit price as the basket's, into a
+  hash-chained record that cannot be corrected afterwards.
+- A quote error on line 1 plus an unknown SKU on line 2 raised `KeyError` out of the
+  `QuoteError` handler, past both outer handlers, as a 500.
+- The `/approve` page typed its own AFA threshold as **Rs 1,000** against a policy
+  that says Rs 15,000, and carried eight radius vocabularies where the system allows
+  five.
+
+### There are two `_bound` implementations and they had already drifted
+
+`harness/evidence.py` feeds the built page; `service/server.py` feeds `/v1/policy`.
+Neither had an `afa.required` branch, and when one gained it the page still read the
+placeholder `"Set"` while the endpoint read `Rs 15,000.00` — one fact rendered two
+ways on two screens.
+
+**The trap is that `afa.required` is keyed on `threshold` while every budget clause
+is keyed on `max`**, so a branch copy-pasted from a budget clause falls through
+silently instead of failing. `test_the_policy_endpoint_and_the_evidence_file_agree_on_every_bound`
+now fails on any part that renders as the placeholder while the policy sets it.
+
+Counts did not move: `evidence.json` already carried `afa.required` as Part 10 with
+`source: regulatory`, so `PART_COUNT` is 10 and `SET_PART_COUNT` is 9 as before.
+
+### For the verifier, which is next
+
+**The Merkle backend is complete and reaches no user.** `merkle.py` is real RFC 6962
+with 0x00/0x01 domain separation, `verify_inclusion_proof` derives direction from
+`index`/`tree_size` rather than the `dir` field in the document it is checking, and
+`/v1/audit/{head,proof,consistency}` plus an offline `mandate verify` all exist.
+`grep merkle|audit/head|audit/proof` across `web/src` returns nothing. This is
+`/rails` again: built, tested, invisible.
+
+**Porting `_hash_body` to TypeScript is the only hard part, and there are two traps,
+both verified against a real record from `/tmp/sessions/*/audit.jsonl`:**
+
+1. Python's `json.dumps` defaults to `", "` and `": "` separators. The hashed string
+   begins `{"action": {"amount": 9500, "attempt": 1, ...`. A naive `JSON.stringify`
+   emits no spaces and hashes to something else entirely.
+2. `ensure_ascii=True` escapes non-ASCII. A `rail.divergence` record's `detail`
+   carries a rupee sign (`core.py:371`), which Python writes `\u20b9` and
+   `JSON.stringify` writes literally.
+
+The parity fixture must include a record with a rupee sign and one with nulls, or it
+passes over both. Node is v24.18 and strips types natively, so a pytest test can
+shell out to it. The cross-check that actually proves the port is verifying one
+receipt in the browser and with `mandate verify` and getting the same answer.
+
+**Dependencies: `radix-ui` and `qrcode.react` are already installed.**
+`@noble/ed25519` is the only new one the whole plan needs, and v2 wants a SHA-512
+hook wired from `@noble/hashes`.
+
 ## Running on Vertex AI
 
 The free-tier Gemini key pool caps at 20 requests/day/key, which cannot carry a
@@ -1816,3 +2012,31 @@ in `voice.mjs` are kept for a paid account.
 - Measure the page, do not squint at it. Two defects in the last pass were
   invisible by eye and obvious in `getBoundingClientRect`; two more looked real
   and measured clean.
+- **The approval channel is a second credential, not a check.** `/v1/pending` and
+  `/v1/approve` take `X-Principal-Key`; `/v1/orders` and every MCP tool take the
+  bearer. Neither accepts the other. Serving the pending queue unauthenticated
+  hands the agent the ref that approves its own escalation, which is
+  `escalate.self`, and it shipped that way once.
+- Pending approvals are scoped by `jti`. An unscoped queue shows one visitor
+  another visitor's basket along with the ref that approves it.
+- A test that touches approvals needs a `TokenPool` and must open its session via
+  `/v1/sessions`. A session auto-created by `/v1/orders` has no principal channel,
+  deliberately: there was no human handshake to issue a key to.
+- A stated invariant with a test beside it is not a tested invariant. `pending.py`
+  documented "visible only to the principal" while an open GET served it, and the
+  test that named the invariant checked a different surface.
+- **Mutation-verify on the rail, never on the clause id.** An attack whose hardened
+  half asserts `clause_id == "quote.signature"` flips to ESCAPED when a *different*
+  check catches the attack and no money moves. Judge `env.orders()`.
+- Each quote attack prices its hostile quote so only the check under test can catch
+  it, for the same reason each race attack slackens the constraint it is not
+  testing.
+- `afa.required` is keyed on `threshold`, not `max`. There are two `_bound`
+  implementations — `harness/evidence.py` for the page, `service/server.py` for
+  `/v1/policy` — and a branch copied from a budget clause falls through silently.
+- The log public key is pinned into `evidence.json` at build time. A page that
+  fetched it from the service that signed the head would verify a signature
+  against a key its adversary chose.
+- Python's `json.dumps` writes `", "` and `": "` and escapes non-ASCII. Any
+  TypeScript port of `_hash_body` must match both, and its fixture must carry a
+  rupee sign and a null or it passes over the bugs.
