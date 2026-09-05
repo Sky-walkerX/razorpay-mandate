@@ -503,12 +503,12 @@ def attack_quote_forge(tmp_path: Path) -> AttackResult:
     witness_executed = len(witness_orders) == 1 and witness_orders[0]["amount"] == 190000
 
     dec = env.gateway.propose(_buy(sku="sku_01", qty=1, quote=forged_quote), NOW, token=token)
-    audit_records = env.gateway.audit.records()
-    hardened_executed = (
-        dec.executed
-        or env.orders() > 0
-        or not any(c.id == "quote.signature" for c in audit_records[-1].clauses)
-    )
+    # Judged on the rail, never on the clause id. This attack used to also require
+    # the refusal to name `quote.signature`, so disabling the signature check
+    # entirely reported ESCAPED while nothing had been spent -- the price book
+    # caught it and only the name changed. Money moving is the claim; which check
+    # caught it is reporting.
+    hardened_executed = dec.executed or env.orders() > 0
 
     return AttackResult.judge(
         "quote.forge", witness_executed, hardened_executed,
@@ -523,9 +523,17 @@ def attack_quote_forge(tmp_path: Path) -> AttackResult:
 def attack_quote_expired(tmp_path: Path) -> AttackResult:
     env = Env(tmp_path)
     token = env.token()
+    # Issued five minutes ago and valid for one, so it is stale by four.
+    #
+    # The obvious version of this attack -- a quote minted a year ago -- was caught
+    # twice over: by `expires`, and by the gateway's own 15-minute max_age ceiling.
+    # Disabling the expiry check left it BLOCKED, so the attack proved neither check.
+    # This one sits well inside max_age, so `expires` is the only thing standing
+    # between it and Rs 1,900 on the rail. Same reason each race attack slackens the
+    # constraint it is not testing.
     expired_quote = mint_quote(
         "zepto", "sku_01", 190000, env.merchant_priv,
-        issued=NOW - timedelta(days=365), expires=NOW - timedelta(days=364),
+        issued=NOW - timedelta(minutes=5), expires=NOW - timedelta(minutes=4),
     )
 
     env.witness.propose(_buy(sku="sku_01", qty=1, quote=expired_quote), token=token, unit_prices=PRICES)
@@ -540,10 +548,11 @@ def attack_quote_expired(tmp_path: Path) -> AttackResult:
     )
     dec_valid = env.gateway.propose(_buy(sku="sku_01", qty=1, quote=valid_quote), NOW, token=token)
 
+    # Exactly one order on the rail: the fresh quote's. The stale one must move
+    # nothing, and the check must not be so blunt that it also refuses a good quote.
     hardened_executed = (
         dec_expired.executed
         or env.orders() != 1
-        or dec_expired.clause_id != "quote.expired"
         or dec_valid.verdict is not Verdict.ALLOW
     )
 
@@ -567,7 +576,7 @@ def attack_quote_sku_swap(tmp_path: Path) -> AttackResult:
     witness_executed = len(witness_orders) == 1 and witness_orders[0]["amount"] == 150000
 
     dec = env.gateway.propose(_buy(sku="sku_01", qty=1, quote=swapped_quote), NOW, token=token)
-    hardened_executed = dec.executed or env.orders() > 0 or dec.clause_id != "quote.sku_mismatch"
+    hardened_executed = dec.executed or env.orders() > 0
 
     return AttackResult.judge(
         "quote.sku_swap", witness_executed, hardened_executed,
@@ -595,7 +604,7 @@ def attack_quote_merchant_swap(tmp_path: Path) -> AttackResult:
         Proposal(merchant="zepto", items=[ProposalItem(sku="sku_01", qty=1, quote=swapped_quote)]),
         NOW, token=token,
     )
-    hardened_executed = dec.executed or env.orders() > 0 or dec.clause_id != "quote.merchant_mismatch"
+    hardened_executed = dec.executed or env.orders() > 0
 
     return AttackResult.judge(
         "quote.merchant_swap", witness_executed, hardened_executed,

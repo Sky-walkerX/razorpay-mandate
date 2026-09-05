@@ -58,10 +58,6 @@ class QuoteNotYetValid(QuoteError):
     clause_id = "quote.not_yet_valid"
 
 
-class QuoteDisagrees(QuoteError):
-    clause_id = "quote.disagreement"
-
-
 def _b64url_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
 

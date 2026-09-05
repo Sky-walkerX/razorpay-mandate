@@ -22,7 +22,6 @@ from mandate.gateway.lattice import combine, evaluate_all, first_blocking
 from mandate.gateway.pricebook import PriceBook
 from mandate.gateway.quote import (
     MerchantKeyring,
-    QuoteDisagrees,
     QuoteError,
     verify_quote,
 )
@@ -169,6 +168,7 @@ class Gateway:
         items: list[ResolvedLineItem] = []
         quoted_skus: list[str] = []
         quoted_total = 0
+        book_total_for_quoted = 0
         for it in prop.items:
             pb = self.pricebook.lookup(it.sku)   # KeyError on an unknown SKU
             unit_price = pb.unit_price
@@ -181,14 +181,21 @@ class Gateway:
                     now=now or datetime.now(UTC),
                     max_age=self.quote_max_age,
                 )
-                if quoted_price != int(pb.unit_price):
-                    raise QuoteDisagrees(
-                        f"quote price \u20b9{quoted_price/100:.2f} disagrees with price book \u20b9{int(pb.unit_price)/100:.2f}",
-                        observed=quoted_price,
-                        expected=int(pb.unit_price),
-                    )
+                # A verified quote wins, including when it disagrees with the book.
+                # It used to be refused on any difference, which meant a quote could
+                # only ever restate the price the book already had -- so surge
+                # pricing, the entire point of the feature, did not work, and the
+                # signature check protected nothing the book did not already protect.
+                #
+                # The objection is real: a signed quote is a signed instruction to
+                # spend more of the principal's money, and the agent chooses which
+                # quote to present. The answer is that the caps bind on the price
+                # that results. An agent shopping for the highest quote is still
+                # stopped by budget.per_item, which is what a cap is for. Refusing
+                # on disagreement never protected against that anyway.
                 quoted_skus.append(it.sku)
                 quoted_total += quoted_price * it.qty
+                book_total_for_quoted += int(pb.unit_price) * it.qty
                 unit_price = Paise(quoted_price)
 
             items.append(
@@ -216,14 +223,24 @@ class Gateway:
             # Per basket, not per line. Reporting one line's unit price as though it
             # were the basket's is a number that reads correct and is not, and this
             # clause is written into a hash-chained record that cannot be corrected.
+            moved = quoted_total != book_total_for_quoted
+            lines = f"{len(quoted_skus)} line(s) priced by merchant quote ({', '.join(quoted_skus)})"
             quote_clause = ClauseResult(
-                id="quote.confirmed",
+                # Two ids because they are two different facts, and a reader of the
+                # audit log should not have to compare numbers to tell them apart.
+                # `repriced` is the one that matters: the shop moved the price and
+                # the constraints below bound on the figure it moved to.
+                id="quote.repriced" if moved else "quote.confirmed",
                 result=Verdict.ALLOW,
                 observed=quoted_total,
-                limit=quoted_total,
+                limit=book_total_for_quoted,
                 detail=(
-                    f"{len(quoted_skus)} line(s) priced by merchant quote "
-                    f"({', '.join(quoted_skus)}), each confirmed against the price book"
+                    f"{lines}; the shop's signed price is "
+                    f"\u20b9{quoted_total/100:.2f} against \u20b9{book_total_for_quoted/100:.2f} "
+                    f"on the price list, and the limits below are checked against the "
+                    f"signed price"
+                    if moved else
+                    f"{lines}, each matching the price book"
                 ),
             )
         return action, quote_clause

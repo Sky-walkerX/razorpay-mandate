@@ -75,7 +75,7 @@ OTHER_LABELS: dict[str, str] = {
     "quote.sku_mismatch": "Quote item mismatch",
     "quote.expired": "Expired price quote",
     "quote.not_yet_valid": "Quote not yet valid",
-    "quote.disagreement": "Quote disagrees with price list",
+    "quote.repriced": "Shop's signed price differs from the list",
     "quote.confirmed": "Price quote confirmed",
     "quote.error": "Quote error",
 }

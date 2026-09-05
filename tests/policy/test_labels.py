@@ -35,7 +35,7 @@ NON_CONSTRAINT_CLAUSES = [
     "quote.sku_mismatch",
     "quote.expired",
     "quote.not_yet_valid",
-    "quote.disagreement",
+    "quote.repriced",
     "quote.confirmed",
     "quote.error",
 ]
