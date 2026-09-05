@@ -1,5 +1,6 @@
 """Unit tests for Ed25519 merchant-signed quote verification."""
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -110,3 +111,44 @@ def test_quote_max_age_enforced(keys, keyring):
     with pytest.raises(QuoteExpired):
         verify_quote(q, "zepto", "sku_123", keyring, NOW, max_age=timedelta(minutes=15))
 
+
+
+def test_the_gateway_bounds_quote_age_regardless_of_what_the_merchant_signed():
+    """A shop does not get to set the gateway's freshness policy.
+
+    `expires` is the merchant's claim about its own quote. A merchant that stamps it
+    a year out -- by mistake, or because its signing service was compromised once --
+    would otherwise mint a price good for a year. The gateway's own ceiling is
+    applied on top and is the one that binds.
+    """
+    priv, pub = generate_keypair()
+    ring = MerchantKeyring({"zepto": [pub]})
+    issued = datetime(2026, 9, 5, 12, 0, tzinfo=UTC)
+    quote = mint_quote(
+        "zepto", "sku_01", 50000, priv,
+        issued=issued, expires=issued + timedelta(days=365),
+    )
+
+    # Inside the ceiling: honoured, even though the merchant said a year.
+    assert verify_quote(quote, "zepto", "sku_01", ring,
+                        now=issued + timedelta(minutes=5),
+                        max_age=timedelta(minutes=15)) == 50000
+
+    # Past the ceiling: refused, even though the merchant's own expiry is months away.
+    with pytest.raises(QuoteExpired):
+        verify_quote(quote, "zepto", "sku_01", ring,
+                     now=issued + timedelta(minutes=16),
+                     max_age=timedelta(minutes=15))
+
+
+def test_a_keyring_file_that_is_not_an_object_refuses_every_quote():
+    """It used to return None and crash the caller on the next attribute access."""
+    import json
+    import tempfile
+
+    d = Path(tempfile.mkdtemp())
+    bad = d / "merchants.json"
+    bad.write_text(json.dumps(["zepto", "blinkit"]))
+    ring = MerchantKeyring.from_file(bad)
+    assert isinstance(ring, MerchantKeyring)
+    assert ring.has_merchant("zepto") is False

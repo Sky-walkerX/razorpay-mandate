@@ -11,6 +11,7 @@ from mandate.policy.loader import dump as dump_policy
 from mandate.policy.models import ConstraintId as C
 from mandate.policy.models import Provenance
 from mandate.service.server import create_app
+from mandate.service.token_pool import TokenPool
 from tests.policy.test_models import IST, _policy
 
 
@@ -52,9 +53,20 @@ def test_afa_wiring_rejection_and_lifecycle(tmp_path: Path):
         ledger_path=tmp_path / "ledger.jsonl",
         pricebook=pb,
         capability_secret="secret_test_42",
+        # A pool, because /v1/sessions is the only place a principal key is issued
+        # and the principal channel is what makes an approval an approval.
+        token_pool=TokenPool.from_tokens([
+            mint_agent_token(
+                pol.mandate_id, priv_hex,
+                expires_iso=(datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+                jti="tok_afa_wire",
+            )
+        ]),
     )
 
     client = TestClient(app)
+    session = client.post("/v1/sessions").json()
+    principal_hdr = {"X-Principal-Key": session["principal_key"]}
 
     # 1. Verify policy includes afa.required bound
     pol_res = client.get("/v1/policy")
@@ -65,9 +77,7 @@ def test_afa_wiring_rejection_and_lifecycle(tmp_path: Path):
     assert "₹1,000.00" in afa_part["bound"]
 
     # 2. Trigger AFA pending item
-    exp = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
-    token = mint_agent_token(pol.mandate_id, priv_hex, expires_iso=exp, jti="tok_afa_wire")
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {session['token']}"}
 
     client.post(
         "/v1/orders",
@@ -84,7 +94,7 @@ def test_afa_wiring_rejection_and_lifecycle(tmp_path: Path):
     assert afa_hr["limit_paise"] == 100000
 
     # 4. Pending list
-    pending_res = client.get("/v1/pending")
+    pending_res = client.get("/v1/pending", headers=principal_hdr)
     ref = pending_res.json()["pending"][0]["ref"]
 
     # 5. Invalid ref preview -> 404

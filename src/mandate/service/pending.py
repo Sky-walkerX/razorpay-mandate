@@ -19,6 +19,7 @@ from typing import Any
 @dataclass
 class PendingItem:
     ref: str
+    jti: str
     mandate_id: str
     intent: str
     merchant: str
@@ -29,10 +30,19 @@ class PendingItem:
     expires_at: datetime
     status: str = "pending"  # "pending" | "approved" | "rejected" | "expired"
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, include_ref: bool = False) -> dict[str, Any]:
+        """Render for the wire. The ref is withheld unless explicitly asked for.
+
+        The ref is the bearer credential for POST /v1/approve, so it is emitted only
+        on the principal's authenticated channel. Defaulting it off means a new
+        surface that forgets to think about it leaks nothing.
+        """
         d = asdict(self)
         d["created_at"] = self.created_at.isoformat()
         d["expires_at"] = self.expires_at.isoformat()
+        d.pop("jti", None)
+        if not include_ref:
+            d.pop("ref", None)
         return d
 
 
@@ -46,6 +56,7 @@ class PendingApprovals:
     def open(
         self,
         intent: str,
+        jti: str,
         mandate_id: str,
         merchant: str,
         amount: int,
@@ -69,6 +80,7 @@ class PendingApprovals:
             ref = secrets.token_urlsafe(32)
             item = PendingItem(
                 ref=ref,
+                jti=jti,
                 mandate_id=mandate_id,
                 intent=intent,
                 merchant=merchant,
@@ -100,11 +112,22 @@ class PendingApprovals:
                 return None
             return self.get(ref, now)
 
-    def list_for_principal(self, now: datetime | None = None) -> list[PendingItem]:
+    def list_for_principal(
+        self, jti: str, now: datetime | None = None
+    ) -> list[PendingItem]:
+        """Every escalation raised by one session, newest first.
+
+        `jti` is required rather than optional. A principal sees what their own
+        agent proposed and nothing else -- on a public deployment an unscoped
+        listing would show one visitor another visitor's basket, and hand them a
+        ref that approves it.
+        """
         now_dt = now or datetime.now(UTC)
         with self._lock:
             results: list[PendingItem] = []
             for item in self._items.values():
+                if item.jti != jti:
+                    continue
                 if item.status == "pending" and item.expires_at <= now_dt:
                     item.status = "expired"
                 results.append(item)

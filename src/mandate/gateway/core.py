@@ -2,7 +2,7 @@
 import hashlib
 import hmac
 import threading
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
 from pydantic import BaseModel
@@ -117,6 +117,7 @@ class Gateway:
         revocations: RevocationList | None = None,
         approvals=None,
         merchant_keyring: MerchantKeyring | None = None,
+        quote_max_age: timedelta = timedelta(minutes=15),
     ) -> None:
         if not capability_secret:
             raise ValueError("capability_secret is required and cannot be empty")
@@ -137,6 +138,10 @@ class Gateway:
         # to this store; approvals arrive on the principal's endpoint.
         self.approvals = approvals
         self.merchant_keyring = merchant_keyring or MerchantKeyring()
+        # The gateway's own ceiling on quote age, applied on top of whatever the
+        # merchant signed. A shop does not get to set the gateway's freshness policy
+        # by stamping `expires` ten years out.
+        self.quote_max_age = quote_max_age
         self._hash = policy_hash(policy)
         self._eval_lock = threading.Lock()
         self._spent_jtis: set[str] = set()
@@ -162,19 +167,19 @@ class Gateway:
             )
 
         items: list[ResolvedLineItem] = []
-        has_quote = False
-        last_quote_price = 0
+        quoted_skus: list[str] = []
+        quoted_total = 0
         for it in prop.items:
             pb = self.pricebook.lookup(it.sku)   # KeyError on an unknown SKU
             unit_price = pb.unit_price
             if getattr(it, "quote", None) is not None:
-                has_quote = True
                 quoted_price = verify_quote(
                     it.quote,
                     expected_merchant=prop.merchant,
                     expected_sku=it.sku,
                     keyring=self.merchant_keyring,
                     now=now or datetime.now(UTC),
+                    max_age=self.quote_max_age,
                 )
                 if quoted_price != int(pb.unit_price):
                     raise QuoteDisagrees(
@@ -182,7 +187,8 @@ class Gateway:
                         observed=quoted_price,
                         expected=int(pb.unit_price),
                     )
-                last_quote_price = quoted_price
+                quoted_skus.append(it.sku)
+                quoted_total += quoted_price * it.qty
                 unit_price = Paise(quoted_price)
 
             items.append(
@@ -206,13 +212,19 @@ class Gateway:
             capability=getattr(prop, "capability", None),
         )
         quote_clause = None
-        if has_quote:
+        if quoted_skus:
+            # Per basket, not per line. Reporting one line's unit price as though it
+            # were the basket's is a number that reads correct and is not, and this
+            # clause is written into a hash-chained record that cannot be corrected.
             quote_clause = ClauseResult(
                 id="quote.confirmed",
                 result=Verdict.ALLOW,
-                observed=last_quote_price,
-                limit=last_quote_price,
-                detail="merchant quote confirmed against price book",
+                observed=quoted_total,
+                limit=quoted_total,
+                detail=(
+                    f"{len(quoted_skus)} line(s) priced by merchant quote "
+                    f"({', '.join(quoted_skus)}), each confirmed against the price book"
+                ),
             )
         return action, quote_clause
 
@@ -322,7 +334,19 @@ class Gateway:
                 else:
                     action, quote_clause = self._resolve_to_action(proposal, now)
             except QuoteError as e:
-                action, _ = self._resolve_to_action(_strip_quotes(proposal), now)
+                # Re-resolve at book prices so the refusal is audited against a real
+                # action rather than early-returning invisibly. The inner resolve can
+                # still fail on a later unknown SKU, which the outer handlers below
+                # would not catch -- the quote error was raised before that line was
+                # ever looked up.
+                try:
+                    action, _ = self._resolve_to_action(_strip_quotes(proposal), now)
+                except (KeyError, PriceBookMissing) as inner:
+                    return Decision(
+                        verdict=Verdict.DENY,
+                        clause_id="pricebook",
+                        message=f"unknown SKU: {inner}",
+                    )
                 quote_clause = ClauseResult(
                     id=e.clause_id,
                     result=Verdict.DENY,

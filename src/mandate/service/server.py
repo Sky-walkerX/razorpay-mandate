@@ -8,6 +8,7 @@ import asyncio
 import contextlib
 import json
 import os
+import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -348,6 +349,11 @@ def create_app(
         app_approvals = ApprovalStore(approval_store_path)
 
     pending_approvals = PendingApprovals()
+    # principal_key -> jti. The approval channel's identity, deliberately distinct
+    # from the agent's bearer token: the agent's credential cannot approve, and the
+    # principal's credential cannot spend. Per session rather than one service-wide
+    # secret, so one visitor cannot list -- or approve -- another visitor's basket.
+    principal_keys: dict[str, str] = {}
 
     session_manager = SessionManager(
         policy=policy,
@@ -443,6 +449,8 @@ def create_app(
             }, status_code=503)
 
         session_manager.create_session(token, claims)
+        principal_key = secrets.token_urlsafe(32)
+        principal_keys[principal_key] = claims.jti
         return JSONResponse({
             "token": token,
             "jti": claims.jti,
@@ -450,6 +458,9 @@ def create_app(
             "policy_hash": pol_hash,
             "expires_at": claims.exp,
             "remaining_tokens": pool.available_count,
+            # The human's half of the session. Never sent to the agent, and no
+            # agent-facing surface accepts it.
+            "principal_key": principal_key,
         })
 
     async def get_catalog(req: Request):
@@ -595,6 +606,7 @@ def create_app(
 
             pending_approvals.open(
                 intent=dec.idem_key,
+                jti=claims.jti,
                 mandate_id=session.gateway.policy.mandate_id,
                 merchant=prop.merchant,
                 amount=amount,
@@ -714,8 +726,26 @@ def create_app(
         return JSONResponse({"status": "revoked", "jti": claims.jti})
 
     async def get_pending(req: Request):
+        """The principal's queue. The only place an approval ref is ever readable.
+
+        This is the whole boundary. Served unauthenticated, it hands any caller --
+        the agent included -- the ref that approves the agent's own escalation, which
+        is `escalate.self` with extra steps. The agent's bearer token is deliberately
+        not accepted here.
+        """
+        key = req.headers.get("x-principal-key", "").strip()
+        jti = principal_keys.get(key) if key else None
+        if not jti:
+            return JSONResponse(
+                {"error": "principal_key_required",
+                 "detail": "this is the principal's channel; an agent token does not open it"},
+                status_code=401,
+            )
         return JSONResponse({
-            "pending": [it.to_dict() for it in pending_approvals.list_for_principal()]
+            "pending": [
+                it.to_dict(include_ref=True)
+                for it in pending_approvals.list_for_principal(jti)
+            ]
         })
 
     async def preview_approval(req: Request):

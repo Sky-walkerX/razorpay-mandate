@@ -6,6 +6,7 @@ import JudgeConsole from './pages/JudgeConsole';
 import PitchDeck from './pages/PitchDeck';
 import Storefront from './pages/Storefront';
 import Alignment from './pages/Alignment';
+import Approve from './pages/Approve';
 
 export default function App() {
   return (
@@ -15,6 +16,8 @@ export default function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/try" element={<JudgeConsole />} />
         <Route path="/store" element={<Storefront />} />
+        <Route path="/approve" element={<Approve />} />
+        <Route path="/approve/:ref" element={<Approve />} />
         <Route path="/pitch" element={<PitchDeck />} />
         <Route path="/rails" element={<Alignment />} />
         <Route path="/v2" element={<Navigate to="/" replace />} />

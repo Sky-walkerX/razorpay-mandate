@@ -97,10 +97,12 @@ class MerchantKeyring:
             return cls()
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                return cls(data)
         except (json.JSONDecodeError, OSError):
             return cls()
+        # A file that parses but is not an object is a misconfiguration, not a
+        # keyring. Returning an empty one refuses every quote, which is the safe
+        # direction; falling off the end returned None and crashed the caller.
+        return cls(data) if isinstance(data, dict) else cls()
 
     def get_keys(self, merchant: str) -> list[str]:
         return list(self._keys.get(merchant.strip().lower(), []))
@@ -185,10 +187,13 @@ def verify_quote(
 
     quote_merchant = str(payload.get("merchant", "")).strip().lower()
     if not quote_merchant or not keyring.has_merchant(quote_merchant):
+        # Deliberately does not list the known merchants. This string reaches the
+        # agent verbatim and is written into the audit record, so naming them would
+        # let a hostile caller enumerate the keyring one refusal at a time.
         raise QuoteUnsigned(
-            f"unknown merchant {quote_merchant!r} in quote keyring",
+            f"no key held for merchant {quote_merchant!r}",
             observed=quote_merchant,
-            expected=list(keyring._keys.keys()),
+            expected="a merchant in the gateway's keyring",
         )
 
     # 3. Signature verification
