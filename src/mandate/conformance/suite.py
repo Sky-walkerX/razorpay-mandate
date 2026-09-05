@@ -18,7 +18,8 @@ from pathlib import Path
 
 from mandate.conformance.witness import AttackResult, UnhardenedGateway
 from mandate.downstream.fake import DownstreamError, FakeDownstream
-from mandate.gateway.action import Proposal, ProposalItem
+from mandate.gateway.action import Proposal, ProposalItem, canonical_intent
+from mandate.gateway.approval import ApprovalStore
 from mandate.gateway.audit import AuditLog
 from mandate.gateway.core import Gateway, Mode
 from mandate.gateway.idem import Ledger
@@ -87,6 +88,7 @@ class Env:
 
         self.downstream = FakeDownstream()
         self.revocations = RevocationList(tmp_path / "revocations.jsonl")
+        self.approvals = ApprovalStore(tmp_path / "approvals.jsonl")
         self.gateway = Gateway(
             policy=self.policy,
             downstream=self.downstream,
@@ -98,6 +100,7 @@ class Env:
             issuer_public_key=self.pub if require_token else None,
             revocations=self.revocations,
             merchant_keyring=self.keyring,
+            approvals=self.approvals,
         )
         self.witness_downstream = FakeDownstream()
         self.witness = UnhardenedGateway(self.policy, self.witness_downstream)
@@ -627,6 +630,116 @@ def attack_quote_requote_idem(tmp_path: Path) -> AttackResult:
     )
 
 
+# --------------------------------------------------------------------------
+# 15. approve.self -- agent attempts to execute over-threshold order without approval
+# --------------------------------------------------------------------------
+def attack_approve_self(tmp_path: Path) -> AttackResult:
+    cons = {
+        ConstraintId.BUDGET_TOTAL: {"max": 500000},
+        ConstraintId.AFA_REQUIRED: {"threshold": 100000},
+    }
+    pol = _make_conformance_policy(constraints=cons)
+    env = Env(tmp_path, policy=pol)
+    token = env.token()
+
+    env.witness.propose(_buy(sku="sku_02", qty=1), token=token, unit_prices=PRICES)
+    witness_orders = len(env.witness_downstream._orders)
+    witness_executed = witness_orders == 1
+
+    dec = env.gateway.propose(_buy(sku="sku_02", qty=1), NOW, token=token)
+    hardened_executed = dec.executed or env.orders() > 0 or dec.clause_id != "afa.required"
+
+    return AttackResult.judge(
+        "approve.self", witness_executed, hardened_executed,
+        f"action above AFA threshold held at {dec.clause_id!r} (verdict {dec.verdict.name}); "
+        f"{env.orders()} order(s) on the rail; witness executed {witness_orders} order(s)",
+    )
+
+
+# --------------------------------------------------------------------------
+# 16. approve.replay -- agent attempts to reuse single-use human approval
+# --------------------------------------------------------------------------
+def attack_approve_replay(tmp_path: Path) -> AttackResult:
+    cons = {
+        ConstraintId.BUDGET_TOTAL: {"max": 500000},
+        ConstraintId.AFA_REQUIRED: {"threshold": 100000},
+    }
+    pol = _make_conformance_policy(constraints=cons)
+    env = Env(tmp_path, policy=pol)
+    token1 = env.token(jti="tok_01")
+    token2 = env.token(jti="tok_02")
+
+    env.witness.propose(_buy(sku="sku_02", qty=1, attempt=1), token=token1, unit_prices=PRICES)
+    env.witness.propose(_buy(sku="sku_02", qty=1, attempt=2), token=token2, unit_prices=PRICES)
+    witness_orders = len(env.witness_downstream._orders)
+    witness_executed = witness_orders == 2
+
+    # Intent is approved out-of-band once
+    prop = _buy(sku="sku_02", qty=1)
+    act, _ = env.gateway._resolve_to_action(prop, NOW)
+    intent = canonical_intent(act, env.policy.mandate_id)
+    env.approvals.approve(intent)
+
+    # First execution succeeds and consumes approval
+    d1 = env.gateway.propose(prop, NOW, token=token1)
+
+    # Second execution in a fresh session sharing the approval store
+    g2 = Gateway(
+        policy=pol,
+        downstream=env.downstream,
+        audit=AuditLog(tmp_path / "audit2.jsonl"),
+        mode=Mode.ENFORCE,
+        ledger=Ledger(tmp_path / "ledger2.jsonl"),
+        pricebook=_pricebook(),
+        capability_secret="conformance_secret",
+        issuer_public_key=env.pub,
+        revocations=env.revocations,
+        merchant_keyring=env.keyring,
+        approvals=env.approvals,
+    )
+    d2 = g2.propose(_buy(sku="sku_02", qty=1), NOW, token=token2)
+
+    hardened_executed = not d1.executed or d2.executed or env.orders() > 1 or d2.verdict != Verdict.UNKNOWN or d2.clause_id != "afa.required"
+    return AttackResult.judge(
+        "approve.replay", witness_executed, hardened_executed,
+        f"consumed approval rejected on second execution (verdict {d2.verdict.name}, clause {d2.clause_id!r}); "
+        f"witness allowed {witness_orders} orders",
+    )
+
+
+# --------------------------------------------------------------------------
+# 17. approve.swap -- agent substitutes basket after human approves different basket
+# --------------------------------------------------------------------------
+def attack_approve_swap(tmp_path: Path) -> AttackResult:
+    cons = {
+        ConstraintId.BUDGET_TOTAL: {"max": 500000},
+        ConstraintId.AFA_REQUIRED: {"threshold": 100000},
+    }
+    pol = _make_conformance_policy(constraints=cons)
+    env = Env(tmp_path, policy=pol)
+    token = env.token()
+
+    env.witness.propose(_buy(sku="sku_01", qty=3), token=token, unit_prices=PRICES)
+    witness_orders = len(env.witness_downstream._orders)
+    witness_executed = witness_orders == 1
+
+    # Human approves basket A (sku_02 x 1 = 150000 paise)
+    prop_a = _buy(sku="sku_02", qty=1)
+    act_a, _ = env.gateway._resolve_to_action(prop_a, NOW)
+    intent_a = canonical_intent(act_a, env.policy.mandate_id)
+    env.approvals.approve(intent_a)
+
+    # Agent attempts swapped basket B (sku_01 x 3 = 150000 paise)
+    d_swap = env.gateway.propose(_buy(sku="sku_01", qty=3), NOW, token=token)
+
+    hardened_executed = d_swap.executed or env.orders() > 0 or d_swap.clause_id != "afa.required"
+    return AttackResult.judge(
+        "approve.swap", witness_executed, hardened_executed,
+        f"swapped basket held at {d_swap.clause_id!r} (verdict {d_swap.verdict.name}); "
+        f"{env.orders()} order(s) on the rail; witness executed {witness_orders} order(s)",
+    )
+
+
 ATTACKS = (
     attack_replay_token,
     attack_replay_intent,
@@ -642,6 +755,9 @@ ATTACKS = (
     attack_quote_sku_swap,
     attack_quote_merchant_swap,
     attack_quote_requote_idem,
+    attack_approve_self,
+    attack_approve_replay,
+    attack_approve_swap,
 )
 
 

@@ -1,6 +1,6 @@
 {
-  "total": 9,
-  "blocked": 9,
+  "total": 17,
+  "blocked": 17,
   "escaped": 0,
   "vacuous": 0,
   "race_trials": 200,
@@ -67,6 +67,62 @@
       "witness_executed": true,
       "hardened_executed": false,
       "detail": "10x rail divergence halted by 'rail.divergence' with verdict UNKNOWN; capability withheld (True); 0 paise left standing on the rail; the witness allowed 500000 paise"
+    },
+    {
+      "attack_id": "quote.forge",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "forged quote denied by 'quote.signature' with verdict DENY; 0 order(s) on the rail; witness allowed 1 order(s) at 190000 paise"
+    },
+    {
+      "attack_id": "quote.expired",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "expired quote denied by 'quote.expired'; fresh quote was ALLOW; 1 order(s) on the rail"
+    },
+    {
+      "attack_id": "quote.sku_swap",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "swapped sku quote denied by 'quote.sku_mismatch'; 0 order(s) on the rail; witness executed at 150000 paise"
+    },
+    {
+      "attack_id": "quote.merchant_swap",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "swapped merchant quote denied by 'quote.merchant_mismatch'; 0 order(s) on the rail; witness allowed 190000 paise"
+    },
+    {
+      "attack_id": "quote.requote_idem",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "re-quoted basket collapsed to 1 idempotency key(s) and 1 order(s); witness minted fresh keys and executed 2 order(s)"
+    },
+    {
+      "attack_id": "approve.self",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "action above AFA threshold held at 'afa.required' (verdict UNKNOWN); 0 order(s) on the rail; witness executed 1 order(s)"
+    },
+    {
+      "attack_id": "approve.replay",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "consumed approval rejected on second execution (verdict UNKNOWN, clause 'afa.required'); witness allowed 2 orders"
+    },
+    {
+      "attack_id": "approve.swap",
+      "outcome": "BLOCKED",
+      "witness_executed": true,
+      "hardened_executed": false,
+      "detail": "swapped basket held at 'afa.required' (verdict UNKNOWN); 0 order(s) on the rail; witness executed 1 order(s)"
     }
   ]
 }

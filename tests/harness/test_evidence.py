@@ -55,7 +55,7 @@ def test_scoreboard_carries_the_three_measured_sets(ev):
     assert sb["false_block"]["enforce"]["blocked"] == 0
     assert sb["false_block"]["enforce"]["total"] == 12
     assert sb["conformance"] == {
-        "total": 9, "blocked": 9, "escaped": 0, "vacuous": 0, "race_trials": 200,
+        "total": 17, "blocked": 17, "escaped": 0, "vacuous": 0, "race_trials": 200,
     }
 
 

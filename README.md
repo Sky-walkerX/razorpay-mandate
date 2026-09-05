@@ -7,7 +7,7 @@
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Cloud%20Run-2F5EFF?style=flat-square)](https://mandate-gateway-214049084577.asia-south1.run.app/)
 [![Pitch Deck](https://img.shields.io/badge/Pitch%20Deck-Interactive%20Keynote-012652?style=flat-square)](https://mandate-gateway-214049084577.asia-south1.run.app/pitch)
 [![Attack Console](https://img.shields.io/badge/Live%20Attacks-9%20Presets-0E7C56?style=flat-square)](https://mandate-gateway-214049084577.asia-south1.run.app/try)
-[![Conformance](https://img.shields.io/badge/Conformance-9%2F9%20Blocked-0E7C56?style=flat-square)](ARCHITECTURE.md#5-protocol-conformance-test-suite-9-hostile-attacks)
+[![Conformance](https://img.shields.io/badge/Conformance-17%2F17%20Blocked-0E7C56?style=flat-square)](ARCHITECTURE.md#5-protocol-conformance-test-suite-17-hostile-attacks)
 [![Latency](https://img.shields.io/badge/9--Clause%20Evaluation-%3C0.01ms-blue?style=flat-square)](ARCHITECTURE.md)
 
 <p align="center">
@@ -118,29 +118,37 @@ Three families only, and one of them (`budget.salami`) was repaired mid-cycle af
 
 ## Conformance & Empirical Validation
 
-Mandate includes a deterministic protocol conformance suite covering 9 actively hostile attack vectors:
+Mandate includes a deterministic protocol conformance suite covering 17 actively hostile attack vectors:
 
 ```bash
 mandate conformance
 ```
 
 ```text
-Running Mandate Protocol Conformance Suite (9 hostile attacks)...
+Running Mandate Protocol Conformance Suite (17 hostile attacks)...
 
   Attack ID                    Witness    Hardened     Outcome  Details
   ---------------------------------------------------------------------------
-  replay.token                executed      denied     BLOCKED  first spend ALLOW; replay of the revoked jti denied by 'authentication'
-  replay.intent               executed      denied     BLOCKED  two submissions of one intent produced 1 order(s) on the rail vs. witness's 2
-  idem.forge                  executed      denied     BLOCKED  6 perturbed proposals collapsed to 1 idempotency key; witness minted a fresh key per perturbation
-  race.velocity               executed      denied     BLOCKED  0 of 200 breaches of a cap of 3
-  race.budget                 executed      denied     BLOCKED  0 of 200 breaches of a cap of 1
-  capture.divergence          executed      denied     BLOCKED  10x capture denied by 'capture.binding'; capture at authorised amount was ALLOW
-  delegate.split               executed      denied     BLOCKED  two tokens on one mandate settled 150000 paise against a 200000 cap; witness settled 300000
-  escalate.self                executed      denied     BLOCKED  self-minted token denied by 'authentication'; witness raised its own cap and spent 3000000 paise
-  rail.divergence               executed      denied     BLOCKED  10x rail divergence halted by 'rail.divergence' (UNKNOWN); witness allowed 500000 paise
+  replay.token                executed      denied     BLOCKED  first spend ALLOW; replay of the revoked jti denied by 'authentication'; 1 order(s) on the rail
+  replay.intent               executed      denied     BLOCKED  two submissions of one intent produced 1 order(s) on the rail against the witness's 2
+  idem.forge                  executed      denied     BLOCKED  6 perturbed proposals collapsed to 1 idempotency key(s) and 1 order(s); the witness minted a fresh key per perturbation
+  race.velocity               executed      denied     BLOCKED  0 of 200 breaches of a cap of 3. Zero in 200 puts the 95% upper bound near 1.5%, which is not proof of a lock
+  race.budget                 executed      denied     BLOCKED  0 of 200 breaches of a cap of 1. Zero in 200 puts the 95% upper bound near 1.5%, which is not proof of a lock
+  capture.divergence          executed      denied     BLOCKED  10x capture denied by 'capture.binding' while the capture at the authorised amount was ALLOW
+  delegate.split              executed      denied     BLOCKED  two tokens on one mandate settled 150000 paise against a 200000 cap; the witness settled 300000
+  escalate.self               executed      denied     BLOCKED  forged policy refused (True); self-minted token denied by 'authentication'; the witness raised its own cap and spent 3000000 paise
+  rail.divergence             executed      denied     BLOCKED  10x rail divergence halted by 'rail.divergence' with verdict UNKNOWN; capability withheld (True); 0 paise left standing on the rail; the witness allowed 500000 paise
+  quote.forge                 executed      denied     BLOCKED  forged quote denied by 'quote.signature' with verdict DENY; 0 order(s) on the rail; witness allowed 1 order(s) at 190000 paise
+  quote.expired               executed      denied     BLOCKED  expired quote denied by 'quote.expired'; fresh quote was ALLOW; 1 order(s) on the rail
+  quote.sku_swap              executed      denied     BLOCKED  swapped sku quote denied by 'quote.sku_mismatch'; 0 order(s) on the rail; witness executed at 150000 paise
+  quote.merchant_swap         executed      denied     BLOCKED  swapped merchant quote denied by 'quote.merchant_mismatch'; 0 order(s) on the rail; witness allowed 190000 paise
+  quote.requote_idem          executed      denied     BLOCKED  re-quoted basket collapsed to 1 idempotency key(s) and 1 order(s); witness minted fresh keys and executed 2 order(s)
+  approve.self                executed      denied     BLOCKED  action above AFA threshold held at 'afa.required' (verdict UNKNOWN); 0 order(s) on the rail; witness executed 1 order(s)
+  approve.replay              executed      denied     BLOCKED  consumed approval rejected on second execution (verdict UNKNOWN, clause 'afa.required'); witness allowed 2 orders
+  approve.swap                executed      denied     BLOCKED  swapped basket held at 'afa.required' (verdict UNKNOWN); 0 order(s) on the rail; witness executed 1 order(s)
   ---------------------------------------------------------------------------
 
-Summary: 9 attacks, 9 blocked, 0 escaped, 0 vacuous.
+Summary: 17 attacks, 17 blocked, 0 escaped, 0 vacuous.
 ```
 
 For complete technical specifications, mathematical lattice semantics, and architectural diagrams, see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
