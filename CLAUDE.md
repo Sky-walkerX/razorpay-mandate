@@ -292,18 +292,26 @@ an honest response rather than a 500, and the thirteenth wraps the Reserve Pay
 shadow so a talking point can never cost a real verdict. Recorded here so the
 baseline moving is a choice and not a drift.
 
-`dev` is fully pushed through `7d214f4`. Nothing is uncommitted.
+`dev` is fully pushed through `e4ebb03`. Nothing is uncommitted.
 
-**Cloud Run is on `mandate-gateway-00015-k9x`**, built from HEAD and verified: all
-thirteen preflight checks pass on the custom domain, and on the live service a
-Rs 50,000 payment link is refused on `budget.per_transaction` while Rs 300 creates a
-real `plink_` on the test rail.
+**Cloud Run is on `mandate-gateway-00016-q6p`**, deployed 5 Sep from `dev` at
+`e4ebb03` and verified: all thirteen preflight checks pass on the custom domain, and
+the deployed bundle hash matches the local build exactly.
+
+That deploy carried the receipts / approvals / quotes work, and needed **two env vars
+the service had never held**, both merged in on the deploy itself with
+`--update-env-vars` (see "Getting the quote feature to production" below):
+`MANDATE_LOG_PRIVATE_KEY` and `MANDATE_SHOP_PRIVATE_KEYS`. Without them the deploy
+would have rendered perfectly while `/v1/audit/head` stayed 503 and every quote
+refused on `quote.unknown_merchant` — **check the env block against the feature being
+shipped, not just against the last deploy.**
 
 Earlier revisions, for the record: `00008-cx9` carried the `/v1/compile`
 honest-failure fix and the pool-sized session cap, `00011-gv6` the Reserve Pay
 shadow and the demo turn cap, `00012-dsg` shipped the shadow path traversal and
 stood for minutes before `00013-xfm`, `00014-fqk` made the missing-token refusal
-readable. **If the revision named here does not match
+readable, `00015-k9x` the mediated Razorpay surface and the rail mandate.
+**If the revision named here does not match
 `gcloud run services describe`, trust gcloud**; two revisions have already landed
 without being written down.
 
@@ -901,18 +909,20 @@ human is summoned, and every step is a receipt the visitor verifies themselves.*
 
 ### State right now
 
-On branch `feat/receipts-approvals-quotes`, not `dev`. **583 tests pass, ruff 13,
-conformance 17 attacks / 17 blocked / 0 vacuous.** Web builds clean.
+**Merged to `dev` and deployed on 5 Sep.** `feat/receipts-approvals-quotes` went in
+as `e4ebb03` and the branch is deleted; it never reached origin, so `dev` is the only
+copy. **600 tests pass, 1 skipped, ruff 13, conformance 17 attacks / 17 blocked /
+0 vacuous.** Web builds clean. The conformance re-run reproduced the committed
+`results-conformance/` byte for byte, so `evidence.json` needed no regeneration.
 
 Landed: the log signing key path, merchant-signed quotes (`gateway/quote.py`), the
 AFA approval loop (`service/pending.py`, `/v1/pending`, `/v1/approve`), the
 `/approve` SPA page, seven new conformance attacks, the client-side receipt verifier
 (`web/src/lib/{merkle,canonical}.ts`, `ui/dialog.tsx`, `ReceiptVerifier.tsx`, wired
-into the `/try` ledger rows), and the quote ladder described below.
+into the `/try` ledger rows), the QR on `/try`, and the quote ladder described below.
 
-**Still missing: any QR on `/try`**, so the approval loop has no demo path even
-though the backend works end to end. Nothing on the web reads `/v1/quote` either, so
-the surge is curl-able but not yet on a screen.
+Nothing on the web reads `/v1/quote` yet, so the surge is live and curl-able but not
+on a screen.
 
 ### The quote arc, verified against a live server on 5 Sep
 
@@ -1070,12 +1080,42 @@ Four things, and only the first is in git:
   anywhere else ships a gateway that refuses every quote on
   `quote.unknown_merchant`.
 
+**Both env vars were set on the 5 Sep deploy and the whole arc is verified live**
+against `mandate.namankhandelwal.dev`, on a visitor mandate compiled by `/v1/sandbox`
+capping an order at Rs 300:
+
+```
+GET  /v1/quote  sku_0004 x3   list Rs 194.00/unit -> signed Rs 329.80/unit at 1.7x
+POST /v1/orders with that quote   DENY  budget.per_transaction
+                                  "limit Rs 300.00, attempted Rs 989.40"
+```
+
+Rs 989.40 is 3 x the **signed** price; 3 x list would have been Rs 582.00. So the
+merchant moved the price, the gateway verified the signature, and the cap bound on
+the figure the shop signed rather than the one the book held. That is the whole
+feature, on the deployed service.
+
+**The idempotency collapse bites on a live demo exactly as predicted.** Ordering the
+same basket at list and then re-ordering it with a surge quote returned
+`ALLOW, executed: false, "already committed"` at the first order's amount, because
+`canonical_intent` hashes `{sku, qty}` and never price. Use a different quantity or a
+fresh session, as the quote-arc note above already says. It looks like the surge did
+nothing.
+
 ### Three live gaps, found by running things rather than reading them
 
 **`/v1/audit/head` was 503 in production and always had been.** Curled the custom
 domain: `"gateway holds no log signing key; run 'mandate keygen --log'"`. The signed
 tree head, the inclusion proofs and `mandate verify` are all real, all tested, and
 none had ever run in a deployment. Same shape as the `GEMINI_VERTEX_PROJECT` outage.
+
+**Closed on the 5 Sep deploy, and verified rather than assumed.** With
+`MANDATE_LOG_PRIVATE_KEY` set, the live endpoint returns a signed head, and that
+signature was checked offline against the public key **`evidence.json` pins at build
+time** — not against anything the service handed back. The message is
+`f"{size}:{root}:{ts}"`; the separator is a colon, and `root` contains one too, which
+is harmless only because both sides build the same string. A no-bearer call is 401,
+not 503, so the old failure and a missing credential no longer look alike.
 
 The cause is structural. `test_docker_image_ships_no_signing_key` rejects any `COPY`
 whose source contains `private` — correctly, since `COPY .mandate/` once shipped the

@@ -5,6 +5,8 @@
 # never holds a signing key.
 .mandate/keys/issuer_private.key
 .mandate/keys/log_private.key
+.mandate/keys/*_private.key
+.mandate/keys/shop_private.json
 .env
 .pytest_cache
 .coverage
