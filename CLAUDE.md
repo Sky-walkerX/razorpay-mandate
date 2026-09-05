@@ -944,6 +944,64 @@ returning `ALLOW, executed: False` at the *first* order's amount. That is the sp
 predicted "mild cost" of keeping `idem.forge` dead, and it is correct, but on stage it
 looks like the surge did nothing. Two different quantities, or two sessions, avoid it.
 
+### Closed, 5 Sep: `afa.required` had never fired anywhere, for two reasons
+
+The clause `/rails` singles out — RBI requires it, neither AP2 nor Reserve Pay can
+carry it, "the gateway holds it because the rails cannot" — did nothing in the
+running product. Found by trying to build the QR demo path and asking what would
+trigger it.
+
+**It was absent from every compiled mandate.** The floor lived in one hand-written
+`policies/policy.yaml` and nowhere else. The compiler never emits it, correctly:
+nobody dictating an intent says "and hold anything above Rs 15,000 for an additional
+factor", which is the whole reason provenance has a `regulatory` bucket. But nothing
+put it back, so `mandate compile`, `/v1/compile` and `/v1/sandbox` all produced
+mandates without it. Measured on a live sandbox session before the fix: a visitor
+mandate authorising Rs 50,000 an order **executed Rs 18,600 straight to the test
+rail** with the clause reading `constraint not in policy`.
+
+`REGULATORY_FLOOR` now lives in `policy/regulatory.py`, beside the citation it comes
+from, and `_apply_regulatory_floor` applies it after the two readings are compared so
+the determinism check is untouched. **A stricter threshold the user stated survives;
+a looser one does not.** Asking to be consulted sooner is theirs to choose. The floor
+is not theirs to decline — which is the direction the word implies, and without it a
+mandate could raise its own threshold to Rs 1 lakh and satisfy the regulator's clause
+by never firing it.
+
+**It is unreachable on the signed mandate, and this is a property, not a bug.**
+`budget.total` is Rs 2,000 against a Rs 15,000 threshold and DENY outranks UNKNOWN,
+so every basket large enough to need an additional factor is refused on a budget
+clause first. Do not "fix" this by lowering the threshold: it is a statutory number,
+not a demo dial. `test_the_signed_mandate_can_never_reach_the_threshold` states it so
+it cannot surprise anyone on stage.
+
+The consequence is that **the approval loop can only be demonstrated on a mandate
+whose caps a visitor set**, so `/v1/sandbox` now issues a `principal_key` — the same
+credential `/v1/sessions` has always issued, for the same reason. Someone who typed
+the mandate is at least as much the principal as someone who pressed "start session".
+It stays the principal's: `/v1/pending` and `/v1/approve` take it, no agent-facing
+surface does, and the agent still gets only the bearer.
+
+Driven the whole way round on a live server against the real test rail:
+
+```
+agent orders Rs 18,600        -> UNKNOWN, afa.required, not executed
+agent lists /v1/pending       -> 401, "an agent token does not open it"
+principal lists /v1/pending   -> the ref, which never reached the agent
+principal approves that ref   -> approved
+agent retries the same basket -> ALLOW, order_TYJFyPj2LdsAmW on the rail
+```
+
+`tests/service/test_afa_loop_end_to_end.py` pins all of it and is mutation-verified.
+One of its cases covers something `approval.py`'s docstring warned about with no test
+beside it: approving one basket must not release a **different** basket of the same
+value. That is the same "a stated invariant with a test beside it is not a tested
+invariant" shape as the `/v1/pending` hole.
+
+**Still not built: the QR on `/try`.** The backend loop now works end to end and
+nothing on the web surfaces it. `/approve/<ref>` is complete and already renders a QR;
+what is missing is the console noticing an UNKNOWN verdict and showing the way in.
+
 ### Getting the quote feature to production
 
 Four things, and only the first is in git:
