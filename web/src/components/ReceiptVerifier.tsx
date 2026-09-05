@@ -125,6 +125,8 @@ export function ReceiptVerifier({
   const [error, setError] = useState<string | null>(null);
   const [tampered, setTampered] = useState(false);
   const [record, setRecord] = useState<Record<string, unknown> | null>(null);
+  /** The log's own row number for this receipt, so the CLI half names the same one. */
+  const [seq, setSeq] = useState<number | null>(null);
 
   const run = useCallback(
     async (withTamper: boolean) => {
@@ -161,6 +163,7 @@ export function ReceiptVerifier({
           return;
         }
         body = found;
+        setSeq(found.seq as number);
         const proofRes = await fetch(
           `${API_BASE}/v1/audit/proof?seq=${found.seq as number}`,
           { headers: auth },
@@ -356,6 +359,8 @@ export function ReceiptVerifier({
               </motion.div>
             )}
 
+            {verdict && seq !== null && token && <OfflineHalf seq={seq} token={token} />}
+
             {record && (
               <div className="mt-5 flex flex-wrap gap-2 border-t border-rule-soft pt-4">
                 <Button
@@ -391,5 +396,70 @@ export function ReceiptVerifier({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+
+/**
+ * The other half of the claim.
+ *
+ * A receipt that only verifies inside our own page proves very little: the page
+ * and the gateway ship together, and a reader has to take both on trust at
+ * once. The same receipt verifies from a terminal against a key on the
+ * reader's own disk, and until this existed only half the argument was on
+ * screen.
+ *
+ * The commands name this receipt's own `seq`, so the two checks are the same
+ * check and not a worked example beside it. The token is elided on screen
+ * because it is long enough to wrap the block badly, and copied in full,
+ * because a command that has to be edited before it runs does not get run.
+ */
+function OfflineHalf({ seq, token }: { seq: number; token: string }) {
+  const [done, setDone] = useState(false);
+  const origin = API_BASE || (typeof window !== 'undefined' ? window.location.origin : '');
+  const shown = `D=${origin}
+TOK=${token.slice(0, 12)}…
+
+curl -s "$D/v1/audit/proof?seq=${seq}" -H "authorization: Bearer $TOK" > receipt.json
+curl -s "$D/v1/audit/head"${' '.repeat(String(seq).length + 10)} -H "authorization: Bearer $TOK" > head.json
+
+mandate verify --receipt receipt.json --head head.json`;
+  const real = shown.replace(`TOK=${token.slice(0, 12)}…`, `TOK=${token}`);
+
+  return (
+    <div className="mt-5 border-t border-rule-soft pt-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h4 className="text-[13px] font-medium text-ink">Or check it without this page</h4>
+          <p className="mt-1 text-[12.5px] leading-[1.5] text-ink-2">
+            The same receipt, the same row, from a terminal.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-[30px] shrink-0 rounded-lg text-[12px]"
+          onClick={() => {
+            navigator.clipboard?.writeText(real).then(
+              () => { setDone(true); window.setTimeout(() => setDone(false), 1600); },
+              () => undefined,
+            );
+          }}
+        >
+          {done ? 'Copied with your token' : 'Copy'}
+        </Button>
+      </div>
+      <pre className="mt-3 overflow-x-auto rounded-lg border border-rule bg-sunk px-3 py-2.5 font-mono text-[11px] leading-[1.7] text-ink">
+        {shown}
+      </pre>
+      <p className="mt-2.5 text-[12px] leading-[1.5] text-ink-3">
+        <span className="font-mono text-ink-2">mandate verify</span> rebuilds the root from the
+        proof and checks the head against <span className="font-mono text-ink-2">log_public.key</span>{' '}
+        on your disk. This page checks the same signature against the key compiled into the build,
+        {' '}<span className="font-mono text-ink-2">{LOG_PUBLIC_KEY ? `${LOG_PUBLIC_KEY.slice(0, 8)}…${LOG_PUBLIC_KEY.slice(-4)}` : 'none'}</span>,
+        so neither side asks the gateway which key to trust. They are separate implementations of
+        one hashing rule, so agreement is a check on the log rather than on either of them.
+      </p>
+    </div>
   );
 }

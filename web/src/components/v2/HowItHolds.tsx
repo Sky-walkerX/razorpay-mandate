@@ -175,7 +175,36 @@ export default function HowItHolds() {
 
         {/* REFINED 2-COLUMN PRECEDENCE LATTICE & SYNCHRONIZED BEAM */}
         <div className="mt-20 overflow-hidden rounded-2xl border border-rule bg-sheet p-8 lg:p-12 shadow-xs">
-          <div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-12 lg:gap-14">
+
+          {/* The thesis runs across the block rather than down the rail.
+              Measured before this change: the 7-col lattice was 597px tall and
+              the 5-col rail beside it 941px, so 344px of the block was empty
+              below the lattice. The rail was taller because it was carrying this
+              header, which set the sharpest line in the section on a 408px
+              measure. Moving it up spends the width on the sentence and starts
+              both columns level. The split stays 7/5 so the header's own two
+              halves sit on the same grid lines as the columns beneath it. */}
+          <div className="grid grid-cols-1 gap-x-14 gap-y-4 border-b border-rule pb-8 lg:grid-cols-12 lg:items-end">
+            <div className="lg:col-span-7">
+              <span className="font-mono text-xs font-semibold uppercase tracking-wider text-pass">
+                Precedence Invariant
+              </span>
+              <h3 className="mt-1.5 text-balance text-2xl font-bold leading-tight tracking-[-0.035em] text-ink md:text-3xl">
+                A refusal stops everything. An unknown comes to you.
+              </h3>
+            </div>
+            <div className="space-y-2 lg:col-span-5">
+              <p className="text-[14.5px] leading-relaxed text-ink-2">
+                Each part answers <b>allow</b>, <b>refuse</b> or <b>unknown</b>. They combine
+                on a strict mathematical lattice rather than a probabilistic score.
+              </p>
+              <p className="text-[14.5px] font-medium leading-relaxed text-ink">
+                Rules fail closed; judging fails open.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-10 grid grid-cols-1 items-start gap-10 lg:grid-cols-12 lg:gap-14">
             
             {/* LEFT COLUMN: Traveling Beam with Synchronized Card Glows (7 Cols) */}
             <div className="relative lg:col-span-7">
@@ -381,24 +410,9 @@ export default function HowItHolds() {
               </div>
             </div>
 
-            {/* RIGHT COLUMN: Editorial Narrative & Formatted Deterministic Code (5 Cols) */}
+            {/* RIGHT COLUMN: what the selected verdict means, and the code that
+                decides it (5 Cols) */}
             <div className="space-y-6 lg:col-span-5">
-              <div>
-                <span className="font-mono text-xs font-semibold uppercase tracking-wider text-pass">
-                  Precedence Invariant
-                </span>
-                <h3 className="mt-1.5 text-2xl font-bold leading-tight tracking-[-0.035em] text-ink md:text-3xl">
-                  A refusal stops everything. An unknown comes to you.
-                </h3>
-                <p className="mt-3 text-[14.5px] leading-relaxed text-ink-2">
-                  Each part answers <b>allow</b>, <b>refuse</b> or <b>unknown</b>. They combine
-                  on a strict mathematical lattice rather than a probabilistic score.
-                </p>
-                <p className="mt-2 text-[14.5px] font-medium leading-relaxed text-ink">
-                  Rules fail closed; judging fails open.
-                </p>
-              </div>
-
               {/*
                 The gates have been clickable since this was built and selecting
                 one moved a ring and nothing else. The middle gate claimed that
@@ -442,20 +456,23 @@ export default function HowItHolds() {
                 </div>
               </div>
 
-              {/* Strict Guarantees List */}
-              <div className="space-y-2.5 font-mono text-xs text-ink-2">
-                <div className="flex items-center gap-2.5 rounded-lg border border-rule bg-bond p-3 shadow-2xs">
-                  <span className="size-1.5 rounded-full bg-pass flex-shrink-0" />
-                  <span><b>Amounts are whole paise:</b> Zero floating-point errors.</span>
-                </div>
-                <div className="flex items-center gap-2.5 rounded-lg border border-rule bg-bond p-3 shadow-2xs">
-                  <span className="size-1.5 rounded-full bg-pass flex-shrink-0" />
-                  <span><b>Rupees only:</b> Foreign currencies refused, never converted.</span>
-                </div>
-              </div>
-
             </div>
 
+          </div>
+
+          {/* Both of these qualify the whole lattice, not the code block they
+              happened to sit under, so they close the block rather than the
+              rail. Side by side they cost one row instead of two, which is the
+              last of the height the rail was carrying alone. */}
+          <div className="mt-10 grid gap-2.5 border-t border-rule pt-6 font-mono text-xs text-ink-2 sm:grid-cols-2">
+            <div className="flex items-center gap-2.5 rounded-lg border border-rule bg-bond p-3 shadow-2xs">
+              <span className="size-1.5 flex-shrink-0 rounded-full bg-pass" />
+              <span><b>Amounts are whole paise:</b> Zero floating-point errors.</span>
+            </div>
+            <div className="flex items-center gap-2.5 rounded-lg border border-rule bg-bond p-3 shadow-2xs">
+              <span className="size-1.5 flex-shrink-0 rounded-full bg-pass" />
+              <span><b>Rupees only:</b> Foreign currencies refused, never converted.</span>
+            </div>
           </div>
         </div>
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
 import { ArrowUpRight, Check, Loader2, ShieldAlert } from 'lucide-react';
@@ -145,6 +145,8 @@ export function RazorpaySurface() {
         criticism: a payment API's job is to move money when asked. It is the reason a
         layer has to exist above it.
       </p>
+
+      <ProxyStatus />
 
       <div className="mt-9 rounded-panel border border-rule bg-raise p-6 shadow-sheet max-sm:p-5">
         <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3">
@@ -386,5 +388,74 @@ export function RailMandate() {
         )}
       </div>
     </section>
+  );
+}
+
+
+/**
+ * Whether the mediated proxy is actually up on this deployment, asked now.
+ *
+ * The counts on this page are deliberately NOT live. `/v1/rail/surface` reads
+ * the pinned tool snapshot, and it should: a page that re-counted Razorpay's
+ * tools on load would paint a confident number over a tool nobody has
+ * classified, which is the one failure this whole section exists to prevent.
+ * Drift is caught by `test_the_pinned_surface_still_matches_the_live_one`,
+ * which does hit the real server and is opt-in for that reason.
+ *
+ * What is worth asking at render time is the one fact the snapshot cannot
+ * carry: absent `RAZORPAY_KEY_*` the proxy is not mounted at all and
+ * `/mcp/razorpay` 404s. A reader about to curl it should be told which of
+ * those two deployments they are looking at, rather than finding out from a
+ * 404. So the strip reports reachability, and says plainly where the numbers
+ * beside it come from.
+ */
+function ProxyStatus() {
+  const [state, setState] = useState<'asking' | 'live' | 'absent' | 'unreachable'>('asking');
+  const [at, setAt] = useState<string>('');
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/v1/rail/surface`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((body: { mounted?: boolean }) => {
+        if (cancelled) return;
+        setState(body.mounted ? 'live' : 'absent');
+        setAt(
+          new Date().toLocaleString('en-IN', {
+            day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+          }),
+        );
+      })
+      .catch(() => { if (!cancelled) setState('unreachable'); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const skin =
+    state === 'live' ? 'border-pass-line bg-pass-soft'
+    : state === 'asking' ? 'border-rule bg-sheet'
+    : 'border-refer-line bg-refer-soft';
+  const dot =
+    state === 'live' ? 'bg-pass' : state === 'asking' ? 'bg-ink-4' : 'bg-refer';
+  const ink =
+    state === 'live' ? 'text-pass' : state === 'asking' ? 'text-ink-3' : 'text-refer';
+
+  const said =
+    state === 'live'
+      ? `the mediated proxy is up at ${SURFACE.mediatedPath} · checked ${at}`
+      : state === 'asking'
+        ? 'asking whether the mediated proxy is up…'
+        : state === 'absent'
+          ? `this deployment holds no Razorpay keys, so ${SURFACE.mediatedPath} is not mounted`
+          : 'could not reach the gateway just now';
+
+  return (
+    <div className={`mt-6 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-panel border px-5 py-3.5 ${skin}`}>
+      <span className={`size-[6px] shrink-0 rounded-full ${dot}`} />
+      <span className={`font-mono text-[11.5px] ${ink}`}>{said}</span>
+      <span className="ml-auto text-[12px] leading-[1.45] text-ink-3 max-sm:ml-0">
+        The {SURFACE.total} counts below are read off the snapshot this build pins, not re-counted
+        on load.
+      </span>
+    </div>
   );
 }
