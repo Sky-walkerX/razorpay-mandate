@@ -56,7 +56,7 @@ def _run_node(script: str, payload: str) -> str:
     try:
         proc = subprocess.run(
             [_node(), str(scratch)],
-            input=payload, capture_output=True, text=True, timeout=60,
+            input=payload, capture_output=True, text=True, timeout=60, check=False,
         )
     finally:
         scratch.unlink(missing_ok=True)
