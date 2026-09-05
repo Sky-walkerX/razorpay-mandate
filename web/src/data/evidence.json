@@ -7,7 +7,7 @@
     "false_block_dir": "results-falseblock-hardened",
     "conformance_file": "results-conformance/conformance_results.json",
     "feed_file": "results-heldout-g37-hardened/enforce/budget_salami_005/audit.jsonl",
-    "generated": "2026-09-05T15:13:53+05:30"
+    "generated": "2026-09-05T20:49:33+05:30"
   },
   "log": {
     "public_key": "305f6590fced7edf97865596c358e522d6d8023ad810e6deb307cf1c399d3a0d"
@@ -228,7 +228,111 @@
       "blocked": 17,
       "escaped": 0,
       "vacuous": 0,
-      "race_trials": 200
+      "race_trials": 200,
+      "attacks": [
+        {
+          "id": "replay.token",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        },
+        {
+          "id": "replay.intent",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        },
+        {
+          "id": "idem.forge",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        },
+        {
+          "id": "race.velocity",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        },
+        {
+          "id": "race.budget",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        },
+        {
+          "id": "capture.divergence",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        },
+        {
+          "id": "delegate.split",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        },
+        {
+          "id": "escalate.self",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        },
+        {
+          "id": "rail.divergence",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        },
+        {
+          "id": "quote.forge",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        },
+        {
+          "id": "quote.expired",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        },
+        {
+          "id": "quote.sku_swap",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        },
+        {
+          "id": "quote.merchant_swap",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        },
+        {
+          "id": "quote.requote_idem",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        },
+        {
+          "id": "approve.self",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        },
+        {
+          "id": "approve.replay",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        },
+        {
+          "id": "approve.swap",
+          "outcome": "BLOCKED",
+          "witness_executed": true,
+          "hardened_executed": false
+        }
+      ]
     }
   },
   "alignment": {

@@ -297,6 +297,21 @@ def build_evidence(
                 "escaped": conf["escaped"],
                 "vacuous": conf["vacuous"],
                 "race_trials": conf["race_trials"],
+                # The per-attack rows, so a screen can name what was tried
+                # rather than print a total nobody can check. `witness` is the
+                # load-bearing one: it says the attack actually worked against
+                # an unhardened gateway, which is what separates BLOCKED from
+                # VACUOUS. The web keeps the plain-language labels; only the
+                # ids and the outcomes come from the run.
+                "attacks": [
+                    {
+                        "id": r["attack_id"],
+                        "outcome": r["outcome"],
+                        "witness_executed": r["witness_executed"],
+                        "hardened_executed": r["hardened_executed"],
+                    }
+                    for r in conf["results"]
+                ],
             },
         },
         "alignment": _alignment(pol, policy_hash(pol)),

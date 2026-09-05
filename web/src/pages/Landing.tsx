@@ -6,6 +6,9 @@ import GapAndParts from '@/components/v2/GapAndParts';
 import FailureModes from '@/components/v2/FailureModes';
 import HowItHolds from '@/components/v2/HowItHolds';
 import WhenPriceMoves from '@/components/v2/WhenPriceMoves';
+import ConformanceBand from '@/components/v2/ConformanceBand';
+import McpConnect from '@/components/v2/McpConnect';
+import StoreCard from '@/components/v2/StoreCard';
 
 /**
  * The default Mandate homepage on the shadcn + Motion stack.
@@ -27,6 +30,10 @@ export default function Landing() {
               scrolling anyway. */}
           <div className="ml-3 hidden gap-[22px] text-[13.5px] text-ink-2 lg:flex">
             <Link to="/approve" className="whitespace-nowrap transition-colors hover:text-ink">Approvals</Link>
+            {/* /store had one inbound link in the whole app, on /approve, which
+                is a page you reach by scanning a QR. Four links is the ceiling
+                here: this bar carried six once and four of them wrapped. */}
+            <Link to="/store" className="whitespace-nowrap transition-colors hover:text-ink">The shop</Link>
             <Link to="/rails" className="whitespace-nowrap transition-colors hover:text-ink">Rails &amp; regulation</Link>
             <Link to="/pitch" className="whitespace-nowrap font-medium text-[#2F5EFF] transition-colors hover:text-ink">Pitch deck</Link>
           </div>
@@ -63,6 +70,15 @@ export default function Landing() {
         inserted between them re-frames every later shot silently.
       */}
       <WhenPriceMoves />
+
+      {/* Proof, then the invitation to go and disprove it, then the screen that
+          shows what the invitation produces. All three sit after every anchor
+          the recorded walkthrough scrolls to, so no beat is re-framed. */}
+      <ConformanceBand />
+
+      <McpConnect />
+
+      <StoreCard />
 
       <footer className="mx-auto flex max-w-[1220px] flex-wrap justify-between items-center gap-4 px-8 py-7 text-[12.5px] text-ink-3 max-sm:px-[18px]">
         <span>Mandate · Autonomous Agent Payment Guardrails</span>

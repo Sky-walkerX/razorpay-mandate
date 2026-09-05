@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 
@@ -403,4 +404,39 @@ def test_no_tsx_types_a_bound_the_signed_policy_sets():
         "Read it from PARTS (or partByKey) in web/src/data/policy.ts, which is\n"
         "filled from evidence.json, so re-signing moves every screen at once:\n"
         + "\n".join(offenders)
+    )
+
+
+def test_every_conformance_attack_has_a_plain_english_name():
+    """A new attack in the suite must not reach a screen as its bare id.
+
+    The suite's ids (`quote.expired`, `replay.token`) are the right names in a
+    hash-chained record and the wrong ones on a page, which is the call this
+    project already made for clause ids -- `plainMessage()` strips the `a.b:`
+    prefix off a refusal because the label beside it already names the limit.
+
+    `conformance.ts` falls back to the id rather than rendering blank, so a
+    missing label is invisible in the build and shows up only as jargon on the
+    screen. This is what makes it loud instead.
+    """
+    evidence = json.loads(
+        (REPO_ROOT / "web/src/data/evidence.json").read_text(encoding="utf-8")
+    )
+    attacks = evidence["scoreboard"]["conformance"]["attacks"]
+    assert attacks, "evidence.json carries no per-attack conformance rows"
+
+    source = (REPO_ROOT / "web/src/data/conformance.ts").read_text(encoding="utf-8")
+    labelled = set(re.findall(r"^\s*'([a-z_]+\.[a-z_]+)':", source, re.MULTILINE))
+
+    missing = sorted({a["id"] for a in attacks} - labelled)
+    assert not missing, (
+        "these conformance attacks have no plain-English name in\n"
+        "web/src/data/conformance.ts, so they would render as raw ids:\n"
+        + "\n".join(f"  {m}" for m in missing)
+    )
+
+    stale = sorted(labelled - {a["id"] for a in attacks})
+    assert not stale, (
+        "web/src/data/conformance.ts names attacks the suite no longer runs:\n"
+        + "\n".join(f"  {s}" for s in stale)
     )

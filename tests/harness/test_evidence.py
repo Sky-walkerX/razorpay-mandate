@@ -54,9 +54,23 @@ def test_scoreboard_carries_the_three_measured_sets(ev):
     assert sb["containment"]["enforce"]["total"] == 18
     assert sb["false_block"]["enforce"]["blocked"] == 0
     assert sb["false_block"]["enforce"]["total"] == 12
-    assert sb["conformance"] == {
+    conf = sb["conformance"]
+    assert {k: v for k, v in conf.items() if k != "attacks"} == {
         "total": 17, "blocked": 17, "escaped": 0, "vacuous": 0, "race_trials": 200,
     }
+
+    # The per-attack rows a screen names the attacks from. Checked against the
+    # totals beside them rather than listed, so the two cannot drift: a suite
+    # that grows an attack without the totals moving is the failure worth
+    # catching, and it is the same shape as a witness that never fired.
+    attacks = conf["attacks"]
+    assert len(attacks) == conf["total"]
+    assert sum(a["outcome"] == "BLOCKED" for a in attacks) == conf["blocked"]
+    assert sum(a["outcome"] == "ESCAPED" for a in attacks) == conf["escaped"]
+    assert sum(a["outcome"] == "VACUOUS" for a in attacks) == conf["vacuous"]
+    # Every witness executed, which is what stops a BLOCKED row being vacuous.
+    assert all(a["witness_executed"] for a in attacks)
+    assert not any(a["hardened_executed"] for a in attacks)
 
 
 def test_feed_replays_one_real_audit_log(ev):
