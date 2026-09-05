@@ -63,12 +63,67 @@ export interface ProofNode {
   dir?: string;
 }
 
+export interface ClimbStep {
+  /** The sibling hash this level was combined with. */
+  sibling: string;
+  /** Whether the sibling sat to the left or the right, derived from index and size. */
+  side: 'left' | 'right';
+  /** The running hash after this level. */
+  result: string;
+}
+
+export interface Climb {
+  steps: ClimbStep[];
+  /** The hash the walk arrived at. Compare it against the signed root. */
+  root: string;
+  /** False when the proof was longer than the tree is deep, or the walk did not finish. */
+  complete: boolean;
+}
+
 /**
- * Verify an inclusion proof against an expected root, per RFC 6962 section 2.1.1.
+ * Walk a leaf up to a root, per RFC 6962 section 2.1.1, recording each level.
  *
- * Mirrors `verify_inclusion_proof` in merkle.py line for line, including that the
- * `dir` field on each proof node is ignored.
+ * This is the single implementation. `verifyInclusionProof` is a thin comparison on
+ * top of it, and the interface renders the same steps, so a page cannot show one
+ * walk while the verifier performs another. Two copies of this loop is precisely the
+ * shape of drift that has bitten this codebase before.
+ *
+ * The `dir` field carried in each proof node is deliberately not read.
  */
+export async function climbToRoot(
+  leafRecord: string,
+  index: number,
+  treeSize: number,
+  proof: ProofNode[],
+): Promise<Climb> {
+  const steps: ClimbStep[] = [];
+  let fn = index;
+  let sn = treeSize - 1;
+  let current = await leafHash(leafRecord);
+
+  for (const { node: sibling } of proof) {
+    if (sn === 0) return { steps, root: current, complete: false };
+    let side: 'left' | 'right';
+    if (fn % 2 === 1 || fn === sn) {
+      current = await nodeHash(sibling, current);
+      side = 'left';
+      while (fn !== 0 && fn % 2 === 0) {
+        fn = Math.floor(fn / 2);
+        sn = Math.floor(sn / 2);
+      }
+    } else {
+      current = await nodeHash(current, sibling);
+      side = 'right';
+    }
+    fn = Math.floor(fn / 2);
+    sn = Math.floor(sn / 2);
+    steps.push({ sibling, side, result: current });
+  }
+
+  return { steps, root: current, complete: sn === 0 };
+}
+
+/** Verify an inclusion proof against an expected root. */
 export async function verifyInclusionProof(
   leafRecord: string,
   index: number,
@@ -77,27 +132,8 @@ export async function verifyInclusionProof(
   expectedRoot: string,
 ): Promise<boolean> {
   if (index < 0 || treeSize <= 0 || index >= treeSize) return false;
-
-  let fn = index;
-  let sn = treeSize - 1;
-  let current = await leafHash(leafRecord);
-
-  for (const sibling of proof.map((p) => p.node)) {
-    if (sn === 0) return false; // proof longer than the tree is deep
-    if (fn % 2 === 1 || fn === sn) {
-      current = await nodeHash(sibling, current);
-      while (fn !== 0 && fn % 2 === 0) {
-        fn = Math.floor(fn / 2);
-        sn = Math.floor(sn / 2);
-      }
-    } else {
-      current = await nodeHash(current, sibling);
-    }
-    fn = Math.floor(fn / 2);
-    sn = Math.floor(sn / 2);
-  }
-
-  return sn === 0 && current === expectedRoot;
+  const climb = await climbToRoot(leafRecord, index, treeSize, proof);
+  return climb.complete && climb.root === expectedRoot;
 }
 
 /**

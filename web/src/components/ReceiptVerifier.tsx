@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { API_BASE } from '@/lib/api';
 import { LOG_PUBLIC_KEY } from '@/data/log';
-import { leafHash, nodeHash, recordHash, verifyTreeHead, type ProofNode } from '@/lib/merkle';
+import { climbToRoot, recordHash, verifyTreeHead, type ProofNode } from '@/lib/merkle';
 import { rupees } from '@/lib/money';
 
 /** Money never overshoots, so the settle curve carries every figure and verdict. */
@@ -206,39 +206,26 @@ export function ReceiptVerifier({
         state: leafMatches ? 'pass' : 'fail',
       });
 
-      // 3. Walk leaf to root. Direction from index and size, never from the proof.
-      let current = await leafHash(computed);
-      let fn = proof.seq - 1;
-      let sn = proof.tree_size - 1;
-      for (const sibling of proof.proof) {
-        if (sn === 0) break;
-        if (fn % 2 === 1 || fn === sn) {
-          current = await nodeHash(sibling.node, current);
-          while (fn !== 0 && fn % 2 === 0) {
-            fn = Math.floor(fn / 2);
-            sn = Math.floor(sn / 2);
-          }
-        } else {
-          current = await nodeHash(current, sibling.node);
-        }
-        fn = Math.floor(fn / 2);
-        sn = Math.floor(sn / 2);
+      // 3. Walk leaf to root. `climbToRoot` is the same function `verifyInclusionProof`
+      //    uses, so the page cannot narrate one walk while the verifier does another.
+      const climb = await climbToRoot(computed, proof.seq - 1, proof.tree_size, proof.proof);
+      for (const step of climb.steps) {
         push({
           label: 'Combined with its neighbour',
-          detail: `Hashed with ${short(sibling.node)} to climb one level.`,
-          value: short(current),
+          detail: `Hashed together with ${short(step.sibling)}, which stands for everything on its ${step.side}, to climb one level.`,
+          value: short(step.result),
           state: 'pass',
         });
       }
 
       // 4. Does the climb land on the head the log signed?
-      const rootOk = current === head.root && sn === 0;
+      const rootOk = climb.complete && climb.root === head.root;
       push({
         label: 'Reaches the signed root',
         detail: rootOk
           ? 'The climb lands exactly on the root the log signed, so this receipt is in that log and has not been altered.'
           : 'The climb does not land on the signed root. This receipt is not the one the log published.',
-        value: short(current),
+        value: short(climb.root),
         state: rootOk ? 'pass' : 'fail',
       });
       setVerdict(rootOk ? 'pass' : 'fail');
