@@ -1,7 +1,7 @@
 import evidence from './evidence.json';
 
 /**
- * Where this mandate lives once it leaves the gateway — on a rail, and under
+ * Where this mandate lives once it leaves the gateway, on a rail, and under
  * the regulation.
  *
  * Every fate, count and status here is read from `evidence.json`, which

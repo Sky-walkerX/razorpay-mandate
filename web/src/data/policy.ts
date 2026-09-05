@@ -30,7 +30,7 @@ export interface Part {
   /** The bound, already formatted for reading. */
   bound: string;
   /**
-   * The bound as a number — integer paise for the budget clauses, a plain count
+   * The bound as a number, integer paise for the budget clauses, a plain count
    * for velocity and quantity, and null for the four rules, which match rather
    * than measure. Read from the signed policy so headroom can be computed from
    * it instead of a figure retyped into a component.
@@ -72,8 +72,8 @@ export const PARTS: Part[] = evidence.policy.parts.map((p) => ({
  * Two counts, and they are different numbers on purpose.
  *
  * `PART_COUNT` is how many kinds of limit the gateway implements and evaluates
- * on every order — ten. `SET_PART_COUNT` is how many of them this mandate
- * actually sets — nine, because `item.deny_recent` carries `source: 'unset'`.
+ * on every order, ten. `SET_PART_COUNT` is how many of them this mandate
+ * actually sets, nine, because `item.deny_recent` carries `source: 'unset'`.
  *
  * The web used to say "nine" in twenty-five places while rendering ten cards,
  * so a visitor who counted the cards concluded the copy was lying. Both numbers

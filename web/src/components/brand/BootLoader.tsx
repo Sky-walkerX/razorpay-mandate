@@ -12,7 +12,7 @@ import { PARTS } from '@/data/policy';
  *
  * - It runs once per tab. `sessionStorage` is read in the initialiser, so a
  *   route change or a return to `/` never replays it.
- * - Reduced motion skips it entirely — not a shortened version, none of it.
+ * - Reduced motion skips it entirely, not a shortened version, none of it.
  * - It never gates content. Nothing waits on this; the page beneath is already
  *   mounted and interactive, and the plate is a cover that lifts off it.
  *
@@ -23,7 +23,7 @@ import { PARTS } from '@/data/policy';
 const SEEN_KEY = 'mandate.boot.seen';
 const LIFT_AT_MS = 1900;
 
-/** Ease that settles without overshoot — the same shape as `--ease-settle`. */
+/** Ease that settles without overshoot, the same shape as `--ease-settle`. */
 const SETTLE = [0.22, 0.61, 0.36, 1] as const;
 
 function shouldPlay(): boolean {
@@ -45,7 +45,7 @@ export function BootLoader() {
     try {
       window.sessionStorage.setItem(SEEN_KEY, '1');
     } catch {
-      // Nothing to do — the loader simply plays again next load.
+      // Nothing to do, the loader simply plays again next load.
     }
     const t = window.setTimeout(() => setPlaying(false), LIFT_AT_MS);
     return () => window.clearTimeout(t);
@@ -88,7 +88,7 @@ export function BootLoader() {
 
           {/* The mark, assembling. Same 40x40 geometry as `MandateMark`, so the
               plate resolves into exactly the logo that sits in the nav a
-              moment later — the post exists first, then the order arrives and
+              moment later, the post exists first, then the order arrives and
               goes through it, which is the order those two things happen in. */}
           <svg
             aria-hidden

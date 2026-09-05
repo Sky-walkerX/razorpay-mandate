@@ -1,8 +1,8 @@
 /**
  * The ten attack families, and which of the nine parts each one targets.
  *
- * Both halves are transcribed from `SPEC.md` — the family table in §5.1 and the
- * constraint table in §3 — and the counts agree with `corpus/corpus.json`, which
+ * Both halves are transcribed from `SPEC.md`, the family table in §5.1 and the
+ * constraint table in §3, and the counts agree with `corpus/corpus.json`, which
  * holds 180 items: ten families at twelve, plus sixty legitimate. Nothing here
  * is a guess about coverage. If a family is added to the corpus it has to be
  * added here too, and the map will show it dangling until an edge is drawn.
@@ -58,7 +58,7 @@ export const CAUSE_LABEL: Record<Cause, string> = {
 
 /**
  * The nine parts in the order that keeps the map close to planar. Keys, not
- * labels — the labels and reference numerals are read from the signed policy
+ * labels, the labels and reference numerals are read from the signed policy
  * through `data/policy`, so a bound renamed there renames itself here.
  */
 export const PART_ORDER = [

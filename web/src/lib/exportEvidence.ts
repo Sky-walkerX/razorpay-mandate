@@ -5,7 +5,7 @@ import evidence from '@/data/evidence.json';
  *
  * "Export evidence" sat on the old topbar as a button that did nothing. A
  * console whose argument is that every figure is traceable should not have an
- * inert control named after the tracing — so it now downloads `evidence.json`
+ * inert control named after the tracing, so it now downloads `evidence.json`
  * itself, which `mandate evidence` writes from the signed policy and the
  * scored result directories. What the reader gets is what the page read.
  */

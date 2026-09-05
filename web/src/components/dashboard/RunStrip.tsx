@@ -58,7 +58,7 @@ export function RunStrip() {
           const h = a.executed && largest > 0 ? Math.max(6, (a.amountPaise / largest) * UP) : 0;
           return (
             <span key={a.seq} className="flex min-w-[3px] flex-1 flex-col">
-              {/* above the rail — money that moved */}
+              {/* above the rail, money that moved */}
               <span className="flex items-end" style={{ height: UP }}>
                 {a.executed && (
                   <span
@@ -70,7 +70,7 @@ export function RunStrip() {
 
               <span aria-hidden className="h-px w-full bg-rule" />
 
-              {/* below the rail — attempts that moved nothing */}
+              {/* below the rail, attempts that moved nothing */}
               <span className="flex items-start" style={{ height: DOWN }}>
                 {!a.executed && (
                   <span

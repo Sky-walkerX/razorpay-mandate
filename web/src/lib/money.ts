@@ -1,6 +1,6 @@
 /**
  * All money in this app is integer paise, matching the gateway. No floats
- * anywhere near an amount — the compiler, the evaluator and the audit log all
+ * anywhere near an amount, the compiler, the evaluator and the audit log all
  * agree on paise, and the only place a decimal point appears is here, at the
  * moment a number becomes text on a screen.
  */
@@ -17,7 +17,7 @@ export function rupees(paise: number): string {
   return `₹${inr.format(paise / 100)}`;
 }
 
-/** 189000 -> "₹1,890" — for tile figures, where the paise are noise. */
+/** 189000 -> "₹1,890", for tile figures, where the paise are noise. */
 export function rupeesWhole(paise: number): string {
   return `₹${inrWhole.format(Math.round(paise / 100))}`;
 }

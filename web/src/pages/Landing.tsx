@@ -22,7 +22,7 @@ export default function Landing() {
               This row carried six links, a badge and two buttons inside 1220px
               with nothing stopping a label from breaking, so four of them wrapped
               onto a second line and the bar grew past its own 60px. The four that
-              went — The gap, Failure modes, How it holds, Your limits — all
+              went, The gap, Failure modes, How it holds, Your limits, all
               scrolled to sections of this same page, which a visitor reaches by
               scrolling anyway. */}
           <div className="ml-3 hidden gap-[22px] text-[13.5px] text-ink-2 lg:flex">

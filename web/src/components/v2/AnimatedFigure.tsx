@@ -6,7 +6,7 @@ import { animate, useMotionValue, useMotionValueEvent, useReducedMotion } from '
  *
  * The tick is deliberately short and has no overshoot. A figure that springs
  * past its target and settles back has, for a moment, displayed an amount the
- * order never came to — which on a screen about enforcing limits is not a
+ * order never came to, which on a screen about enforcing limits is not a
  * flourish, it is a wrong number. `bounce: 0` is load-bearing here.
  *
  * The motion value drives one `setState` on a leaf element rather than a

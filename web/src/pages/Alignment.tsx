@@ -22,8 +22,7 @@ import { RazorpaySurface, RailMandate } from '@/components/v2/MediatedSurface';
  *      disappear, it becomes prose in a description nothing evaluates.
  *   2. That subtraction is concrete, not rhetorical: three allowed merchants
  *      become one payee, and two are dropped on the floor.
- *   3. Against the regulation the same honesty applies in the other direction —
- *      one requirement is a flat gap and it is on the page in the same weight as
+ *   3. Against the regulation the same honesty applies in the other direction, *      one requirement is a flat gap and it is on the page in the same weight as
  *      the ones that are met.
  *
  * Every figure is read from `@/data/alignment`, which reads `evidence.json`.
@@ -31,7 +30,7 @@ import { RazorpaySurface, RailMandate } from '@/components/v2/MediatedSurface';
  * artefact nobody diffs against the code, so it is the one most likely to drift
  * into wishful thinking.
  *
- * Colour follows the house rule — the three meaning inks never carry meaning
+ * Colour follows the house rule, the three meaning inks never carry meaning
  * alone. Every fate and every status appears with a glyph and a word beside it.
  */
 
@@ -59,8 +58,8 @@ function Chip({ style }: { style: { label: string; cls: string; Icon: typeof Che
         'inline-flex shrink-0 items-center gap-[5px] rounded-full border py-[3px] pl-[7px] pr-[9px]',
         'font-mono text-[9.5px] uppercase tracking-[0.08em]',
         // Fixed box, so the note beside it starts at the same x on every row.
-        // Without it the chip is only as wide as its label — "NOWHERE" against
-        // "ON THE RAIL" — and the note column acquires a 26px ragged left edge
+        // Without it the chip is only as wide as its label, "NOWHERE" against
+        // "ON THE RAIL", and the note column acquires a 26px ragged left edge
         // that reads as sloppiness rather than as the deliberate table it is.
         'min-w-[104px]',
         cls,
@@ -186,7 +185,7 @@ export default function Alignment() {
               ))}{' '}
               {imposedLost.length === 1 ? 'is' : 'are'} imposed by RBI and{' '}
               {imposedLost.length === 1 ? 'has' : 'have'} nowhere to sit on Reserve Pay
-              either — a block is authorised once at the front, so there is no per-debit
+              either, because a block is authorised once at the front, so there is no per-debit
               step-up inside it. Enforcing that clause is the gateway's job because the
               rail has no place to keep it.
             </p>
@@ -319,7 +318,7 @@ export default function Alignment() {
           </h2>
           <p className="mt-4 max-w-[680px] text-[15px] leading-[1.6] text-ink-2">
             The table above asks whether a rail can carry our clause. This one asks the
-            opposite question — whether we carry a regulator's obligation — and the two are
+            opposite question: whether we carry a regulator's obligation. The two are
             kept apart because &ldquo;held&rdquo; would otherwise mean two different things
             in adjacent columns. <span className="text-ink">Not ours</span> and{' '}
             <span className="text-ink">gap</span> are different claims: the first says the
@@ -406,7 +405,7 @@ export default function Alignment() {
           </h2>
           <p className="mt-4 max-w-[680px] text-[15px] leading-[1.6] text-ink-2">
             The gateway renders the same signed policy as an AP2 v0.2 credential. The{' '}
-            {RAILS.ap2Lost} clauses AP2 cannot hold structurally do not vanish from it — they
+            {RAILS.ap2Lost} clauses AP2 cannot hold structurally do not vanish from it. They
             end up inside{' '}
             <span className="font-mono text-[13px] text-ink">natural_language_description</span>,
             as the user's own sentence, where nothing downstream evaluates them. That field

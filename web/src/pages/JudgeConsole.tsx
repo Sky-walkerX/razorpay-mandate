@@ -21,8 +21,7 @@ import { clauseLabel, plainMessage } from '@/lib/plain';
  *
  * The rule this page is built to, after the previous version broke it in two
  * places: **nothing on screen may state an outcome the session has not
- * produced.** Attack rows advertise what they attempt, never what they get —
- * the old list printed `ALLOW` / `DENY` chips beside every preset, so a judge
+ * produced.** Attack rows advertise what they attempt, never what they get, * the old list printed `ALLOW` / `DENY` chips beside every preset, so a judge
  * read the answer and then pressed a button that agreed with it. And the run
  * panel starts genuinely empty; it used to render `REFUSED · ₹0.00 charged`
  * with a full clause waterfall on first paint, while the ledger beneath it
@@ -73,7 +72,7 @@ interface DecisionRecord {
   /** Shelf price beside the price the shop signed, when a quote was used. */
   quote_note?: { listPaise: number; signedPaise: number; factor: number };
   /** What UPI Reserve Pay would have done with the same basket. Absent on a
-      simulated outcome, and null when the shadow itself failed — the comparison
+      simulated outcome, and null when the shadow itself failed, the comparison
       is never allowed to cost a verdict. */
   reserve_pay?: ReservePayVerdict | null;
 }
@@ -81,7 +80,7 @@ interface DecisionRecord {
 interface AttackPreset {
   id: string;
   title: string;
-  /** What it attempts. Never what it gets — that is the gateway's to say. */
+  /** What it attempts. Never what it gets, that is the gateway's to say. */
   tries: string;
   merchant: string;
   seller_name: string;
@@ -105,7 +104,7 @@ interface AttackPreset {
   /**
    * Revoke this session's real token, then send an ordinary order with it.
    * The previous version presented the literal string `revoked_token_example`,
-   * which the service rejects as malformed — so it demonstrated a parse error,
+   * which the service rejects as malformed, so it demonstrated a parse error,
    * not revocation. Revoking for real is the only way to show the real thing.
    */
   revokeFirst?: boolean;
@@ -123,7 +122,7 @@ interface AttackPreset {
  *
  * These were invented names (`sku_dal_toor_2kg`, `sku_beer_can`) that exist in
  * no price book, so every preset came back `unknown SKU ... not found in price
- * book` — a resolution failure before any clause ran, which is the gateway
+ * book`, a resolution failure before any clause ran, which is the gateway
  * failing closed correctly and demonstrating nothing. Each one below is chosen
  * to breach exactly the clause it advertises, given the corpus catalog:
  *
@@ -283,7 +282,7 @@ const ATTACK_PRESETS: AttackPreset[] = [
 
 
 /**
- * What each tab is called, what it says, and — the part that matters — whether
+ * What each tab is called, what it says, and, the part that matters, whether
  * it calls a model.
  *
  * The console evaluates in plain code. The live agent and the compiler both make
@@ -699,7 +698,7 @@ export default function JudgeConsole() {
       verdict: 'REVOKED',
       clause_id: 'revocation.manual',
       message: `Token ${session.jti} is revoked. Everything after this is refused, whatever the agent sends.`,
-      merchant: '—',
+      merchant: 'none',
       seller_name: 'revocation list',
       amount_paise: 0,
       executed: false,
@@ -930,7 +929,7 @@ export default function JudgeConsole() {
                     >
                       {/* Green for the one that is meant to go through, carmine
                           for the eight that are not. It is what the row attempts,
-                          never what it got — the chip on the right is the only
+                          never what it got, the chip on the right is the only
                           thing allowed to say that. */}
                       <span
                         aria-hidden

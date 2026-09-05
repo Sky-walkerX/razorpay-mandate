@@ -8,7 +8,7 @@ import { rupeesWhole } from './money';
  * Every figure here is computed from the signed bound in `evidence.json` and
  * the scenario's load fraction. Nothing is retyped. The old panel drew an
  * abstract fill and named no quantity at all, which meant the row said "over
- * limit" without ever saying over by how much — the one number a person
+ * limit" without ever saying over by how much, the one number a person
  * actually wants.
  */
 export interface Readout {

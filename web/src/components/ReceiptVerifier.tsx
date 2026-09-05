@@ -196,7 +196,7 @@ export function ReceiptVerifier({
       push({
         label: 'Signed tree head',
         detail: headOk
-          ? `Signed by the log over ${head.size} record${head.size === 1 ? '' : 's'}, checked against a key this page shipped with — not one the server just sent.`
+          ? `Signed by the log over ${head.size} record${head.size === 1 ? '' : 's'}, checked against a key this page shipped with, not one the server just sent.`
           : 'The signature does not match the key this page was built with.',
         value: short(head.root),
         state: headOk ? 'pass' : 'fail',

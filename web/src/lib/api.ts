@@ -20,7 +20,7 @@
  * `/v1/sessions` to `http://127.0.0.1:8000` on the judge's machine and every
  * call failed. The page rendered perfectly, which is why it went unnoticed.
  *
- * `import.meta.env.DEV` is the honest signal — it is true exactly when Vite is
+ * `import.meta.env.DEV` is the honest signal, it is true exactly when Vite is
  * serving, is fixed at build time, and knows nothing about hostnames. A build
  * can still be pointed anywhere with `VITE_API_URL`.
  */

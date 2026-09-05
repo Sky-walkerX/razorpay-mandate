@@ -11,7 +11,7 @@ import { rupees } from '@/lib/money';
  * legitimate order at a second shop that the mandate allows.
  *
  * Both directions are shown. Reporting only the first would overstate the rail,
- * which is the failure `mandate/policy/rails.py` exists to avoid — and a judge
+ * which is the failure `mandate/policy/rails.py` exists to avoid, and a judge
  * who built Reserve Pay would spot a missing payee constraint immediately.
  */
 export interface ReservePayVerdict {
@@ -60,13 +60,13 @@ export function ReservePayShadow({
       <span className="text-[12.5px] leading-[1.5] text-ink-2">
         {railWorse ? (
           <>
-            would have <b className="font-semibold text-halt">let this through</b> — a block never
+            would have <b className="font-semibold text-halt">let this through</b>. A block never
             sees categories, quantities or per-order limits, only {rupees(shadow.block_paise)}{' '}
             against {shopName(shadow.payee)}.
           </>
         ) : differs ? (
           <>
-            would have <b className="font-semibold text-halt">refused it</b> — a block names one
+            would have <b className="font-semibold text-halt">refused it</b>. A block names one
             payee, and this order was not with {shopName(shadow.payee)}.
           </>
         ) : railAllowed ? (

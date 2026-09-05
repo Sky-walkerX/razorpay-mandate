@@ -3,12 +3,12 @@
  *
  * Every clause carries two names. `budget.per_transaction` is what the signed
  * policy, the audit chain and the ledger use, and it is the right name in all
- * three — those exist to be reconciled against the document. Everywhere else,
+ * three, those exist to be reconciled against the document. Everywhere else,
  * a visitor should read "Most per order".
  *
  * The API sends both, from `mandate.policy.labels`. These helpers are the
  * fallback for the paths that do not, and the single place the `a.b:` prefix is
- * stripped — it used to be a regex living inside JudgeConsole, which is why the
+ * stripped, it used to be a regex living inside JudgeConsole, which is why the
  * sandbox and the storefront both printed the raw prefix.
  */
 

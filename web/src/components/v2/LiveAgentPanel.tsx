@@ -18,7 +18,7 @@ import { clauseLabel, receipt, sellerName } from '@/lib/plain';
  * a new family shows up rather than disappearing.
  */
 const FAMILY_COPY: Record<string, string> = {
-  clean: 'Nothing — an honest shop',
+  clean: 'Nothing, an honest shop',
   'budget.salami': 'Many small orders instead of one big one',
   'category.laundering': 'A banned item relabelled as something allowed',
   'injection.description': 'Hidden instructions in a product description',
@@ -41,7 +41,7 @@ interface AgentEvent {
   tool?: string;
   merchant?: string;
   /** `title` is resolved by the gateway from its own price book, never sent by
-   *  the agent — the agent proposes `{sku, qty}` and nothing else. Absent when
+   *  the agent, the agent proposes `{sku, qty}` and nothing else. Absent when
    *  the price book does not carry the SKU, which is itself the finding. */
   items?: { sku: string; qty: number; title?: string }[];
   verdict?: 'ALLOW' | 'DENY' | 'UNKNOWN';
@@ -151,7 +151,7 @@ export default function LiveAgentPanel({ token }: { token: string | null }) {
           const body = await res.json().catch(() => ({}));
           const detail =
             res.status === 429
-              ? 'daily model-call ceiling reached — no more live runs today'
+              ? 'daily model-call ceiling reached, no more live runs today'
               : body.detail || body.error || `HTTP ${res.status}`;
           setArms((a) => ({ ...a, [mode]: { ...a[mode], running: false, error: detail } }));
           return;
@@ -280,7 +280,7 @@ export default function LiveAgentPanel({ token }: { token: string | null }) {
           )}
           {!token && (
             <p className="text-[11.5px] text-refer">
-              No session yet — open “Attack it yourself” once to start one.
+              No session yet. Open “Attack it yourself” once to start one.
             </p>
           )}
         </div>
@@ -322,7 +322,7 @@ function Arm({ mode, state }: { mode: Mode; state: ArmState }) {
           </h3>
           <p className="mt-0.5 text-[11.5px] text-ink-3">
             {unenforced
-              ? 'nothing can refuse the agent — whatever it picks, it buys'
+              ? 'nothing can refuse the agent, so whatever it picks, it buys'
               : `every order passes all ${SET_PART_COUNT_TEXT} of your limits`}
           </p>
         </div>
