@@ -81,6 +81,7 @@ from mandate.service.sandbox import (
     to_sandbox_policy,
 )
 from mandate.service.session import SessionManager
+from mandate.service.shop import Shop, ShopUnavailable
 from mandate.service.token_pool import PoolExhausted, TokenPool
 
 
@@ -344,6 +345,12 @@ def create_app(
 
     merchant_keyring = MerchantKeyring.from_file(merchant_keys_path) if merchant_keys_path else MerchantKeyring()
 
+    # The shop is built here and handed to nothing. `session_manager` below gets the
+    # keyring (public keys) and never this object, so no gateway holds a reference to
+    # a merchant's private key. That is the whole separation, and
+    # `test_the_gateway_never_reads_a_merchant_private_key` is what keeps it.
+    shop = Shop.from_environment()
+
     app_approvals = approval_store
     if app_approvals is None:
         app_approvals = ApprovalStore(approval_store_path)
@@ -477,6 +484,59 @@ def create_app(
             for p in cat.products
         ]
         return JSONResponse(items)
+
+    async def get_quote(req: Request):
+        """The shop's current signed price for one item. Not a gateway answer.
+
+        The caller names the item; the shop names the price. Signing whatever figure
+        was asked for would turn this into an oracle an agent could use to mint its
+        own Rs 1,900 quote through the front door, which would hollow out every quote
+        attack in the conformance suite.
+
+        With no signing key this is 503 with a reason, never a fabricated quote or a
+        bare list price dressed up as one. Same rule as /v1/compile: a component that
+        answers a question it could not answer hides the outage.
+        """
+        _token, claims, err_resp = _extract_and_verify_token(req)
+        if err_resp is not None:
+            return err_resp
+        assert claims is not None
+
+        merchant = (req.query_params.get("merchant") or "zepto").strip().lower()
+        sku = (req.query_params.get("sku") or "").strip()
+        if not sku:
+            return JSONResponse(
+                {"error": "missing_sku", "detail": "'sku' is required"}, status_code=400
+            )
+
+        session = session_manager.get_session(claims.jti)
+        book = session.gateway.pricebook if session else pb
+        if book is None:
+            return JSONResponse(
+                {"error": "no_pricebook", "detail": "this deployment stocks nothing to quote"},
+                status_code=503,
+            )
+
+        try:
+            return JSONResponse(shop.quote(merchant, sku, book))
+        except ShopUnavailable:
+            return JSONResponse(
+                {
+                    "error": "shop_unavailable",
+                    "detail": (
+                        f"no shop signing key for {merchant!r} in this deployment; "
+                        f"run 'mandate quote-keygen --merchant {merchant}' and set "
+                        f"MANDATE_SHOP_PRIVATE_KEYS"
+                    ),
+                    "merchants": shop.merchants,
+                },
+                status_code=503,
+            )
+        except KeyError:
+            return JSONResponse(
+                {"error": "unknown_sku", "detail": f"{merchant} does not stock {sku!r}"},
+                status_code=404,
+            )
 
     def _bound(key: str) -> tuple[str, int | None] | None:
         """The clause's bound as a person reads it, and as a number.
@@ -1426,6 +1486,7 @@ def create_app(
         Route("/v1/mandate/ap2", get_ap2_mandate, methods=["GET"]),
         Route("/v1/orders", create_order, methods=["POST"]),
         Route("/v1/payments/capture", capture_payment, methods=["POST"]),
+        Route("/v1/quote", get_quote, methods=["GET"]),
         Route("/v1/audit", get_audit, methods=["GET"]),
         Route("/v1/audit/head", get_audit_head, methods=["GET"]),
         Route("/v1/audit/proof", get_audit_proof, methods=["GET"]),
