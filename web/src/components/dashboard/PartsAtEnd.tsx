@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
  * grid answers "which one bound?" before any of it is read.
  *
  * Figures come from `readoutForPart`, which aggregates the same replayed
- * decisions the strip above draws — so no cell can disagree with the drawing.
+ * decisions the strip above draws, so no cell can disagree with the drawing.
  */
 export function PartsAtEnd() {
   const binding = bindingPart();

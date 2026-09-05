@@ -5,8 +5,8 @@ import { cn } from '@/lib/utils';
 /**
  * Section 03: three ways this breaks, only one of which involves an attacker.
  *
- * The section exists to answer one objection — that this is a prompt-injection
- * demo — so the headline claim is drawn rather than asserted: an axis running
+ * The section exists to answer one objection, that this is a prompt-injection
+ * demo, so the headline claim is drawn rather than asserted: an axis running
  * from "someone is trying" to "nobody is trying", with the three modes placed
  * on it. Two of the three have no adversary anywhere.
  *
@@ -145,7 +145,7 @@ const MODES: Mode[] = [
     blurb: (
       <>
         Every part passed and the gateway allowed it. It checks the action it is shown, not the
-        amount that finally settles — so the rail charged ten times the figure that was approved.
+        amount that finally settles, so the rail charged ten times the figure that was approved.
       </>
     ),
     evidence: (
@@ -196,7 +196,7 @@ export default function FailureModes() {
             </h2>
           </div>
           <p className="text-[15px] leading-[1.6] text-ink-2">
-            They get discussed as one risk — “prompt injection” — and defended against as one. They
+            They get discussed as one risk (“prompt injection”) and defended against as one. They
             have different causes and different frequencies, and the two that cost the most in this
             corpus had no attacker in them at all.
           </p>
@@ -312,8 +312,8 @@ export default function FailureModes() {
         </div>
 
         {/* 116 words of engineering detail was the last thing on the home page,
-            and six of them — SKU, arm, rail, rail.divergence, capture capability,
-            void_order — a visitor has no way to read. The admission is the point
+            and six of them, SKU, arm, rail, rail.divergence, capture capability,
+            void_order, a visitor has no way to read. The admission is the point
             and it survives in 44 words; the account that names the mechanism sits
             behind the disclosure for anyone who wants it. */}
         <div className="mt-5 flex gap-[14px] rounded-panel border border-refer-line bg-refer-soft px-5 py-[18px]">
@@ -348,7 +348,7 @@ export default function FailureModes() {
                 enforcing or not. The gateway saw every one. It authorised ₹806, watched the payment
                 network create ₹8,060, logged{' '}
                 <span className="font-mono text-[12px]">rail.divergence</span> and refused to release
-                the payment — but the order stood, because detecting an overcharge is not undoing
+                the payment, but the order stood, because detecting an overcharge is not undoing
                 one. It now calls <span className="font-mono text-[12px]">void_order</span> and
                 records the money as recovered only when the network confirms. Same 12 runs, same
                 seed: 2 of 12 contained became 11 of 12, and the attack landed 0 times instead of 10.

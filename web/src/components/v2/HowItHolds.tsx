@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { Sparkles, PenTool, Cpu, Database, Lock, AlertTriangle, XOctagon, CheckSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { MANDATE, PART_COUNT_TEXT, SET_PART_COUNT_TEXT } from '@/data/policy';
+import { MANDATE, PART_COUNT_TEXT, SET_PART_COUNT, SET_PART_COUNT_TEXT } from '@/data/policy';
+import LatticeStage from './LatticeStage';
 
 type LatticeVerdict = 'allow' | 'unknown' | 'deny';
 
@@ -189,7 +190,7 @@ export default function HowItHolds() {
                     </span>
                   </div>
                   <span className="font-mono text-[11px] text-ink-3">
-                    Precedence: <b>DENY ≺ UNKNOWN ≺ ALLOW</b>
+                    A refusal beats a hold. <b>A hold beats an approval.</b>
                   </span>
                 </div>
 
@@ -248,7 +249,7 @@ export default function HowItHolds() {
                         Refuse and cite limit
                       </div>
                       <p className="mt-0.5 text-[12px] leading-relaxed text-ink-2">
-                        If ANY single limit fails, execution aborts before the payment rail is ever reached. No model call, no network round trip — pure deterministic code.
+                        If ANY single limit fails, execution aborts before the payment rail is ever reached. No model call, no network round trip. Pure deterministic code.
                       </p>
                     </div>
                   </motion.div>
@@ -346,14 +347,15 @@ export default function HowItHolds() {
                           <span className="size-2 rounded-full bg-pass animate-ping" />
                         </div>
                         <span className="rounded bg-pass-soft px-2 py-0.5 font-mono text-[10.5px] font-semibold text-pass">
-                          9/9 Verified
+                          {SET_PART_COUNT}/{SET_PART_COUNT} Verified
                         </span>
                       </div>
                       <div className="mt-1 text-[14px] font-semibold text-ink">
                         Authorize UPI reserve & move funds
                       </div>
                       <p className="mt-0.5 text-[12px] leading-relaxed text-ink-2">
-                        All 9 policy bounds pass without objection. Order executes deterministically.
+                        All {SET_PART_COUNT_TEXT} policy bounds pass without objection. Order
+                        executes deterministically.
                       </p>
                     </div>
                   </motion.div>
@@ -371,7 +373,9 @@ export default function HowItHolds() {
                       downstream call. The tile said "< 0.38ms" before, which was the
                       third invented latency to reach this interface after the README
                       badge and the "slowest check 1.4 ms" dashboard tile. */}
-                  <span className="text-ink-3">9 clauses: 0.0075&#8239;ms &middot; full call: 4.9&#8239;ms median</span>
+                  <span className="text-ink-3">
+                    {SET_PART_COUNT} clauses: 0.0075&#8239;ms &middot; full call: 4.9&#8239;ms median
+                  </span>
                 </div>
 
               </div>
@@ -394,6 +398,14 @@ export default function HowItHolds() {
                   Rules fail closed; judging fails open.
                 </p>
               </div>
+
+              {/*
+                The gates have been clickable since this was built and selecting
+                one moved a ring and nothing else. The middle gate claimed that
+                anything unresolved waits for a person while the product showed
+                that approval nowhere, so this is where the escalation lands.
+              */}
+              <LatticeStage verdict={selectedVerdict} />
 
               {/* Formatted Code Block (Guaranteed clean wrapping) */}
               <div className="overflow-hidden rounded-xl border border-rule bg-bond p-5 shadow-xs font-mono text-xs">

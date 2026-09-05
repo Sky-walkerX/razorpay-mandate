@@ -47,7 +47,7 @@ function Marker({ state, size = 7 }: { state: RowState; size?: number }) {
   );
 }
 
-/** Limit progress track — wider and taller than the old panel. */
+/** Limit progress track, wider and taller than the old panel. */
 function Track({ load, state }: { load: number; state: RowState }) {
   const reduced = useReducedMotion();
   return (
@@ -241,7 +241,7 @@ export default function GatewayPanel() {
           />
         </div>
 
-        {/* Payload — the raw text the agent saw, including seller-injected segments. */}
+        {/* Payload, the raw text the agent saw, including seller-injected segments. */}
         <div className="mt-3 rounded-lg border border-hair bg-sunk px-3.5 py-2.5 font-mono text-[11.5px] leading-[1.68] text-ink-2 break-words">
           {sc.payload.map((seg, k) => (
             <span
@@ -259,7 +259,7 @@ export default function GatewayPanel() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* Stage 2 · Mandate Gate — focused evaluation                       */}
+      {/* Stage 2 · Mandate Gate, focused evaluation                       */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       <div className="px-5 pb-5 pt-4">
         {/* Gate header */}
@@ -280,7 +280,7 @@ export default function GatewayPanel() {
           </AnimatePresence>
         </div>
 
-        {/* Constraint rows — only evaluated parts, never idle or skip */}
+        {/* Constraint rows, only evaluated parts, never idle or skip */}
         <div className="mt-3 space-y-1.5">
           {PARTS.map((part, i) => {
             const state = states[i];
@@ -406,7 +406,7 @@ export default function GatewayPanel() {
           })}
         </div>
 
-        {/* Skip badge — replaces the 7 dimmed "not checked" rows */}
+        {/* Skip badge, replaces the 7 dimmed "not checked" rows */}
         <AnimatePresence initial={false}>
           {skippedCount > 0 && (
             <motion.div
@@ -492,7 +492,7 @@ export default function GatewayPanel() {
           {settled ? sc.summary : `${PART_COUNT} parts, in order`}
         </p>
 
-        {/* Air Gap — the visual proof that money stayed or moved */}
+        {/* Air Gap, the visual proof that money stayed or moved */}
         <AnimatePresence initial={false}>
           {settled && (
             <motion.div

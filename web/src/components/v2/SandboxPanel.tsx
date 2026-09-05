@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { FileCode2, Lock, ShieldOff, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { partByKey } from '@/data/policy';
 import { clauseLabel, plainMessage } from '@/lib/plain';
 import { HeldForApproval, type HeldItem } from './HeldForApproval';
 
@@ -12,7 +13,7 @@ import { HeldForApproval, type HeldItem } from './HeldForApproval';
  * Two things about this panel are deliberate and should not be "tidied".
  *
  * **It says unsigned, loudly, and shows where signing happens.** The service
- * cannot sign a policy — that needs the issuer private key, which is offline by
+ * cannot sign a policy, that needs the issuer private key, which is offline by
  * design and absent from the deployed image. The gateway refusing to sign is the
  * feature, so the banner states it and prints the CLI command that would. Hiding
  * the limitation would trade the strongest claim in the project for a tidier box.
@@ -20,7 +21,7 @@ import { HeldForApproval, type HeldItem } from './HeldForApproval';
  * **The probe posts to the same `/v1/orders` every other tab posts to.** There is
  * no sandbox-flavoured evaluation path. If a judge's cap refuses an order it is
  * the production gateway doing it, which is the only version of this demo worth
- * showing — and the reason the caps must visibly disagree with the house policy's.
+ * showing, and the reason the caps must visibly disagree with the house policy's.
  */
 
 interface Constraint {
@@ -98,6 +99,11 @@ function readBound(id: string, spec: unknown): string {
   return 'set';
 }
 
+/** The house cap a visitor's own caps have to sit under, read from the policy
+ *  rather than typed: this sentence carried a literal that would have gone
+ *  stale the moment the demo mandate was re-signed. */
+const PER_ORDER = partByKey('budget.per_transaction');
+
 export default function SandboxPanel({ apiBase }: { apiBase: string }) {
   const reduced = useReducedMotion() ?? false;
 
@@ -142,7 +148,7 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
       });
       const data = await res.json();
       if (!res.ok || data.compiled === false) {
-        // A refusal is an outcome, not a failure to hide — but only one of the
+        // A refusal is an outcome, not a failure to hide, but only one of the
         // three kinds is the compiler being careful, so the gloss below keys off
         // `kind` rather than explaining a slow network as good judgement.
         setRefusal({
@@ -272,8 +278,9 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
             </span>
             An AI reads your sentence twice and refuses if the two readings disagree, rather than
             guessing at what you meant. What comes out is enforced by the same gateway every other
-            tab uses, and enforcing it involves no AI. Keep your caps well under the demo's ₹1,000
-            an order, or you will not be able to tell whose number refused you.
+            tab uses, and enforcing it involves no AI. Keep your caps well under the demo's{' '}
+            {PER_ORDER?.bound.replace(/\.00$/, '')} an order, or you will not be able to tell whose
+            number refused you.
           </p>
         </div>
       </div>
@@ -305,7 +312,7 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
                   'words twice and the two readings disagreed, so it would rather say ' +
                   'nothing than commit to one of them. Rewording the limits usually fixes it.'
                 : refusal.kind === 'timeout'
-                  ? 'This one is the network, not your sentence — the model did not answer ' +
+                  ? 'This one is the network, not your sentence. The model did not answer ' +
                     'in time. Nothing was compiled and nothing was enforced. Try again.'
                   : 'The gateway could not reach the compiler. Nothing was compiled and ' +
                     'nothing was enforced.'}
@@ -388,7 +395,7 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
                 >
                   {catalog.map((c) => (
                     <option key={c.sku} value={c.sku}>
-                      {c.title} — {rupees(c.unit_price)}
+                      {c.title} · {rupees(c.unit_price)}
                     </option>
                   ))}
                 </select>

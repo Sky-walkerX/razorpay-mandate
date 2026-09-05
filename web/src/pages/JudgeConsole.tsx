@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import { RotateCw, Send, Sliders, Zap } from 'lucide-react';
+import { Lock, RotateCw, Send, Sliders, Zap } from 'lucide-react';
 
 import { PARTS, PART_COUNT_TEXT_CAP, SET_PART_COUNT_TEXT } from '@/data/policy';
 import { Spell } from '@/lib/spell';
@@ -21,8 +21,7 @@ import { clauseLabel, plainMessage } from '@/lib/plain';
  *
  * The rule this page is built to, after the previous version broke it in two
  * places: **nothing on screen may state an outcome the session has not
- * produced.** Attack rows advertise what they attempt, never what they get —
- * the old list printed `ALLOW` / `DENY` chips beside every preset, so a judge
+ * produced.** Attack rows advertise what they attempt, never what they get, * the old list printed `ALLOW` / `DENY` chips beside every preset, so a judge
  * read the answer and then pressed a button that agreed with it. And the run
  * panel starts genuinely empty; it used to render `REFUSED · ₹0.00 charged`
  * with a full clause waterfall on first paint, while the ledger beneath it
@@ -70,8 +69,10 @@ interface DecisionRecord {
   stopped_at_clause?: number;
   /** False when the gateway did not answer and the outcome came from the preset. */
   live: boolean;
+  /** Shelf price beside the price the shop signed, when a quote was used. */
+  quote_note?: { listPaise: number; signedPaise: number; factor: number };
   /** What UPI Reserve Pay would have done with the same basket. Absent on a
-      simulated outcome, and null when the shadow itself failed — the comparison
+      simulated outcome, and null when the shadow itself failed, the comparison
       is never allowed to cost a verdict. */
   reserve_pay?: ReservePayVerdict | null;
 }
@@ -79,7 +80,7 @@ interface DecisionRecord {
 interface AttackPreset {
   id: string;
   title: string;
-  /** What it attempts. Never what it gets — that is the gateway's to say. */
+  /** What it attempts. Never what it gets, that is the gateway's to say. */
   tries: string;
   merchant: string;
   seller_name: string;
@@ -103,10 +104,17 @@ interface AttackPreset {
   /**
    * Revoke this session's real token, then send an ordinary order with it.
    * The previous version presented the literal string `revoked_token_example`,
-   * which the service rejects as malformed — so it demonstrated a parse error,
+   * which the service rejects as malformed, so it demonstrated a parse error,
    * not revocation. Revoking for real is the only way to show the real thing.
    */
   revokeFirst?: boolean;
+  /**
+   * Ask the shop to sign a new price before ordering, and send that quote with
+   * the order. The gateway checks every limit against the signed figure rather
+   * than the price book's, so this is the one preset whose refusal names an
+   * amount that appears nowhere in the catalog.
+   */
+  quoteFirst?: boolean;
 }
 
 /**
@@ -114,7 +122,7 @@ interface AttackPreset {
  *
  * These were invented names (`sku_dal_toor_2kg`, `sku_beer_can`) that exist in
  * no price book, so every preset came back `unknown SKU ... not found in price
- * book` — a resolution failure before any clause ran, which is the gateway
+ * book`, a resolution failure before any clause ran, which is the gateway
  * failing closed correctly and demonstrating nothing. Each one below is chosen
  * to breach exactly the clause it advertises, given the corpus catalog:
  *
@@ -196,6 +204,28 @@ const ATTACK_PRESETS: AttackPreset[] = [
     fallbackStop: 6,
   },
   {
+    /*
+     * The only preset that isolates the per-item cap.
+     *
+     * Nothing in the catalog is priced between the ₹500 item cap and the ₹1,000
+     * order cap, so every other over-cap basket breaches the order cap first and
+     * the gateway correctly names that one instead. A signed 1.7x price change
+     * lands two units of cooking oil in the gap, so part 3 is the clause that
+     * binds and the refusal quotes a figure the price book does not contain.
+     */
+    id: 'surge',
+    title: 'The shop raises its price',
+    tries: 'The shop signs a new, higher price for something already in the basket.',
+    merchant: 'zepto',
+    seller_name: 'Zepto',
+    items: [{ sku: 'sku_0004', qty: 2 }],
+    quoteFirst: true,
+    expectedVerdict: 'DENY',
+    payloadSnippet: '2 items · Cooking Oil Pack of 4 · re-priced by the shop, signature checked',
+    amountPaise: 69020,
+    fallbackStop: 2,
+  },
+  {
     id: 'quantity',
     title: 'Order too many of one thing',
     tries: 'Six of one item. ₹300 total, so no money cap objects.',
@@ -252,7 +282,7 @@ const ATTACK_PRESETS: AttackPreset[] = [
 
 
 /**
- * What each tab is called, what it says, and — the part that matters — whether
+ * What each tab is called, what it says, and, the part that matters, whether
  * it calls a model.
  *
  * The console evaluates in plain code. The live agent and the compiler both make
@@ -455,6 +485,51 @@ export default function JudgeConsole() {
     const token = payload.forceToken || session.token;
     const startTs = performance.now();
 
+
+    /*
+     * Ask the shop to sign a price first, when the preset calls for it.
+     *
+     * The quote is fetched and forwarded verbatim: this page never reads a price
+     * out of it to send onward, because the figure the gateway checks has to be
+     * the figure the gateway was given. A shop that cannot sign (no key on this
+     * deployment) leaves the item unquoted, so the order runs at the shelf price
+     * and the panel simply has no comparison to draw, rather than the run dying.
+     */
+    let items = payload.items;
+    let quoteNote: DecisionRecord['quote_note'] | undefined;
+
+    if (payload.preset?.quoteFirst) {
+      try {
+        const quoted = await Promise.all(
+          payload.items.map(async (it) => {
+            const q = await fetch(
+              `${API_BASE}/v1/quote?merchant=${encodeURIComponent(payload.merchant)}` +
+                `&sku=${encodeURIComponent(it.sku)}&qty=${it.qty}`,
+              { headers: { Authorization: `Bearer ${token}` } },
+            );
+            if (!q.ok) return it;
+            const body = await q.json();
+            if (!quoteNote && typeof body.list_price_paise === 'number') {
+              quoteNote = {
+                listPaise: body.list_price_paise * it.qty,
+                signedPaise: body.unit_price_paise * it.qty,
+                factor: body.surge_factor,
+              };
+            }
+            return body.quote ? { ...it, quote: body.quote } : it;
+          }),
+        );
+        items = quoted;
+      } catch {
+        // The shop is unreachable. Fall through at the shelf price.
+      }
+    }
+
+    /*
+     * Built after the quote so `quote_note` rides on `base`, which every `finish`
+     * branch spreads. Assembling it earlier meant a refusal carried the
+     * comparison and an allow did not.
+     */
     const base = {
       id: `dec_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       seq: 0, // assigned from the ledger length inside `finish`
@@ -463,13 +538,14 @@ export default function JudgeConsole() {
       merchant: payload.merchant,
       payload_text: payload.preset?.payloadSnippet ?? `${payload.items[0]?.sku} ×${payload.items[0]?.qty}`,
       hostile_text: payload.preset?.hostileSnippet,
+      quote_note: quoteNote,
     };
 
     try {
       const res = await fetch(`${API_BASE}/v1/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ merchant: payload.merchant, items: payload.items }),
+        body: JSON.stringify({ merchant: payload.merchant, items }),
       });
 
       const elapsed = Math.max(0.18, Math.round((performance.now() - startTs) * 10) / 10);
@@ -622,7 +698,7 @@ export default function JudgeConsole() {
       verdict: 'REVOKED',
       clause_id: 'revocation.manual',
       message: `Token ${session.jti} is revoked. Everything after this is refused, whatever the agent sends.`,
-      merchant: '—',
+      merchant: 'none',
       seller_name: 'revocation list',
       amount_paise: 0,
       executed: false,
@@ -853,7 +929,7 @@ export default function JudgeConsole() {
                     >
                       {/* Green for the one that is meant to go through, carmine
                           for the eight that are not. It is what the row attempts,
-                          never what it got — the chip on the right is the only
+                          never what it got, the chip on the right is the only
                           thing allowed to say that. */}
                       <span
                         aria-hidden
@@ -1142,6 +1218,35 @@ export default function JudgeConsole() {
                     )}
                   </p>
 
+                  {/*
+                    Shelf price beside the price the shop signed. Only drawn when a
+                    quote was actually verified, so an unsigned run shows one figure
+                    rather than a comparison against itself.
+                  */}
+                  {currentDisplay.quote_note ? (
+                    <div className="mt-[13px] grid grid-cols-2 overflow-hidden rounded-lg border border-rule">
+                      <div className="border-r border-rule bg-sheet px-[15px] py-[13px]">
+                        <div className="font-mono text-[9.5px] uppercase tracking-[0.09em] text-ink-3">
+                          Shelf price
+                        </div>
+                        <div className="mt-[5px] font-mono text-[19px] font-semibold tracking-[-0.03em] tabular-nums">
+                          {rupees(currentDisplay.quote_note.listPaise)}
+                        </div>
+                      </div>
+                      <div className="px-[15px] py-[13px]">
+                        <div className="font-mono text-[9.5px] uppercase tracking-[0.09em] text-ink-3">
+                          Signed by {currentDisplay.seller_name}
+                        </div>
+                        <div className="mt-[5px] font-mono text-[19px] font-semibold tracking-[-0.03em] tabular-nums text-halt">
+                          {rupees(currentDisplay.quote_note.signedPaise)}
+                        </div>
+                        <div className="mt-1 text-[11px] text-ink-3">
+                          {currentDisplay.quote_note.factor}× · signature checked
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
                   <div className="mt-[22px] flex flex-wrap items-baseline gap-x-[10px] gap-y-1">
                     <span className="text-[13.5px] font-semibold text-ink">
                       Every limit you set, checked in order
@@ -1285,18 +1390,30 @@ export default function JudgeConsole() {
                       >
                         {d.clause_label ?? (d.executed ? `all ${SET_PART_COUNT_TEXT} passed` : '')}
                       </span>
+                      {/*
+                        A labelled control, at every width. This was a six-character
+                        hash in `text-ink-4` carrying `max-sm:hidden`, so the one
+                        feature on this page a visitor can check for themselves did
+                        not exist on a phone and read as a truncated id on a desktop,
+                        with the only explanation in a `title` a touch device never
+                        shows. The hash stays as the caption: it is the thing being
+                        checked.
+                      */}
                       {d.record_hash ? (
                         <button
                           type="button"
                           onClick={() => setVerifying(d.record_hash ?? null)}
-                          title="Check this receipt against the log, in your browser"
-                          className="ml-auto shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[11.5px] text-ink-4 underline decoration-dotted underline-offset-2 transition-colors hover:bg-sunk hover:text-ink max-sm:hidden"
+                          className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-rule bg-bond px-2 py-1 font-mono text-[11px] font-medium text-ink-2 transition-colors hover:border-ink-4 hover:text-ink"
                         >
-                          {d.record_hash.replace(/^sha256:/, '').slice(0, 6)}…
+                          <Lock className="size-[10px] text-ink-3" strokeWidth={2} />
+                          <span>Verify</span>
+                          <span className="text-ink-4 max-sm:hidden">
+                            {d.record_hash.replace(/^sha256:/, '').slice(0, 6)}…
+                          </span>
                         </button>
                       ) : (
-                        <span className="ml-auto shrink-0 font-mono text-[11.5px] text-ink-4 max-sm:hidden">
-                          —
+                        <span className="ml-auto shrink-0 font-mono text-[11.5px] text-ink-4">
+                          no receipt
                         </span>
                       )}
                     </motion.li>

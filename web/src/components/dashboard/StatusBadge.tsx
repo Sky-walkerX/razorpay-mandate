@@ -19,7 +19,7 @@ const MARKER_CLASS: Record<Tone, string> = {
 /**
  * The one badge shape used everywhere a verdict or a constraint's status is
  * named: a small marker whose shape carries the meaning, plus the word beside
- * it. Hue is never the only signal — see `styles/theme.css`.
+ * it. Hue is never the only signal, see `styles/theme.css`.
  */
 export function StatusBadge({ tone, label }: { tone: Tone; label: string }) {
   return (

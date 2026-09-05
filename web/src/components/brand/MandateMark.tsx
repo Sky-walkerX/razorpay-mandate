@@ -2,14 +2,14 @@
  * The Mandate mark: a gate.
  *
  * A navy post with a slot cut through it, and a blue beam entering the slot.
- * That is the product in three shapes — the order that satisfies the mandate
+ * That is the product in three shapes, the order that satisfies the mandate
  * goes through the aperture, and anything arriving off-axis meets solid navy.
  * The faded diagonal is that blocked ray, and it is the first thing to go at
  * small sizes, which is why `blocked` defaults to off below the display sizes.
  *
  * The post sits right of centre rather than on it. Centred, the two blades and
  * the beam crossed at the same point and the whole mark read as a plus sign at
- * nav size — which is what the first cut of this shipped as.
+ * nav size, which is what the first cut of this shipped as.
  *
  * The 40x40 viewBox is shared with the favicon so the two can never drift.
  * Navy does the stopping and blue does the moving, everywhere, always: if a

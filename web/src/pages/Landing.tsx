@@ -5,6 +5,7 @@ import ProblemHero from '@/components/v2/ProblemHero';
 import GapAndParts from '@/components/v2/GapAndParts';
 import FailureModes from '@/components/v2/FailureModes';
 import HowItHolds from '@/components/v2/HowItHolds';
+import WhenPriceMoves from '@/components/v2/WhenPriceMoves';
 
 /**
  * The default Mandate homepage on the shadcn + Motion stack.
@@ -21,7 +22,7 @@ export default function Landing() {
               This row carried six links, a badge and two buttons inside 1220px
               with nothing stopping a label from breaking, so four of them wrapped
               onto a second line and the bar grew past its own 60px. The four that
-              went — The gap, Failure modes, How it holds, Your limits — all
+              went, The gap, Failure modes, How it holds, Your limits, all
               scrolled to sections of this same page, which a visitor reaches by
               scrolling anyway. */}
           <div className="ml-3 hidden gap-[22px] text-[13.5px] text-ink-2 lg:flex">
@@ -55,6 +56,13 @@ export default function Landing() {
       <FailureModes />
 
       <HowItHolds />
+
+      {/*
+        Goes after the last anchor the recorded walkthrough scrolls to. Those
+        shots take pixel offsets from `#gap`, `#limits` and `#how`, so a section
+        inserted between them re-frames every later shot silently.
+      */}
+      <WhenPriceMoves />
 
       <footer className="mx-auto flex max-w-[1220px] flex-wrap justify-between items-center gap-4 px-8 py-7 text-[12.5px] text-ink-3 max-sm:px-[18px]">
         <span>Mandate · Autonomous Agent Payment Guardrails</span>

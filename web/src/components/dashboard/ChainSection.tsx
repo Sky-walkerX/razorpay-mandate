@@ -8,8 +8,8 @@ import { cn } from '@/lib/utils';
  *
  * Every row carries the hash that links it to the one below, joined by a
  * hairline running through the markers, so "tamper-evident" is shown rather
- * than asserted. The marker shape carries the verdict — square for allowed,
- * diamond for refused — per the rule that hue is never the only signal.
+ * than asserted. The marker shape carries the verdict, square for allowed,
+ * diamond for refused, per the rule that hue is never the only signal.
  *
  * Long stretches of identical decisions collapse to a single line stating how
  * many there were. Fifty rows differing only in a hash are fifty rows a reader
@@ -45,7 +45,7 @@ export function ChainSection() {
             >
               <Link tone="dim" isLast={false} />
               <span className="min-w-0 text-[12.5px] leading-[1.5] text-ink-3">
-                #{pad(e.toSeq)} through #{pad(e.fromSeq)} — {spell(e.count)} more,{' '}
+                #{pad(e.toSeq)} through #{pad(e.fromSeq)} · {spell(e.count)} more,{' '}
                 {e.verdict === 'deny' ? 'every one refused' : 'every one allowed'}
                 {part && ` at Part ${part.n}`}
               </span>

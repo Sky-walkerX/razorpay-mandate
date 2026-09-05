@@ -39,7 +39,7 @@ export default function PitchDeck() {
       <iframe
         ref={iframeRef}
         src="/deck.html"
-        title="Mandate — Pitch Deck"
+        title="Mandate Pitch Deck"
         className="w-full h-full border-none block"
         allow="fullscreen"
       />

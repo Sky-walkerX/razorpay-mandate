@@ -6,6 +6,7 @@ import { SCENARIOS } from '@/data/scenarios';
 import { SCOREBOARD, SOURCE } from '@/data/decisions';
 import { rupees } from '@/lib/money';
 import { cn } from '@/lib/utils';
+import ThreeAnswers from './ThreeAnswers';
 
 /**
  * The hero states the problem and nothing else.
@@ -13,7 +14,7 @@ import { cn } from '@/lib/utils';
  * One beam runs left to right: you, the agent, the rail, your card. It goes in
  * blue carrying a limit and comes out red carrying an amount, because in the
  * middle a seller wrote into the context the agent was reading. The gateway is
- * not on this screen on purpose — the section below it is the answer, and an
+ * not on this screen on purpose, the section below it is the answer, and an
  * answer shown before the question lands as a feature list.
  *
  * Every figure is read, never typed. The bounds come from `PARTS`, which
@@ -21,8 +22,8 @@ import { cn } from '@/lib/utils';
  * `injection.description` load the gateway panel below runs, so the hero and
  * the panel are telling one story about one order rather than two about two;
  * and the containment line is the measured baseline from the scored run. The
- * one number that would have been retyped here — a rupee figure from a
- * different result directory — is the one this deliberately does not use.
+ * one number that would have been retyped here, a rupee figure from a
+ * different result directory, is the one this deliberately does not use.
  */
 
 const TOTAL_CAP = PARTS.find((p) => p.key === 'budget.total');
@@ -146,8 +147,8 @@ export default function ProblemHero() {
           controls. The rail checks a cap, a merchant and an expiry.{' '}
           <b className="font-medium text-ink">
             Everything else you meant is a sentence in a system prompt
-          </b>{' '}
-          — and the prompt is not what the attacker is writing into.
+          </b>,{' '}
+          and the prompt is not what the attacker is writing into.
         </p>
 
         {/* ── The rail, wide ─────────────────────────────────────────────── */}
@@ -342,6 +343,13 @@ export default function ProblemHero() {
           <span className="max-sm:hidden"> · </span>
           {SOURCE.model} · {SOURCE.containment_dir}
         </p>
+
+        {/*
+          The three answers. Deliberately the LAST thing in the hero: the recorded
+          walkthrough holds this section at a fixed scroll position, so anything
+          added above the rail moves that frame while anything below it does not.
+        */}
+        <ThreeAnswers />
       </div>
     </section>
   );

@@ -14,7 +14,7 @@ import { exportEvidence } from '@/lib/exportEvidence';
 /**
  * The record: one replayed run, read top to bottom.
  *
- * This used to be a sidebar, four undifferentiated tiles and two charts — the
+ * This used to be a sidebar, four undifferentiated tiles and two charts, the
  * shape of generic analytics, for a product whose whole argument is that the
  * interesting thing is not a metric but a refusal that can name its clause.
  * Four of the five sidebar items were inert, a card advertised a feature that
@@ -28,7 +28,7 @@ import { exportEvidence } from '@/lib/exportEvidence';
  * Two measurements appear here and they are kept visibly apart. Everything
  * above `Across the whole held-out set` is this one run, replayed from a
  * single `audit.jsonl`. The containment band below it is the aggregate across
- * the held-out sweep — a different measurement over different runs, so it
+ * the held-out sweep, a different measurement over different runs, so it
  * carries its own attribution rather than sitting in the same row as figures
  * it did not come from.
  */
@@ -53,7 +53,7 @@ export default function Dashboard() {
 
           <div className="ml-auto flex items-center gap-3">
             {/* Icon-only below sm. With both labels the bar was 65px wider than a
-                390px viewport and the whole page scrolled sideways — the primary
+                390px viewport and the whole page scrolled sideways, the primary
                 action here is "Try it live", so this is the label that gives way. */}
             <Button
               variant="outline"
@@ -85,7 +85,7 @@ export default function Dashboard() {
           </h1>
 
           <p className="mt-[15px] max-w-[54rem] text-[15.5px] leading-[1.62] text-ink-2">
-            One recorded run, replayed in full from a single audit log — every decision, in order,
+            One recorded run, replayed in full from a single audit log. Every decision, in order,
             with nothing selected.{' '}
             {binding ? (
               <>
@@ -201,8 +201,8 @@ export default function Dashboard() {
                 contained ·{' '}
                 <b className="font-medium text-halt">
                   {baseline.total - baseline.contained} executed against your card
-                </b>{' '}
-                — clearly below the enforced arms, though {baseline.total} runs is too few to put a
+                </b>,{' '}
+                clearly below the enforced arms, though {baseline.total} runs is too few to put a
                 precise figure on it
               </p>
             </div>

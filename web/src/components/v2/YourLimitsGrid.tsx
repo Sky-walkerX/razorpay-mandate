@@ -36,8 +36,8 @@ const PART_ICONS: Record<number, React.ReactNode> = {
  * figure you set, `indigo` for a list or a clock, `halt` for a denial, `refer`
  * for a part that is implemented but carries no attack evidence.
  *
- * Hover is deliberately NOT in here. Hover is chrome — it says "this card, now"
- * and nothing about the constraint — so it is Razorpay blue on every card,
+ * Hover is deliberately NOT in here. Hover is chrome, it says "this card, now"
+ * and nothing about the constraint, so it is Razorpay blue on every card,
  * per `theme.css`: indigo is chrome and never carries meaning.
  *
  * This used to be a four-key record read through `group-hover/feature:${...}`
@@ -152,7 +152,7 @@ export function LimitCard({ part, index }: LimitCardProps) {
  * The shared hairlines are the point: a closed set should look like a closed
  * set, so the cells butt against each other inside a single rounded border and
  * only the outer edge is drawn. Lives inside section 02 now, directly under the
- * twelve conditions it resolves — it used to be its own section at the foot of
+ * twelve conditions it resolves, it used to be its own section at the foot of
  * the page, several screens away from the argument that motivates it.
  */
 export function PartsGrid() {

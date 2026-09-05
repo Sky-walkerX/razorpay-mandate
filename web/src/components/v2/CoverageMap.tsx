@@ -179,7 +179,7 @@ export default function CoverageMap() {
             );
           })}
 
-          {/* Right Column: 9 Answering Limits */}
+          {/* Right Column: the limits that answer, counted off PARTS. */}
           {COLUMN.map((p, i) => {
             const isHovered = hot?.kind === 'p' && hot.i === i;
             const isLinked = live?.parts.has(i);

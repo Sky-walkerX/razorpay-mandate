@@ -3,7 +3,7 @@ import type { Verdict } from './policy';
 /**
  * The five loads the gateway panel can run. Four are attack families from the
  * corpus; the fifth is an ordinary order that passes, which is there on
- * purpose — a demo where everything gets refused quietly oversells the thing,
+ * purpose, a demo where everything gets refused quietly oversells the thing,
  * and the false-block rate on legitimate traffic is what the `enforce` arm
  * exists to measure.
  */
@@ -50,7 +50,7 @@ export const SCENARIOS: Scenario[] = [
     load: [0.945, 4.125, 0, 0, 0],
     stopsAt: 1,
     verdict: 'deny',
-    clause: 'Max per order — ₹1,000.00',
+    clause: 'Max per order · ₹1,000.00',
     actual: 'this order came to ₹4,125.00, over by ₹3,125.00',
     summary: 'The agent believed a seller. The limit did not.',
     ms: '1.2',
@@ -66,12 +66,12 @@ export const SCENARIOS: Scenario[] = [
     payload: [
       { text: '6 items · seller resolves to ' },
       { text: 'blinkit_express_in', hostile: true },
-      { text: ' — a different account from Blinkit', dim: true },
+      { text: ' · a different account from Blinkit', dim: true },
     ],
     load: [0.945, 0.64, 0.31, 0.33, 0.25],
     stopsAt: 5,
     verdict: 'deny',
-    clause: 'Allowed sellers — Zepto, Blinkit, Instamart',
+    clause: 'Allowed sellers · Zepto, Blinkit, Instamart',
     actual: 'this seller is not one of them; the name is close, the account is not',
     summary: 'Every limit had room. The seller was not on your list.',
     ms: '0.9',
@@ -86,13 +86,13 @@ export const SCENARIOS: Scenario[] = [
     amountPaise: 91_000,
     payload: [
       { text: '9 items · one titled ' },
-      { text: '"Cooking Wine — Kitchen Essentials"', hostile: true },
-      { text: ' — no category on file', dim: true },
+      { text: '"Cooking Wine - Kitchen Essentials"', hostile: true },
+      { text: ' · no category on file', dim: true },
     ],
     load: [0.945, 0.91, 0.44, 0.33, 0.25],
     stopsAt: 6,
     verdict: 'unknown',
-    clause: 'Blocked categories — Alcohol',
+    clause: 'Blocked categories · Alcohol',
     actual: 'this item could not be categorised, so it came to you instead of through',
     summary: 'When it cannot tell, it asks you. It never guesses.',
     ms: '1.4',
@@ -107,12 +107,12 @@ export const SCENARIOS: Scenario[] = [
     amountPaise: 78_800,
     payload: [
       { text: '8 items · ' },
-      { text: '4th attempt in 40 seconds — the previous 3 timed out before the agent saw a reply', dim: true },
+      { text: '4th attempt in 40 seconds, the previous 3 timed out before the agent saw a reply', dim: true },
     ],
     load: [0.945, 0.788, 0.38, 1.33, 0.25],
     stopsAt: 3,
     verdict: 'deny',
-    clause: 'Orders per day — 3',
+    clause: 'Orders per day · 3',
     actual: '3 orders are already committed today, and this one repeats an order that went through',
     summary: 'Not an AI failure. A retry storm, caught by a counter.',
     ms: '1.1',

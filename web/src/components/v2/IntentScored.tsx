@@ -10,7 +10,7 @@ import { SellerMark } from './SellerMark';
  * rows in one column, eight in the other, and half a card of empty space. It
  * also asked the reader to diff the lists themselves. This scores the sentence
  * the person actually said, clause by clause, against what the payment rail can
- * carry — which is the claim the heading makes, made out of their own words.
+ * carry, which is the claim the heading makes, made out of their own words.
  *
  * Fragments are matched against `INTENT`, which comes from the signed policy
  * via `evidence.json`. Nothing here is retyped, so if the policy text changes,

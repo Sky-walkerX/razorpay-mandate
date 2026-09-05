@@ -2,7 +2,7 @@ import { MandateMark } from './MandateMark';
 import { cn } from '@/lib/utils';
 
 /**
- * Mark, wordmark, hairline, attribution — in that order, always.
+ * Mark, wordmark, hairline, attribution, in that order, always.
  *
  * "by Razorpay" sits behind a rule and one weight down because it is a credit,
  * not a claim: this is a Razorpay AI Buildathon entry, and the attribution
@@ -18,7 +18,7 @@ export function MandateLockup({
   className,
 }: {
   size?: 'sm' | 'md';
-  /** Off in tight chrome — a sidebar rail, a mobile bar. */
+  /** Off in tight chrome, a sidebar rail, a mobile bar. */
   attribution?: boolean;
   className?: string;
 }) {
@@ -35,7 +35,7 @@ export function MandateLockup({
       >
         Mandate
       </span>
-      {/* The credit is the first thing to go when the bar is tight — which is
+      {/* The credit is the first thing to go when the bar is tight, which is
           what the prop above already says, except a phone cannot pass a prop.
           At 390 the home bar was 2px wider than the viewport with this in it. */}
       {attribution && (

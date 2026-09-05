@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
  * Seller identity.
  *
  * These are drawn approximations in each merchant's brand hue, not official
- * assets — swap in real marks before this is public. Hue names a merchant and
+ * assets, swap in real marks before this is public. Hue names a merchant and
  * never a state: the three meaning inks stay green, ochre and carmine, and
  * every verdict still carries a shape and a word.
  *

@@ -12,7 +12,7 @@ import { PartsGrid } from './YourLimitsGrid';
 import { cn } from '@/lib/utils';
 
 /**
- * Section 02: the gap, and the parts that close it — one argument, not three.
+ * Section 02: the gap, and the parts that close it, one argument, not three.
  *
  * This replaces three components that were each making the same point in a
  * different register and in three different places on the page: the old `#gap`
@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils';
  * The join is the design. Every one of the twelve conditions carries the part
  * number it compiles to, so the grid underneath is read as the resolution of
  * the complaint above it rather than as a list of features. Every part is
- * reachable from the twelve — if a part ever stops being reachable, either the
+ * reachable from the twelve, if a part ever stops being reachable, either the
  * example is wrong or the part has no motivation on this page.
  *
  * Bounds are interpolated from `PARTS`, which `evidence.json` fills from the
@@ -118,7 +118,7 @@ export default function GapAndParts() {
 
             <p className="mt-[16px] max-w-[31rem] text-[16.5px] leading-[1.62] text-ink-2">
               UPI Reserve Pay knows a total cap, a merchant and an expiry. AP2’s Intent Mandate lands
-              in the same place. The other nine have nowhere to live except a system prompt — which
+              in the same place. The other nine have nowhere to live except a system prompt, which
               makes the control protecting your money{' '}
               <b className="font-medium text-ink">
                 a language model’s willingness to keep remembering an instruction
@@ -198,7 +198,7 @@ export default function GapAndParts() {
               </h3>
               <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
                 {Spell(LIMITS.length)} compare a number against a figure you set. {Spell(RULES.length)}{' '}
-                test a list, a category or a monotonic clock. Closed means the set does not grow — so
+                test a list, a category or a monotonic clock. Closed means the set does not grow, so
                 evaluation terminates, and a refusal can always name the part it came from.
               </p>
             </div>
@@ -217,7 +217,7 @@ export default function GapAndParts() {
 
           <div className="mt-6 flex flex-wrap items-center justify-between gap-4 font-mono text-[11px] text-ink-3">
             <span>
-              Every bound read from the signed policy — <b className="text-ink-2">nothing retyped</b>
+              Every bound read from the signed policy · <b className="text-ink-2">nothing retyped</b>
             </span>
             <span>This mandate sets {SET_PART_COUNT_TEXT}, every one checked on every order</span>
           </div>
