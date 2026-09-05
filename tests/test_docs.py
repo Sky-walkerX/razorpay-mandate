@@ -178,16 +178,27 @@ def test_no_tsx_spells_out_how_many_limits_the_policy_carries():
 
     # `(?<![\w-])` keeps "forty-nine more" — a run's own arithmetic, not a claim
     # about the policy — out of the net.
+    # Words and numerals both. The word-only version of this guard passed while
+    # `HowItHolds.tsx` rendered "9/9 Verified" and "All 9 policy bounds" beside a
+    # policy that sets nine of ten, so the numeral is the form that actually
+    # reached the screen unguarded.
+    # `noun` takes words AND numerals, because it requires a limit noun beside the
+    # figure and so cannot mistake a run count for a policy count.
     noun = re.compile(
-        r"(?<![\w-])(nine|ten)\b[^.<>{}]{0,24}?\b(clause|part|limit|kind)s?\b",
+        r"(?<![\w-])(nine|ten|9|10)\b[^.<>{}]{0,24}?\b(clause|part|limit|bound|kind)s?\b",
         re.IGNORECASE,
     )
+    # `bare` stays words-only. A bare numeral is far too often a real quantity of
+    # something else: `FailureModes` says "it fired 10 times and won all 10" about
+    # runs, which is arithmetic about a sweep and not a claim about the policy.
     bare = re.compile(r"(?<![\w-])\b(all|the)\s+(nine|ten)\b(?!\s*[-\w]*\s*(more|of))", re.IGNORECASE)
+    # "9/9", "10/10": a tally of the policy against itself, typed rather than counted.
+    tally = re.compile(r"(?<![\w./-])(9|10)\s*/\s*(9|10)(?![\w./-])")
 
     offenders = []
     for path in sorted(web_src.rglob("*.tsx")):
         for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            hit = noun.search(line) or bare.search(line)
+            hit = noun.search(line) or bare.search(line) or tally.search(line)
             if hit:
                 rel = path.relative_to(REPO_ROOT)
                 offenders.append(f"{rel}:{line_no}: {hit.group(0)!r}")
@@ -335,4 +346,61 @@ def test_the_web_does_not_call_the_rail_mandate_reserve_pay():
     assert not bad.search(text), "the created rail object is UPI Autopay, not Reserve Pay"
     assert "UPI Autopay" in text or "product" in text, (
         "the created object must name the product it actually is"
+    )
+
+
+def test_no_tsx_types_a_bound_the_signed_policy_sets():
+    """A limit is read from the policy, never retyped beside it.
+
+    CLAUDE.md has stated this since the console was built ("never retype a bound
+    into a `.ts` file") and nothing enforced it. The cost of the gap is on the
+    record: the web once carried a max quantity of 4 against a policy that says
+    5, a policy hash matching no document and a signing date two weeks off, and
+    nothing compared the two.
+
+    `PARTS` already carries every bound, formatted, from `evidence.json`. A
+    component that wants one interpolates it, so a re-signed policy moves every
+    screen at once instead of leaving a stale figure behind on whichever surface
+    nobody thought to grep.
+
+    Comments are stripped before the scan. Prose about the catalog ("nothing is
+    priced between the Rs 500 item cap and the Rs 1,000 order cap") is a note to
+    the next reader about why a preset was chosen, not a claim rendered at a
+    visitor, and several of those are load-bearing explanations.
+    """
+    import json
+    import re
+
+    web_src = REPO_ROOT / "web" / "src"
+    evidence = json.loads((web_src / "data" / "evidence.json").read_text(encoding="utf-8"))
+
+    bounds = set()
+    for part in evidence["policy"]["parts"]:
+        bound = (part.get("bound") or "").strip()
+        if bound.startswith("₹"):
+            bounds.add(bound)
+            # "Rs 2,000.00" reads as "Rs 2,000" in a sentence, and both are the
+            # bound. A component doing that trim on the derived value is fine;
+            # typing either form is not.
+            bounds.add(re.sub(r"\.00$", "", bound))
+
+    block = re.compile(r"/\*.*?\*/", re.DOTALL)
+    line_comment = re.compile(r"^\s*//.*$", re.MULTILINE)
+
+    offenders = []
+    for path in sorted(web_src.rglob("*.tsx")):
+        source = path.read_text(encoding="utf-8")
+        stripped = line_comment.sub("", block.sub("", source))
+        for bound in sorted(bounds):
+            # Anchored on the right so "Rs 500" does not match inside
+            # "Rs 50000.00", which is a different figure entirely and was the
+            # first thing this guard got wrong.
+            if re.search(re.escape(bound) + r"(?![\d,.])", stripped):
+                offenders.append(f"{path.relative_to(REPO_ROOT)}: {bound!r}")
+
+    assert not offenders, (
+        "a component types a bound the signed policy already carries.\n"
+        "Read it from PARTS (or partByKey) in web/src/data/policy.ts, which is\n"
+        "filled from evidence.json, so re-signing moves every screen at once:\n"
+        + "\n".join(offenders)
     )

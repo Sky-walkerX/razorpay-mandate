@@ -94,6 +94,17 @@ export const SET_PART_COUNT_TEXT_CAP = Spell(SET_PART_COUNT);
 export const LIMITS = PARTS.filter((p) => p.kind === 'limit');
 export const RULES = PARTS.filter((p) => p.kind === 'rule');
 
+/**
+ * One part, by the key the signed policy uses.
+ *
+ * Components that want a specific limit's label or bound go through this rather
+ * than indexing `PARTS`, which is ordered by the policy and would silently point
+ * at a different clause if one were ever inserted. Returns undefined for a key
+ * this mandate does not carry, so a caller has to decide what an absent clause
+ * renders as instead of getting an empty string that reads as zero.
+ */
+export const partByKey = (key: string): Part | undefined => PARTS.find((p) => p.key === key);
+
 /** The plain-language intent this mandate was compiled from. */
 export const INTENT = evidence.policy.source_text;
 

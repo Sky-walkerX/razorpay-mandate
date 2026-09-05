@@ -6,6 +6,7 @@ import { SCENARIOS } from '@/data/scenarios';
 import { SCOREBOARD, SOURCE } from '@/data/decisions';
 import { rupees } from '@/lib/money';
 import { cn } from '@/lib/utils';
+import ThreeAnswers from './ThreeAnswers';
 
 /**
  * The hero states the problem and nothing else.
@@ -342,6 +343,13 @@ export default function ProblemHero() {
           <span className="max-sm:hidden"> · </span>
           {SOURCE.model} · {SOURCE.containment_dir}
         </p>
+
+        {/*
+          The three answers. Deliberately the LAST thing in the hero: the recorded
+          walkthrough holds this section at a fixed scroll position, so anything
+          added above the rail moves that frame while anything below it does not.
+        */}
+        <ThreeAnswers />
       </div>
     </section>
   );

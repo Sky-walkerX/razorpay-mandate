@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { FileCode2, Lock, ShieldOff, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { partByKey } from '@/data/policy';
 import { clauseLabel, plainMessage } from '@/lib/plain';
 import { HeldForApproval, type HeldItem } from './HeldForApproval';
 
@@ -97,6 +98,11 @@ function readBound(id: string, spec: unknown): string {
   }
   return 'set';
 }
+
+/** The house cap a visitor's own caps have to sit under, read from the policy
+ *  rather than typed: this sentence carried a literal that would have gone
+ *  stale the moment the demo mandate was re-signed. */
+const PER_ORDER = partByKey('budget.per_transaction');
 
 export default function SandboxPanel({ apiBase }: { apiBase: string }) {
   const reduced = useReducedMotion() ?? false;
@@ -272,8 +278,9 @@ export default function SandboxPanel({ apiBase }: { apiBase: string }) {
             </span>
             An AI reads your sentence twice and refuses if the two readings disagree, rather than
             guessing at what you meant. What comes out is enforced by the same gateway every other
-            tab uses, and enforcing it involves no AI. Keep your caps well under the demo's ₹1,000
-            an order, or you will not be able to tell whose number refused you.
+            tab uses, and enforcing it involves no AI. Keep your caps well under the demo's{' '}
+            {PER_ORDER?.bound.replace(/\.00$/, '')} an order, or you will not be able to tell whose
+            number refused you.
           </p>
         </div>
       </div>
