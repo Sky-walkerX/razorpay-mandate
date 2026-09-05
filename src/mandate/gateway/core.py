@@ -375,7 +375,7 @@ class Gateway:
             # Keyed on the resolved intent, so an approval for one basket cannot
             # authorise a different basket of the same value.
             approved = (
-                self.approvals.is_approved(idem) if self.approvals is not None else False
+                self.approvals.is_approved(idem, now=now) if self.approvals is not None else False
             )
             ctx = EvalContext(
                 action=action,
@@ -450,6 +450,8 @@ class Gateway:
                         downstream_body["capability"] = cap
                     if self.ledger is not None:
                         self.ledger.mark_committed(idem, downstream_body)
+                    if self.approvals is not None and approved:
+                        self.approvals.consume(idem, now=now)
             except DownstreamTimeout:
                 final = Verdict.UNKNOWN
             except DownstreamError as e:

@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from mandate.downstream.fake import FakeDownstream
+from mandate.gateway.approval import ApprovalStore
 from mandate.gateway.audit import AuditLog
 from mandate.gateway.core import Gateway, Mode
 from mandate.gateway.idem import Ledger
@@ -61,6 +62,7 @@ class SessionManager:
         max_sessions: int = 100,
         idle_timeout_seconds: int = 1800,
         merchant_keyring: MerchantKeyring | None = None,
+        approvals: ApprovalStore | None = None,
     ) -> None:
         self.policy = policy
         self.pricebook = pricebook
@@ -72,6 +74,7 @@ class SessionManager:
         self.max_sessions = max_sessions
         self.idle_timeout = timedelta(seconds=idle_timeout_seconds)
         self.merchant_keyring = merchant_keyring or MerchantKeyring()
+        self.approvals = approvals
         self._sessions: dict[str, Session] = {}
         self._lock = threading.Lock()
 
@@ -117,6 +120,7 @@ class SessionManager:
                 issuer_public_key=self.issuer_public_key,
                 revocations=self.revocations,
                 merchant_keyring=self.merchant_keyring,
+                approvals=self.approvals,
             )
 
             now = datetime.now(UTC)

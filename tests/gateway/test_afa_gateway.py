@@ -105,3 +105,36 @@ def test_the_escalation_is_written_to_the_audit_log(tmp_path):
     clause = next(c for c in rec.clauses if c.id == "afa.required")
     assert clause.result is Verdict.UNKNOWN
     gw.audit.verify_chain()
+
+
+def test_consumed_approval_cannot_be_reused_by_another_gateway_instance(tmp_path):
+    store = ApprovalStore()
+    gw1 = _gw(tmp_path / "gw1", store)
+    p = _act(rupees(20000), sku="p_2000000")
+    first = gw1.propose(p, now=NOW)
+    assert first.verdict is Verdict.UNKNOWN
+
+    store.approve(first.idem_key)
+    second = gw1.propose(p, now=NOW)
+    assert second.verdict is Verdict.ALLOW
+    assert second.executed
+
+    # Second gateway instance sharing the same approval store (different ledger)
+    gw2 = _gw(tmp_path / "gw2", store)
+    third = gw2.propose(p, now=NOW)
+    assert third.verdict is Verdict.UNKNOWN
+    assert not third.executed
+
+
+def test_expired_approval_is_not_honoured(tmp_path):
+    store = ApprovalStore()
+    gw = _gw(tmp_path, store)
+    p = _act(rupees(20000), sku="p_2000000")
+    first = gw.propose(p, now=NOW)
+
+    store.approve(first.idem_key, ttl=timedelta(minutes=5), now=NOW)
+    # After 10 minutes, approval has expired
+    later = NOW + timedelta(minutes=10)
+    second = gw.propose(p, now=later)
+    assert second.verdict is Verdict.UNKNOWN
+    assert not second.executed

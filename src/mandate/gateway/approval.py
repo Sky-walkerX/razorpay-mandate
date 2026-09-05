@@ -17,7 +17,7 @@ own approval, `afa.required` would be decoration.
 """
 import json
 import threading
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
@@ -46,23 +46,54 @@ class ApprovalStore:
             except json.JSONDecodeError:
                 continue
             if "intent" in rec:
-                fresh[rec["intent"]] = rec
-        self._cache = fresh
+                k = rec["intent"]
+                fresh[k] = {**fresh.get(k, {}), **rec}
+        for k, v in fresh.items():
+            if k in self._cache:
+                self._cache[k] = {**self._cache[k], **v}
+            else:
+                self._cache[k] = v
         self._last_mtime = mtime
 
-    def is_approved(self, intent: str) -> bool:
+    def is_approved(self, intent: str, now: datetime | None = None) -> bool:
         with self._lock:
             self._reload_if_changed()
-            return intent in self._cache
+            rec = self._cache.get(intent)
+            if not rec:
+                return False
+            if rec.get("consumed", False):
+                return False
+            exp_str = rec.get("expires_at")
+            if exp_str:
+                now_dt = now or datetime.now(UTC)
+                try:
+                    exp_dt = datetime.fromisoformat(exp_str)
+                    if now_dt > exp_dt:
+                        return False
+                except (ValueError, TypeError):
+                    return False
+            return True
 
-    def approve(self, intent: str, approver: str = "principal", factor: str = "otp") -> dict:
+    def approve(
+        self,
+        intent: str,
+        approver: str = "principal",
+        factor: str = "otp",
+        ttl: timedelta | None = None,
+        now: datetime | None = None,
+    ) -> dict:
         """Record an AFA-validated approval for one exact resolved intent."""
+        now_dt = now or datetime.now(UTC)
         entry = {
             "intent": intent,
             "approver": approver,
             "factor": factor,
-            "approved_at": datetime.now(UTC).isoformat(),
+            "approved_at": now_dt.isoformat(),
+            "consumed": False,
         }
+        if ttl is not None:
+            entry["expires_at"] = (now_dt + ttl).isoformat()
+
         with self._lock:
             if self.path is not None:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -71,6 +102,35 @@ class ApprovalStore:
                 self._last_mtime = self.path.stat().st_mtime
             self._cache[entry["intent"]] = entry
         return entry
+
+    def consume(self, intent: str, now: datetime | None = None) -> bool:
+        """Consume an approved intent upon order execution. Single-use only."""
+        with self._lock:
+            self._reload_if_changed()
+            rec = self._cache.get(intent)
+            if not rec:
+                return False
+            if rec.get("consumed", False):
+                return False
+            exp_str = rec.get("expires_at")
+            if exp_str:
+                now_dt = now or datetime.now(UTC)
+                try:
+                    exp_dt = datetime.fromisoformat(exp_str)
+                    if now_dt > exp_dt:
+                        return False
+                except (ValueError, TypeError):
+                    return False
+
+            now_dt = now or datetime.now(UTC)
+            rec["consumed"] = True
+            rec["consumed_at"] = now_dt.isoformat()
+            if self.path is not None:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                with self.path.open("a") as fh:
+                    fh.write(json.dumps({"intent": intent, "consumed": True, "consumed_at": now_dt.isoformat()}) + "\n")
+                self._last_mtime = self.path.stat().st_mtime
+            return True
 
     def get(self, intent: str) -> dict | None:
         with self._lock:

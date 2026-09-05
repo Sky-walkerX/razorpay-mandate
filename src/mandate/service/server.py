@@ -8,7 +8,7 @@ import asyncio
 import contextlib
 import json
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +40,7 @@ from mandate.downstream.rail_mandate import (
 from mandate.downstream.razorpay_mcp import RazorpayMCPDownstream
 from mandate.gateway.action import ActionType, Proposal, ProposalItem
 from mandate.gateway.applicability import applicability_for_raw
+from mandate.gateway.approval import ApprovalStore
 from mandate.gateway.audit import AuditChainBroken
 from mandate.gateway.core import Mode
 from mandate.gateway.pricebook import DictPriceBook, PriceBook
@@ -72,6 +73,7 @@ from mandate.service.agent_runner import (
     run_agent_stream,
 )
 from mandate.service.order_store import OrderStore
+from mandate.service.pending import PendingApprovals
 from mandate.service.sandbox import (
     SANDBOX_MANDATE_ID,
     SIGN_COMMAND,
@@ -150,6 +152,18 @@ def _compute_headroom(policy: Policy, state: AccumulatedState) -> list[dict[str,
             "limit_count": lim,
             "remaining_count": lim,
             "unit": "count",
+        })
+
+    # 6. afa.required
+    if C.AFA_REQUIRED in c and "threshold" in c[C.AFA_REQUIRED]:
+        lim = int(c[C.AFA_REQUIRED]["threshold"])
+        headroom.append({
+            "clause_id": "afa.required",
+            "label": label_for("afa.required"),
+            "used_paise": 0,
+            "limit_paise": lim,
+            "remaining_paise": lim,
+            "unit": "paise",
         })
 
     return headroom
@@ -235,6 +249,8 @@ def create_app(
     log_private_key_path: Path | str | None = Path(".mandate/keys/log_private.key"),
     store_path: Path | str | None = None,
     merchant_keys_path: Path | str | None = Path(".mandate/keys/merchants.json"),
+    approval_store: ApprovalStore | None = None,
+    approval_store_path: Path | str | None = None,
 ) -> Starlette:
     if not capability_secret:
         raise ServiceMisconfigured(
@@ -327,6 +343,12 @@ def create_app(
 
     merchant_keyring = MerchantKeyring.from_file(merchant_keys_path) if merchant_keys_path else MerchantKeyring()
 
+    app_approvals = approval_store
+    if app_approvals is None:
+        app_approvals = ApprovalStore(approval_store_path)
+
+    pending_approvals = PendingApprovals()
+
     session_manager = SessionManager(
         policy=policy,
         pricebook=pb,
@@ -335,6 +357,7 @@ def create_app(
         issuer_public_key=pub_hex,
         revocations=revocations,
         merchant_keyring=merchant_keyring,
+        approvals=app_approvals,
         # Sized so the token pools, not this cap, decide how many people can hold
         # a session at once. House and sandbox sessions share one budget, and the
         # cap evicts the least recently active when it is reached — so a cap below
@@ -365,6 +388,7 @@ def create_app(
             issuer_public_key=pub_hex,
             revocations=revocations,
             merchant_keyring=merchant_keyring,
+            approvals=app_approvals,
             base_dir=Path(session_manager.base_dir) / "razorpay",
             max_sessions=max(100, pool.total_count + sbx_pool.total_count),
         )
@@ -471,6 +495,9 @@ def create_app(
             return ", ".join(ct.title() for ct in c[C.CATEGORY_DENY]), None
         if key == "time.window" and (C.TIME_WINDOW in c or policy.expires):
             return policy.expires.strftime("%-d %b %Y") if policy.expires else "Session", None
+        if key == "afa.required" and C.AFA_REQUIRED in c:
+            lim = int(c[C.AFA_REQUIRED].get("threshold", 1500000))
+            return f"\u20b9{lim/100:,.2f}", lim
         return None
 
     async def get_policy(req: Request):
@@ -545,6 +572,37 @@ def create_app(
 
         rec = _audit_row_for(session, dec)
         rec_json = rec.model_dump(mode="json") if rec is not None else None
+
+        if dec.verdict is Verdict.UNKNOWN and dec.clause_id == "afa.required":
+            c = session.gateway.policy.constraints
+            threshold = int(c.get(C.AFA_REQUIRED, {}).get("threshold", 1500000)) if C.AFA_REQUIRED in c else 1500000
+            order_items = []
+            amount = 0
+            if rec is not None and rec.action is not None:
+                amount = int(rec.action.amount)
+                order_items = [
+                    {
+                        "sku": it.sku,
+                        "qty": it.qty,
+                        "unit_price": int(it.unit_price),
+                        "title": it.title,
+                        "category": it.category,
+                    }
+                    for it in rec.action.items
+                ]
+            else:
+                order_items = [{"sku": it.sku, "qty": it.qty} for it in prop.items]
+
+            pending_approvals.open(
+                intent=dec.idem_key,
+                mandate_id=session.gateway.policy.mandate_id,
+                merchant=prop.merchant,
+                amount=amount,
+                items=order_items,
+                threshold=threshold,
+                now=now,
+            )
+
         # The session's own policy, not the service's. A sandbox order filed
         # under the signed mandate's id would make the order history claim the
         # signed document authorised something a visitor typed.
@@ -654,6 +712,58 @@ def create_app(
         session_manager.evict_session(claims.jti)
 
         return JSONResponse({"status": "revoked", "jti": claims.jti})
+
+    async def get_pending(req: Request):
+        return JSONResponse({
+            "pending": [it.to_dict() for it in pending_approvals.list_for_principal()]
+        })
+
+    async def preview_approval(req: Request):
+        ref = req.path_params.get("ref", "")
+        item = pending_approvals.get(ref)
+        if item is None:
+            return JSONResponse({"error": "not_found", "detail": "approval reference not found or expired"}, status_code=404)
+        return JSONResponse(item.to_dict())
+
+    async def submit_approval(req: Request):
+        try:
+            body = await req.json()
+            ref = str(body.get("ref", "")).strip()
+            decision = str(body.get("decision", "")).strip().lower()
+        except (ValueError, KeyError, json.JSONDecodeError):
+            return JSONResponse({"error": "malformed_request", "detail": "JSON body required with 'ref' and 'decision'"}, status_code=400)
+
+        if not ref:
+            return JSONResponse({"error": "missing_ref", "detail": "'ref' is required"}, status_code=400)
+        if decision not in ("approve", "reject"):
+            return JSONResponse({"error": "invalid_decision", "detail": "'decision' must be 'approve' or 'reject'"}, status_code=400)
+
+        item = pending_approvals.get(ref)
+        if item is None:
+            return JSONResponse({"error": "not_found", "detail": "approval reference not found"}, status_code=404)
+        if item.status == "expired":
+            return JSONResponse({"error": "expired", "status": "expired", "detail": "approval request has expired"}, status_code=410)
+        if item.status in ("approved", "rejected"):
+            return JSONResponse({"error": "already_resolved", "status": item.status, "detail": f"approval request already {item.status}"}, status_code=409)
+
+        resolved = pending_approvals.resolve(ref, decision=decision)
+        if resolved is None:
+            return JSONResponse({"error": "resolve_failed"}, status_code=500)
+
+        if decision == "approve":
+            app_approvals.approve(
+                intent=resolved.intent,
+                approver="human",
+                factor="web_oob",
+                ttl=timedelta(minutes=15),
+            )
+
+        return JSONResponse({
+            "status": resolved.status,
+            "ref": resolved.ref,
+            "intent": resolved.intent,
+            "decision": decision,
+        })
 
     async def compile_policy(req: Request):
         try:
@@ -1291,6 +1401,9 @@ def create_app(
         Route("/v1/audit/proof", get_audit_proof, methods=["GET"]),
         Route("/v1/audit/consistency", get_audit_consistency, methods=["GET"]),
         Route("/v1/headroom", get_headroom, methods=["GET"]),
+        Route("/v1/pending", get_pending, methods=["GET"]),
+        Route("/v1/approve", submit_approval, methods=["POST"]),
+        Route("/v1/approve/{ref}", preview_approval, methods=["GET"]),
         Route("/v1/revoke", revoke_token, methods=["POST"]),
         Route("/v1/compile", compile_policy, methods=["POST"]),
         Route("/v1/sandbox", create_sandbox, methods=["POST"]),
