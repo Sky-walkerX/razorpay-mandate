@@ -12,11 +12,26 @@ import {
 import { Button } from '@/components/ui/button';
 import { API_BASE } from '@/lib/api';
 import { LOG_PUBLIC_KEY } from '@/data/log';
-import { climbToRoot, recordHash, verifyTreeHead, type ProofNode } from '@/lib/merkle';
+import {
+  climbToRoot,
+  recordHash,
+  verifyConsistencyProof,
+  verifyTreeHead,
+  type ProofNode,
+} from '@/lib/merkle';
 import { rupees } from '@/lib/money';
 
 /** Money never overshoots, so the settle curve carries every figure and verdict. */
 const SETTLE = { duration: 0.32, ease: [0.22, 0.61, 0.36, 1] as const };
+
+/**
+ * The earliest head this browser has seen, kept for the append-only check.
+ *
+ * Module-level rather than component state so it survives the dialog closing, and
+ * deliberately not persisted: a head read from storage is a head this page did not
+ * witness, and the whole value of an old head is that you watched it go by.
+ */
+let witnessed: { size: number; root: string } | null = null;
 
 /** One row per sibling, paced like the clause waterfall on /try. */
 const ROW_MS = 90;
@@ -191,7 +206,48 @@ export function ReceiptVerifier({
         return;
       }
 
-      // 2. The receipt's own hash, recomputed here.
+      // 2. Append-only, against a head this browser watched go by.
+      //
+      // A different claim from the one above and the stronger one: an inclusion
+      // proof says the receipt is in the log now, which a log that quietly rewrote
+      // itself could still satisfy. Only this says nothing was dropped or reordered
+      // since a head somebody already holds. Skipped on the first look, because
+      // there is nothing yet to compare against and a tick nobody earned is worse
+      // than a row that is absent.
+      if (witnessed && witnessed.size < head.size) {
+        const since = witnessed;
+        try {
+          const res = await fetch(
+            `${API_BASE}/v1/audit/consistency?from=${since.size}&to=${head.size}`,
+            { headers: auth },
+          );
+          if (res.ok) {
+            const c = await res.json();
+            const ok = await verifyConsistencyProof(
+              since.size, head.size, since.root, head.root, c.proof ?? [],
+            );
+            push({
+              label: 'Nothing was rewritten',
+              detail: ok
+                ? `The log has grown from ${since.size} to ${head.size} record${head.size === 1 ? '' : 's'} since this page first looked, and everything it held then is still there, in the same order.`
+                : 'The log no longer extends the version this page saw earlier. Something before this point changed.',
+              value: short(since.root),
+              state: ok ? 'pass' : 'fail',
+            });
+            if (!ok) {
+              setVerdict('fail');
+              return;
+            }
+          }
+        } catch {
+          // A missing consistency endpoint is not a failed check, so nothing is
+          // claimed either way.
+        }
+      }
+      if (!witnessed) witnessed = { size: head.size, root: head.root };
+
+
+      // 3. The receipt's own hash, recomputed here.
       const shown = withTamper
         ? { ...body, action: { ...(body.action as Record<string, unknown>), amount: 1 } }
         : body;
@@ -206,7 +262,7 @@ export function ReceiptVerifier({
         state: leafMatches ? 'pass' : 'fail',
       });
 
-      // 3. Walk leaf to root. `climbToRoot` is the same function `verifyInclusionProof`
+      // 4. Walk leaf to root. `climbToRoot` is the same function `verifyInclusionProof`
       //    uses, so the page cannot narrate one walk while the verifier does another.
       const climb = await climbToRoot(computed, proof.seq - 1, proof.tree_size, proof.proof);
       for (const step of climb.steps) {
@@ -218,7 +274,7 @@ export function ReceiptVerifier({
         });
       }
 
-      // 4. Does the climb land on the head the log signed?
+      // 5. Does the climb land on the head the log signed?
       const rootOk = climb.complete && climb.root === head.root;
       push({
         label: 'Reaches the signed root',

@@ -172,3 +172,66 @@ export async function verifyTreeHead(
     return false;
   }
 }
+
+/**
+ * Verify that a log of `secondSize` is an append-only extension of one of
+ * `firstSize`, per RFC 6962 section 2.1.2.
+ *
+ * A different claim from inclusion, and the stronger one. An inclusion proof says
+ * a receipt is in the log *now*, which a log that quietly rewrote itself could
+ * still satisfy. Only this says nothing was dropped or reordered since a head
+ * somebody already wrote down. It is the reason holding an old head is worth
+ * anything at all.
+ *
+ * A port of `verify_consistency_proof` in merkle.py, including that a `firstSize`
+ * which is a power of two omits its own root from the proof because the verifier
+ * can supply it.
+ */
+export async function verifyConsistencyProof(
+  firstSize: number,
+  secondSize: number,
+  firstRoot: string,
+  secondRoot: string,
+  proof: ProofNode[],
+): Promise<boolean> {
+  if (firstSize < 1 || firstSize > secondSize) return false;
+  if (firstSize === secondSize) return proof.length === 0 && firstRoot === secondRoot;
+
+  const nodes = proof.map((p) => p.node);
+  let fn = firstSize - 1;
+  let sn = secondSize - 1;
+  while (fn % 2 === 1) {
+    fn = Math.floor(fn / 2);
+    sn = Math.floor(sn / 2);
+  }
+
+  let node: string;
+  if (fn !== 0) {
+    if (!nodes.length) return false;
+    node = nodes.shift()!;
+  } else {
+    node = firstRoot;
+  }
+
+  let fr = node;
+  let sr = node;
+  while (sn !== 0) {
+    if (!nodes.length) return false;
+    if (fn % 2 === 1 || fn === sn) {
+      const next = nodes.shift()!;
+      fr = await nodeHash(next, fr);
+      sr = await nodeHash(next, sr);
+      while (fn !== 0 && fn % 2 === 0) {
+        fn = Math.floor(fn / 2);
+        sn = Math.floor(sn / 2);
+      }
+    } else {
+      const next = nodes.shift()!;
+      sr = await nodeHash(sr, next);
+    }
+    fn = Math.floor(fn / 2);
+    sn = Math.floor(sn / 2);
+  }
+
+  return nodes.length === 0 && fr === firstRoot && sr === secondRoot;
+}

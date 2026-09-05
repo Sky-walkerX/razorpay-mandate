@@ -21,7 +21,12 @@ from pathlib import Path
 import pytest
 
 from mandate.gateway.audit import _hash_body
-from mandate.gateway.merkle import inclusion_proof, leaf_hash, merkle_tree_hash
+from mandate.gateway.merkle import (
+    consistency_proof,
+    inclusion_proof,
+    leaf_hash,
+    merkle_tree_hash,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 WEB_LIB = REPO / "web" / "src" / "lib"
@@ -250,3 +255,83 @@ process.stdin.on('end', async () => {
     assert got["reachesRoot"] is True, "an honest receipt did not reach the signed root"
     assert got["tamperedLeafDiffers"] is True, "editing the amount did not change the hash"
     assert got["tamperedReachesRoot"] is False, "a tampered receipt still reached the root"
+
+
+def test_the_typescript_consistency_check_matches_python_on_every_pair():
+    """Append-only, which is the claim an inclusion proof cannot make.
+
+    Every (first, second) pair up to 12 leaves, so the power-of-two case is covered
+    -- when `first_count` is a power of two its root is omitted from the proof and
+    the verifier has to supply it, and a port that always shifts a node off the
+    front passes every other size and fails exactly those.
+    """
+    leaves = [leaf_hash(f"record-{i}") for i in range(1, 13)]
+    cases = []
+    for second in range(1, 13):
+        for first in range(1, second + 1):
+            cases.append({
+                "first": first,
+                "second": second,
+                "firstRoot": merkle_tree_hash(leaves[:first]),
+                "secondRoot": merkle_tree_hash(leaves[:second]),
+                "proof": consistency_proof(first, second, leaves[:second]),
+            })
+
+    script = """
+import { verifyConsistencyProof } from './merkle.ts';
+let raw = '';
+process.stdin.on('data', (c) => { raw += c; });
+process.stdin.on('end', async () => {
+  const cases = JSON.parse(raw);
+  const out = [];
+  for (const c of cases) {
+    const good = await verifyConsistencyProof(
+      c.first, c.second, c.firstRoot, c.secondRoot, c.proof);
+    // A second root one bit off is a rewritten log and must not verify.
+    const flipped = c.secondRoot.slice(0, -1) + (c.secondRoot.endsWith('0') ? '1' : '0');
+    const bad = await verifyConsistencyProof(
+      c.first, c.second, c.firstRoot, flipped, c.proof);
+    out.push([good, bad]);
+  }
+  console.log(JSON.stringify(out));
+});
+"""
+    got = json.loads(_run_node(script, json.dumps(cases)))
+    assert len(got) == len(cases)
+    for (good, bad), case in zip(got, cases, strict=True):
+        pair = f"{case['first']}->{case['second']}"
+        assert good is True, f"valid consistency proof rejected for {pair}"
+        assert bad is False, f"rewritten log accepted for {pair}"
+
+
+def test_a_consistency_proof_with_padding_is_rejected():
+    """The server writes the proof, so the verifier must not trust its length.
+
+    Every proof above is well-formed because Python generated it, and a verifier
+    that ignored leftover nodes passed all of them. A log wanting to hide a rewrite
+    controls this document; junk on the end has to be refused, not skipped.
+    """
+    leaves = [leaf_hash(f"record-{i}") for i in range(1, 8)]
+    first, second = 3, 7
+    padded = consistency_proof(first, second, leaves[:second]) + [
+        {"node": leaf_hash("junk"), "dir": "right"}
+    ]
+
+    script = """
+import { verifyConsistencyProof } from './merkle.ts';
+let raw = '';
+process.stdin.on('data', (c) => { raw += c; });
+process.stdin.on('end', async () => {
+  const c = JSON.parse(raw);
+  console.log(JSON.stringify(await verifyConsistencyProof(
+    c.first, c.second, c.firstRoot, c.secondRoot, c.proof)));
+});
+"""
+    payload = json.dumps({
+        "first": first,
+        "second": second,
+        "firstRoot": merkle_tree_hash(leaves[:first]),
+        "secondRoot": merkle_tree_hash(leaves[:second]),
+        "proof": padded,
+    })
+    assert json.loads(_run_node(script, payload)) is False
