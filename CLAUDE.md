@@ -901,17 +901,27 @@ human is summoned, and every step is a receipt the visitor verifies themselves.*
 
 ### State right now
 
-On branch `feat/receipts-approvals-quotes`, not `dev`. **577 tests pass, ruff 13,
+On branch `feat/receipts-approvals-quotes`, not `dev`. **583 tests pass, ruff 13,
 conformance 17 attacks / 17 blocked / 0 vacuous.** Web builds clean.
 
 Landed: the log signing key path, merchant-signed quotes (`gateway/quote.py`), the
 AFA approval loop (`service/pending.py`, `/v1/pending`, `/v1/approve`), the
-`/approve` SPA page, and seven new conformance attacks.
+`/approve` SPA page, seven new conformance attacks, the client-side receipt verifier
+(`web/src/lib/{merkle,canonical}.ts`, `ui/dialog.tsx`, `ReceiptVerifier.tsx`, wired
+into the `/try` ledger rows), and the quote ladder described below.
 
-**Not started: the whole client-side receipt verifier.** No `web/src/lib/merkle.ts`,
-no `canonical.ts`, no `ui/dialog.tsx`, no `ReceiptVerifier.tsx`. Also missing:
-`GET /v1/quote` (so there is no live surge on stage) and any QR on `/try` (so the
-approval loop has no demo path even though the backend works end to end).
+**Still missing: `GET /v1/quote`**, so there is no live surge on stage even though
+the gateway now honours one, **and any QR on `/try`**, so the approval loop has no
+demo path even though the backend works end to end.
+
+**The merchant keyring is empty on this machine and in the deployment.** There is no
+`.mandate/keys/merchants.json` and no merchant keypair has ever been generated, so
+every quote presented to the deployed gateway is refused on `quote.unknown_merchant`.
+The whole quote feature currently reaches no user — the same "built, tested,
+invisible" shape as `/v1/audit/head` being 503 in production and `/rails` before it.
+`mandate quote-keygen --merchant zepto` creates one; getting it to Cloud Run is the
+same problem the token pools have, and the private half belongs to the *shop*, never
+to the gateway.
 
 ### Three live gaps, found by running things rather than reading them
 
@@ -984,45 +994,62 @@ The QR path needs none of it: a phone arriving at `/approve/<ref>` carries the r
 which is the credential for that one order. The key is read from the URL **fragment**
 first, which is never sent to a server and never lands in an access log.
 
-### The quote ladder does not yet do what it claims. Decided, not yet built.
+### Landed, 5 Sep: the quote wins, and the constraints bind on the true price
 
-`_resolve_to_action` currently raises `QuoteDisagrees` whenever a quote differs from
-the price book at all, so **a quote can only confirm the price the book already had.**
-Measured:
+Built as decided. `_resolve_to_action` used to raise `QuoteDisagrees` whenever a
+quote differed from the price book at all, so **a quote could only confirm the price
+the book already had** and surge pricing — the reviewer's actual critique — did not
+work. A verified quote now sets the price, and every clause below is checked against
+the figure it names.
 
-```
-shop raises Rs 500 -> Rs 850 and signs it : DENY | quote.disagreement
-quote that just restates the book price   : ALLOW | executed: True
-```
+The counter-argument was answered rather than dismissed: a signed quote is a signed
+instruction to spend more of the principal's money, and the agent picks which quote
+to present. The caps are the answer. An agent shopping for the highest quote is still
+stopped by `budget.per_item`, which is what a cap is for, and refusing on
+disagreement never protected against that — it only made the feature inert.
 
-Surge pricing — the reviewer's actual critique — does not work.
+**The four quote attacks were hollow, and this is the part worth remembering.**
+Measured before changing anything: disable the signature check entirely and
+`quote.forge` still reported ESCAPED with **0 orders on the rail**. It flipped
+because the clause name changed from `quote.signature` to `quote.disagreement`, not
+because money moved. The signature check protected nothing the price book did not
+already protect. Same shape as `price.flip` scoring containments on runs its mutation
+never touched.
 
-**It also hollows out the four `quote.*` conformance attacks, and only mutation
-testing showed it.** Break the signature check entirely and `quote.forge` is still
-refused with **0 orders on the rail**; it reports ESCAPED purely because the clause
-*name* changed from `quote.signature` to `quote.disagreement`. The hardened judge
-asserts on the clause id, not on money moving. So the signature check protects
-nothing the price book does not already protect, and all four attacks are the VACUOUS
-problem at another layer — the same shape as `price.flip` scoring containments on
-runs its mutation never touched.
+The four judges now assert on `env.orders()` and never on a clause id, and each
+hostile quote is priced to sit inside every cap so only the check under test stands
+between it and the rail. Re-measured, each check flips its own attack with money on
+it: signature → `quote.forge` 1 order at 190000 paise, expiry → `quote.expired`
+executed, sku → `quote.sku_swap` 1 order at 150000, merchant → `quote.merchant_swap`
+1 order at 190000.
 
-**Decided 5 Sep: the quote wins, and the constraints bind on the true price.** The
-counter-argument — that a signed quote is a signed instruction to spend more of the
-principal's money, and the agent chooses which quote to present — is answered by the
-caps: an agent shopping for the highest quote is still bounded by `budget.per_item`,
-which is what caps are for. Refusing on disagreement does not protect against that
-anyway; it only makes the feature inert. When this lands:
+**`quote.expired` needed its attack rewritten, not just its judge.** A quote minted a
+year ago was caught twice — by `expires` and by the gateway's own 15-minute `max_age`
+ceiling — so disabling `expires` left it BLOCKED and the attack proved neither check.
+It is now issued five minutes ago and valid for one, which sits inside `max_age` and
+leaves `expires` alone on the path.
 
-- Surge works, which is the point of the feature.
-- A forged quote at Rs 1,900 would execute, so the signature check becomes
-  load-bearing and the four attacks demonstrate real money loss.
-- A surged item over the cap is refused **at its true price**, which is the trigger
-  for the agent repairing the basket or the human being summoned. That is what makes
-  the three workstreams one story rather than three features.
+**`quote.confirmed` split into two clause ids.** A quote matching the list and a quote
+moving the price are two different facts, and a reader of a hash-chained record should
+not have to compare two numbers to tell them apart. `quote.repriced` carries both
+figures and says the limits were checked against the signed one. This is the spec's
+`price.source` idea under the name already in the code and the labels table; a clause
+rather than a field, for the reason `record_hash` always gives.
 
-**Each quote attack must then price its hostile quote so that only the check under
-test can catch it**, exactly as each race attack already slackens the constraint it
-is not testing. And the judge must assert on the rail, not on the clause id.
+`QuoteDisagrees` and its label are deleted rather than left behind, so nothing names a
+check the gateway can no longer reach.
+
+**`canonical_intent` is unaffected and `idem.forge` stays dead.** It hashes
+`{sku, qty}` and never the unit price, so two quotes at different prices for one
+basket still collapse to a single key — an agent cannot re-quote its way to a second
+idempotency key. `quote.requote_idem` still blocks, and now for a reason that
+survives the surge being real.
+
+**A trap for the next person who mutation-tests this suite.** A mutated run
+overwrites `results-conformance/conformance_results.json`, and
+`test_scoreboard_carries_the_three_measured_sets` then fails on the stale escape. Run
+`mandate conformance` and `mandate evidence` clean afterwards, and check
+`git diff web/src/data/evidence.json` before committing.
 
 ### Six defects fixed in the same pass, all found by reading the diff
 
