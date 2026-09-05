@@ -910,18 +910,58 @@ AFA approval loop (`service/pending.py`, `/v1/pending`, `/v1/approve`), the
 (`web/src/lib/{merkle,canonical}.ts`, `ui/dialog.tsx`, `ReceiptVerifier.tsx`, wired
 into the `/try` ledger rows), and the quote ladder described below.
 
-**Still missing: `GET /v1/quote`**, so there is no live surge on stage even though
-the gateway now honours one, **and any QR on `/try`**, so the approval loop has no
-demo path even though the backend works end to end.
+**Still missing: any QR on `/try`**, so the approval loop has no demo path even
+though the backend works end to end. Nothing on the web reads `/v1/quote` either, so
+the surge is curl-able but not yet on a screen.
 
-**The merchant keyring is empty on this machine and in the deployment.** There is no
-`.mandate/keys/merchants.json` and no merchant keypair has ever been generated, so
-every quote presented to the deployed gateway is refused on `quote.unknown_merchant`.
-The whole quote feature currently reaches no user — the same "built, tested,
-invisible" shape as `/v1/audit/head` being 503 in production and `/rails` before it.
-`mandate quote-keygen --merchant zepto` creates one; getting it to Cloud Run is the
-same problem the token pools have, and the private half belongs to the *shop*, never
-to the gateway.
+### The quote arc, verified against a live server on 5 Sep
+
+Not reasoned about — run. `mandate serve --port 8877`, real `rzp_test_` keys, one
+SKU, two orders:
+
+```
+2 x Cooking Oil at the list price      ALLOW  Rs  406.00  order_TYIGmYyo9uq67O
+2 x same, at the shop's signed surge   DENY   Rs  690.20  budget.per_item
+```
+
+Same basket, same shop, same session shape. The refusal quotes ₹690.20 against the
+₹500 cap — the signed price, not the ₹203 list price — and `quote.repriced` carries
+both figures into the audit record.
+
+**Two things the live run taught that the tests did not.**
+
+**The surge factor has to be read against the real catalog.** The generated catalog
+tops out at ₹203 for anything not alcohol or tobacco, so at 1.7x no *single* unit can
+breach the ₹500 per-item cap. The demo pair above works because `budget.per_item`
+binds on the **line amount**, not the unit price: 2 x ₹203 = ₹406 passes and
+2 x ₹345.10 = ₹690.20 does not. Change `MANDATE_SHOP_SURGE` and re-check which clause
+actually fires before putting it on a stage.
+
+**Ask for the quote before placing the list-price order, or use a fresh session.**
+`canonical_intent` hashes `{sku, qty}` and never the price, so the same basket at two
+prices collapses to one idempotency key and the second reads as a duplicate —
+returning `ALLOW, executed: False` at the *first* order's amount. That is the spec's
+predicted "mild cost" of keeping `idem.forge` dead, and it is correct, but on stage it
+looks like the surge did nothing. Two different quantities, or two sessions, avoid it.
+
+### Getting the quote feature to production
+
+Four things, and only the first is in git:
+
+- **`merchants.json` now ships in the image.** Public keys only, named file by file
+  like the issuer public key. `mandate quote-keygen --merchant zepto` writes it and
+  the private half beside it.
+- **`MANDATE_SHOP_PRIVATE_KEYS`** — a JSON map `{"zepto": "<hex>"}` — must be set
+  with `--update-env-vars`, never `--set-env-vars`. This is the **fifth** thing the
+  deployment needs that no `--source` deploy supplies, beside `GEMINI_VERTEX_PROJECT`,
+  `MANDATE_CAPABILITY_SECRET`, `MANDATE_LOG_PRIVATE_KEY` and the `aiplatform.user`
+  role. The image cannot carry it: `test_docker_image_ships_no_signing_key` rejects
+  any COPY whose source contains "private", which is exactly right for a merchant's
+  signing key.
+- **`MANDATE_SHOP_SURGE`** is optional and defaults to 1.7.
+- The keypair **lives on this machine only**, like both token pools, so a deploy from
+  anywhere else ships a gateway that refuses every quote on
+  `quote.unknown_merchant`.
 
 ### Three live gaps, found by running things rather than reading them
 

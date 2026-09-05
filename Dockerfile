@@ -35,6 +35,12 @@ COPY .mandate/token_pool.json ./.mandate/token_pool.json
 COPY .mandate/sandbox_pool.json ./.mandate/sandbox_pool.json
 COPY .mandate/keys/issuer_public.key ./.mandate/keys/issuer_public.key
 
+# The merchant keyring, and it is public keys only -- the gateway's half of the
+# quote feature. The shop's signing key is deliberately NOT here: it arrives as
+# MANDATE_SHOP_PRIVATE_KEYS, the same way the log key does, because an image that
+# carried it could mint the quotes it verifies.
+COPY .mandate/keys/merchants.json ./.mandate/keys/merchants.json
+
 # Copy built frontend assets from Stage 1
 COPY --from=frontend /app/web/dist ./web/dist
 
