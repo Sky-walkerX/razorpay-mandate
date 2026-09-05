@@ -998,9 +998,58 @@ beside it: approving one basket must not release a **different** basket of the s
 value. That is the same "a stated invariant with a test beside it is not a tested
 invariant" shape as the `/v1/pending` hole.
 
-**Still not built: the QR on `/try`.** The backend loop now works end to end and
-nothing on the web surfaces it. `/approve/<ref>` is complete and already renders a QR;
-what is missing is the console noticing an UNKNOWN verdict and showing the way in.
+**Built, 5 Sep: the QR on `/try`.** `HeldForApproval` lives on the sandbox tab,
+because that is the only place `afa.required` can fire. A probe answering UNKNOWN
+asks `/v1/pending` with the visitor's principal key, and the ref becomes a QR to
+`/approve/<ref>`. The card polls `GET /v1/approve/<ref>`, which reports status
+without redeeming, so a link-preview crawler cannot burn the approval before a
+person taps it.
+
+The QR is the argument rather than decoration: approving on the screen that placed
+the order would demonstrate nothing, since the claim is that the credential which
+spends and the credential which approves are different. An inline button stays for a
+judge with no phone to hand.
+
+**A held order reads "Held for you", not "Refused",** against the `refer` ink, which
+is the theme's third meaning colour and had never been used. The gateway has not
+decided; it is waiting. Three verdicts, three words.
+
+### Built, 5 Sep: the recovery is legible, and the log proves it was not rewritten
+
+**The agent's repair now has a line under it.** `describeRepair` in `web/src/lib/basket.ts`
+diffs each attempt against the refused one before it, so a row reads "After the
+refusal it dropped Olive Oil and cut Toor Dal from 4 to 1." The recovery was always
+on screen as two rows a viewer had to compare by eye.
+
+**The backend is deliberately untouched here, and should stay that way.**
+`_feed_results` flattens a decision at `agent_model.py:112` and changing it changes
+every prompt, which makes the frozen result sets incomparable. The richer route
+already exists as the `explain_refusal` MCP tool. The SSE already carries the basket
+and the clause, so the whole derivation is client-side and costs no model call.
+
+The wording keeps two components straight. The gateway names the limit; what the
+agent does about it is the model's choice. Never write copy implying the gateway
+steered the repair. An unchanged retry returns null rather than "changed nothing",
+because a repeat is a real agent behaviour and naming it as a non-repair reads as a
+repair that failed.
+
+**The verifier now checks append-only, not just inclusion.** `/v1/audit/consistency`
+existed and no screen called it, so the page could say "this receipt is in the log"
+and never "the log did not rewrite itself" — and a log that dropped a record
+satisfies the first claim perfectly. The verifier keeps the earliest head it has seen
+and proves the current one extends it.
+
+**That head is not persisted, on purpose.** A head read from storage is one this page
+did not witness, and the value of an old head is entirely that you watched it go by.
+The first look shows no row rather than a green tick nobody earned.
+
+Two things about the consistency port that will bite a re-implementation. When
+`first_count` is a power of two its root is omitted from the proof and the verifier
+supplies it; a port that always shifts a node off the front passes every other size
+and fails exactly those, which is why the parity test walks every pair up to twelve.
+And **leftover proof nodes must be refused, not skipped** — Python only ever
+generates well-formed proofs, so that mutation survived until a padded-proof case was
+added. The server writes this document and a log hiding a rewrite controls it.
 
 ### Getting the quote feature to production
 
