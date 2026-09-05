@@ -117,3 +117,31 @@ def test_afa_wiring_rejection_and_lifecycle(tmp_path: Path):
         headers=headers,
     )
     assert retry_res.json()["verdict"] == "UNKNOWN"
+
+
+def test_the_policy_endpoint_and_the_evidence_file_agree_on_every_bound(tmp_path: Path):
+    """Two `_bound` implementations exist and they had already drifted.
+
+    `harness/evidence.py` feeds the built page; `service/server.py` feeds the live
+    endpoint. Neither had an `afa.required` branch, and when one gained it the page
+    still read "Set" while the endpoint read "₹15,000.00" -- the same fact rendered
+    two ways on two screens, which is the bug `evidence.json` exists to prevent.
+
+    The trap is that `afa.required` is keyed on `threshold` while every budget clause
+    is keyed on `max`, so a branch copy-pasted from a budget clause silently falls
+    through instead of failing.
+    """
+    from mandate.harness.evidence import _parts
+    from mandate.policy.loader import load as load_policy
+
+    repo_root = Path(__file__).resolve().parents[2]
+    pol = load_policy(repo_root / "policies" / "policy.yaml")
+
+    for part in _parts(pol):
+        if part["source"] == "unset":
+            continue
+        assert part["bound"] != "Set", (
+            f"{part['key']} renders as the placeholder 'Set' on the page while the "
+            f"signed policy sets it. Give it a branch in harness/evidence.py._bound; "
+            f"note afa.required is keyed on 'threshold', not 'max'."
+        )

@@ -367,6 +367,11 @@ export default function JudgeConsole() {
       setSession({ token: data.token, jti: data.jti, expires: data.expires });
       sessionStorage.setItem('mandate_judge_token', data.token);
       sessionStorage.setItem('mandate_judge_jti', data.jti);
+      // The human's half of the session. The agent is handed the bearer token and
+      // never this; it is what opens the approval queue and nothing else.
+      if (data.principal_key) {
+        sessionStorage.setItem('mandate_principal_key', data.principal_key);
+      }
       fetchHeadroom(data.token);
     } catch (err) {
       console.warn('Gateway unreachable; console will label its results as simulated.', err);

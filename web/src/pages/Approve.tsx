@@ -24,6 +24,7 @@ import { SellerChip } from '@/components/v2/SellerMark';
 import { rupees } from '@/lib/money';
 import { API_BASE } from '@/lib/api';
 import { sellerName } from '@/lib/plain';
+import { PARTS } from '@/data/policy';
 
 interface ApprovalItem {
   sku: string;
@@ -46,6 +47,29 @@ interface PendingApproval {
 
 const EASE = [0.22, 0.61, 0.36, 1] as const;
 
+/** Read off the signed policy, never typed. The first draft of this page said
+ *  Rs 1,000 against a mandate that says Rs 15,000. */
+const AFA_PART = PARTS.find((p) => p.key === 'afa.required');
+
+/** The principal's credential, which is deliberately not the agent's token.
+ *
+ * A phone that scanned a QR arrives at /approve/<ref> and needs none of this: the
+ * ref is the credential for that one order. This is only for the queue view, which
+ * lists every held order and so must prove who is asking. It is read from the URL
+ * fragment first -- a fragment is never sent to the server and never reaches an
+ * access log -- and otherwise from the console session in this same browser.
+ */
+function principalKey(): string | null {
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const fromLink = hash.get('key');
+  if (fromLink) return fromLink;
+  try {
+    return sessionStorage.getItem('mandate_principal_key');
+  } catch {
+    return null;
+  }
+}
+
 export default function Approve() {
   const { ref: paramRef } = useParams<{ ref?: string }>();
   const navigate = useNavigate();
@@ -59,6 +83,7 @@ export default function Approve() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showQrModal, setShowQrModal] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [noPrincipal, setNoPrincipal] = useState(false);
 
   useEffect(() => {
     if (paramRef) {
@@ -70,8 +95,22 @@ export default function Approve() {
   const fetchPendingList = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/v1/pending`);
+      const key = principalKey();
+      if (!key) {
+        setNoPrincipal(true);
+        setPendingList([]);
+        return;
+      }
+      const res = await fetch(`${API_BASE}/v1/pending`, {
+        headers: { 'X-Principal-Key': key },
+      });
+      if (res.status === 401) {
+        setNoPrincipal(true);
+        setPendingList([]);
+        return;
+      }
       if (res.ok) {
+        setNoPrincipal(false);
         const data = await res.json();
         const list = (data.pending as PendingApproval[]) ?? [];
         setPendingList(list);
@@ -227,7 +266,7 @@ export default function Approve() {
 
           {/* Loading State */}
           {loading && (
-            <div className="flex flex-col items-center justify-center rounded-[24px] border border-rule bg-raise p-12 text-center shadow-sheet">
+            <div className="flex flex-col items-center justify-center rounded-panel border border-rule bg-raise p-12 text-center shadow-sheet">
               <RefreshCw className="size-8 animate-spin text-[#2F5EFF]" />
               <p className="mt-4 text-[14px] text-ink-2">Verifying cryptographic intent...</p>
             </div>
@@ -235,7 +274,7 @@ export default function Approve() {
 
           {/* Error / Not Found State */}
           {!loading && errorMessage && !approval && (
-            <div className="rounded-[24px] border border-halt-line bg-halt-soft p-8 text-center shadow-sheet">
+            <div className="rounded-panel border border-halt-line bg-halt-soft p-8 text-center shadow-sheet">
               <XCircle className="mx-auto size-10 text-halt" />
               <h2 className="mt-3 text-[17px] font-medium text-ink">Request Not Available</h2>
               <p className="mt-2 text-[13.5px] text-ink-2">{errorMessage}</p>
@@ -254,8 +293,38 @@ export default function Approve() {
           )}
 
           {/* Empty Pending List State */}
-          {!loading && !activeRef && pendingList.length === 0 && (
-            <div className="rounded-[24px] border border-rule bg-raise p-8 text-center shadow-sheet">
+          {/* Without a principal key this page cannot see the queue, which is not
+              the same as the queue being empty. Saying "nothing is pending" here
+              would be answering a question the page could not answer -- the shape
+              that hid two outages in this project already. */}
+          {!loading && !activeRef && noPrincipal && (
+            <div className="rounded-panel border border-rule bg-raise p-8 text-center shadow-sheet">
+              <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-refer-soft text-refer">
+                <Shield className="size-6" />
+              </div>
+              <h2 className="mt-4 text-[18px] font-medium tracking-[-0.015em] text-ink">
+                This is the approval channel
+              </h2>
+              <p className="mx-auto mt-2 max-w-[38ch] text-[13.5px] leading-[1.55] text-ink-2">
+                It opens with your own key, not the agent's. That separation is the point:
+                the agent can ask, and only you can say yes.
+              </p>
+              <p className="mx-auto mt-3 max-w-[38ch] text-[13px] leading-[1.55] text-ink-3">
+                Scan the code shown beside a held order, or open this page from the console
+                that started the session.
+              </p>
+              <Button
+                asChild
+                size="sm"
+                className="mt-6 h-[40px] w-full rounded-lg bg-[#2F5EFF] text-white hover:bg-[#254ED0]"
+              >
+                <Link to="/try">Open the console →</Link>
+              </Button>
+            </div>
+          )}
+
+          {!loading && !activeRef && !noPrincipal && pendingList.length === 0 && (
+            <div className="rounded-panel border border-rule bg-raise p-8 text-center shadow-sheet">
               <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600">
                 <ShieldCheck className="size-6" />
               </div>
@@ -266,19 +335,20 @@ export default function Approve() {
                 All autonomous agent transactions are within limits. When an agent proposes an order
                 exceeding your policy limit, an out-of-band approval prompt appears here.
               </p>
-              <div className="mt-6 rounded-xl border border-rule bg-sheet p-4 text-left text-[12.5px]">
+              <div className="mt-6 rounded-lg border border-rule bg-sheet p-4 text-left text-[12.5px]">
                 <div className="flex items-center gap-2 font-medium text-ink">
                   <Clock className="size-3.5 text-[#2F5EFF]" />
                   AFA Policy Threshold
                 </div>
                 <p className="mt-1 text-ink-3">
-                  Transactions above ₹1,000.00 require human second-factor authorization before settlement.
+                  Orders above {AFA_PART?.bound ?? 'the signed threshold'} need you to say yes
+                  before any money moves.
                 </p>
               </div>
               <Button
                 asChild
                 size="sm"
-                className="mt-6 h-[40px] w-full rounded-xl bg-[#2F5EFF] text-white hover:bg-[#254ED0]"
+                className="mt-6 h-[40px] w-full rounded-lg bg-[#2F5EFF] text-white hover:bg-[#254ED0]"
               >
                 <Link to="/try">Test an over-threshold order in Console →</Link>
               </Button>
@@ -298,7 +368,7 @@ export default function Approve() {
                     setActiveRef(item.ref);
                     navigate(`/approve/${item.ref}`);
                   }}
-                  className="group flex cursor-pointer items-center justify-between rounded-2xl border border-rule bg-raise p-4 transition-all hover:border-[#2F5EFF] hover:shadow-sheet"
+                  className="group flex cursor-pointer items-center justify-between rounded-panel border border-rule bg-raise p-4 transition-all hover:border-[#2F5EFF] hover:shadow-sheet"
                 >
                   <div className="flex items-center gap-3">
                     <SellerChip name={sellerName(item.merchant)} />
@@ -326,7 +396,7 @@ export default function Approve() {
               initial={{ opacity: 0, scale: 0.98, y: 6 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ duration: 0.25, ease: EASE }}
-              className="relative overflow-hidden rounded-[26px] border border-rule bg-raise shadow-sheet"
+              className="relative overflow-hidden rounded-panel border border-rule bg-raise shadow-sheet"
             >
               {/* Card Header */}
               <div className="border-b border-hair bg-sheet px-6 py-4">
@@ -411,7 +481,7 @@ export default function Approve() {
                     className="border-t border-hair p-6"
                   >
                     {actionResult === 'approved' ? (
-                      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-center">
+                      <div className="rounded-panel border border-emerald-500/30 bg-emerald-500/10 p-4 text-center">
                         <CheckCircle2 className="mx-auto size-9 text-emerald-600" />
                         <h3 className="mt-2 text-[15px] font-medium text-ink">Order Approved</h3>
                         <p className="mt-1 text-[12.5px] text-ink-2">
@@ -420,7 +490,7 @@ export default function Approve() {
                         </p>
                       </div>
                     ) : (
-                      <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-center">
+                      <div className="rounded-panel border border-rose-500/30 bg-rose-500/10 p-4 text-center">
                         <XCircle className="mx-auto size-9 text-rose-600" />
                         <h3 className="mt-2 text-[15px] font-medium text-ink">Order Rejected</h3>
                         <p className="mt-1 text-[12.5px] text-ink-2">
@@ -446,7 +516,7 @@ export default function Approve() {
                   <Button
                     onClick={() => handleDecision('approve')}
                     disabled={submitting}
-                    className="h-[46px] w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[14px] shadow-sm flex items-center justify-center gap-2"
+                    className="h-[46px] w-full rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[14px] shadow-sm flex items-center justify-center gap-2"
                   >
                     {submitting ? (
                       <RefreshCw className="size-4 animate-spin" />
@@ -461,7 +531,7 @@ export default function Approve() {
                     variant="outline"
                     onClick={() => handleDecision('reject')}
                     disabled={submitting}
-                    className="h-[42px] w-full rounded-xl border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-900/40 dark:hover:bg-rose-950/20 text-[13.5px] flex items-center justify-center gap-1.5"
+                    className="h-[42px] w-full rounded-lg border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-900/40 dark:hover:bg-rose-950/20 text-[13.5px] flex items-center justify-center gap-1.5"
                   >
                     <XCircle className="size-4" />
                     Reject Order
@@ -482,7 +552,7 @@ export default function Approve() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-[340px] rounded-[24px] border border-rule bg-raise p-6 text-center shadow-2xl"
+            className="w-full max-w-[340px] rounded-panel border border-rule bg-raise p-6 text-center shadow-2xl"
           >
             <div className="flex items-center justify-between pb-3 border-b border-hair">
               <span className="text-[14px] font-medium text-ink flex items-center gap-1.5">
@@ -496,7 +566,7 @@ export default function Approve() {
                 &times;
               </button>
             </div>
-            <div className="my-5 flex justify-center rounded-xl bg-white p-4 shadow-inner">
+            <div className="my-5 flex justify-center rounded-lg bg-white p-4 shadow-inner">
               <QRCodeSVG value={currentUrl} size={180} level="M" />
             </div>
             <p className="text-[12px] text-ink-2">

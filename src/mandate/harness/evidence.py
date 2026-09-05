@@ -54,6 +54,10 @@ def _bound(key: str, spec: dict | list | None) -> str:
         return f"{spec['max']} per item"
     if key.startswith("budget."):
         return _rupees(int(spec["max"]))
+    if key == "afa.required":
+        # `threshold`, not `max`. Reading `max` here would fall through to "Set"
+        # while /v1/policy printed a figure, which is how these two drifted apart.
+        return _rupees(int(spec["threshold"]))
     if isinstance(spec, list):
         return ", ".join(s.title() for s in spec) if spec else "Not set"
     return "Set"
@@ -78,6 +82,8 @@ def _parts(pol) -> list[dict[str, Any]]:
         # compare the two without parsing prose.
         if isinstance(spec, dict) and "max" in spec:
             part["max"] = int(spec["max"])
+        if isinstance(spec, dict) and "threshold" in spec:
+            part["max"] = int(spec["threshold"])
         if isinstance(spec, list):
             part["values"] = list(spec)
         if key == "velocity" and spec:
